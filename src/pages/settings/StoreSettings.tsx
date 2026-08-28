@@ -34,8 +34,8 @@ export default function StoreSettings() {
             <div className="flex items-center gap-3">
               <LinkIcon className="w-5 h-5 text-neutral-400" />
               <span className="text-neutral-300 text-sm">Lien de votre boutique :</span>
-              <a href="https://boutikdz.dzbuild.app" target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400 text-sm font-medium flex items-center gap-2">
-                https://boutikdz.dzbuild.app
+              <a href="https://e-nova.vercel.app/store/boutikdz" target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400 text-sm font-medium flex items-center gap-2">
+                https://e-nova.vercel.app/store/boutikdz
                 <ExternalLink className="w-4 h-4" />
               </a>
             </div>

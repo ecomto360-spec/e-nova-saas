@@ -529,7 +529,7 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
           {pages.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredPages.map((page) => {
-                const fullUrl = `https://${storeSubdomain}.dzbuild.app/landing/${page.slug}`;
+                const fullUrl = `https://e-nova.vercel.app/store/${storeSubdomain}/landing/${page.slug}`;
                 return (
                   <div 
                     key={page.id}
@@ -759,7 +759,7 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
               <div className="bg-[#121215] border border-neutral-800 rounded-xl p-3 mt-2">
                 <div className="text-[11px] text-neutral-500 mb-1">Aperçu du lien :</div>
                 <div className="text-xs text-emerald-400 font-mono break-all">
-                  https://{storeSubdomain}.dzbuild.app/landing/{newSlug || "your-slug"}
+                  https://e-nova.vercel.app/store/{storeSubdomain}/landing/{newSlug || "your-slug"}
                 </div>
               </div>
             </div>
@@ -824,10 +824,10 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
               <div className="hidden md:flex items-center gap-2 bg-[#1e1e24] border border-neutral-700/80 px-3 py-1.5 rounded-xl text-xs">
                 <span className="text-yellow-500">🔗</span>
                 <span className="text-neutral-300 font-mono">
-                  https://{storeSubdomain}.dzbuild.app/landing/{selectedPageForEdit.slug}
+                  https://e-nova.vercel.app/store/{storeSubdomain}/landing/{selectedPageForEdit.slug}
                 </span>
                 <button
-                  onClick={() => handleCopy(`https://${storeSubdomain}.dzbuild.app/landing/${selectedPageForEdit.slug}`)}
+                  onClick={() => handleCopy(`https://e-nova.vercel.app/store/${storeSubdomain}/landing/${selectedPageForEdit.slug}`)}
                   className="text-neutral-400 hover:text-white"
                 >
                   <Copy className="w-3 h-3" />
@@ -938,7 +938,7 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
                       </label>
                       <div className="flex items-center bg-[#1e1e24] border border-neutral-700 rounded-xl overflow-hidden px-3">
                         <span className="text-xs text-neutral-500 font-mono">
-                          https://{storeSubdomain}.dzbuild.app/landing/
+                          https://e-nova.vercel.app/store/{storeSubdomain}/landing/
                         </span>
                         <input
                           type="text"
@@ -1412,7 +1412,7 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
           <div className="flex items-center justify-between pb-3 border-b border-neutral-800 text-white">
             <div className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-yellow-500" />
-              <span className="text-sm font-bold font-mono">Aperçu en direct : https://{storeSubdomain}.dzbuild.app/landing/{previewPage.slug}</span>
+              <span className="text-sm font-bold font-mono">Aperçu en direct : https://e-nova.vercel.app/store/{storeSubdomain}/landing/{previewPage.slug}</span>
             </div>
             <button
               onClick={() => setPreviewModalOpen(false)}

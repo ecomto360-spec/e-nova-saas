@@ -647,7 +647,7 @@ export default function Pixels() {
                           <div>
                             <h5 className="text-orange-500 font-medium text-sm mb-1">Très optionnel — aucune vérification requise</h5>
                             <p className="text-xs text-orange-500/80 leading-relaxed">
-                              Vous n'avez pas besoin de vérifier votre domaine pour utiliser le pixel. Sans domaine personnalisé (CNAME pointant vers votre boutique), la vérification peut ne pas aboutir : Facebook refuse souvent les sous-domaines partagés (par exemple <span className="text-red-400">votre-boutique.dzbuild.app</span>). Laissez ce champ vide si vous n'avez pas de domaine personnalisé connecté.
+                              Vous n'avez pas besoin de vérifier votre domaine pour utiliser le pixel. Sans domaine personnalisé (CNAME pointant vers votre boutique), la vérification peut ne pas aboutir : Facebook refuse souvent les sous-domaines partagés (par exemple <span className="text-red-400">e-nova.vercel.app/store/votre-boutique</span>). Laissez ce champ vide si vous n'avez pas de domaine personnalisé connecté.
                             </p>
                           </div>
                         </div>

@@ -52,7 +52,7 @@ export default function CreateStore() {
       
       // Save to localStorage for simple persistence across UI components
       localStorage.setItem("dzbuild_store_name", storeName);
-      navigate("/");
+      navigate("/dashboard");
     } catch (error) {
       console.error("Error creating store:", error);
     } finally {
@@ -70,12 +70,7 @@ export default function CreateStore() {
       
       {/* Header with Logo */}
       <div className="flex flex-col items-center justify-center mb-8">
-        <div className="flex flex-col items-center justify-center mb-4">
-          <div className="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center text-black mb-1">
-            <Package size={16} />
-          </div>
-          <span className="text-yellow-500 text-[10px] font-bold">DZBuild</span>
-        </div>
+        <img src="/api/images/a3541b19-7b57-41db-b6dc-8ef440ae09ba" alt="E nova" className="h-14 w-auto object-contain mb-4" onError={(e) => { e.currentTarget.style.display = "none"; }} />
         <h1 className="text-3xl font-semibold text-white mb-2">Créez votre site web</h1>
         <p className="text-neutral-400 text-sm">Un nom + un lien et votre site est prêt !</p>
       </div>
@@ -110,7 +105,7 @@ export default function CreateStore() {
           <div className="flex items-center mt-2 relative">
              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 flex items-center gap-1.5 pointer-events-none">
                <Lock size={14} />
-               <span className="text-sm font-mono mt-0.5">https://</span>
+               <span className="text-sm font-mono mt-0.5">https://e-nova.vercel.app/store/</span>
              </div>
              
              <input
@@ -118,12 +113,8 @@ export default function CreateStore() {
                 placeholder="my-store"
                 value={storeUrl}
                 onChange={(e) => setStoreUrl(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                className="w-full bg-[#1e1e24] border border-neutral-700 rounded-xl pl-24 pr-[100px] py-3 text-sm text-yellow-500 font-mono placeholder-neutral-700 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors"
+                className="w-full bg-[#1e1e24] border border-neutral-700 rounded-xl pl-[230px] pr-4 py-3 text-sm text-yellow-500 font-mono placeholder-neutral-700 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors"
               />
-              
-             <div className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 text-sm font-mono pointer-events-none mt-0.5">
-                .dzbuild.app
-             </div>
           </div>
           {storeUrl && (
             <p className="text-xs text-emerald-400 font-medium pl-7 pt-1 flex items-center gap-1">

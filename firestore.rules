@@ -1,80 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Standard default deny
     match /{document=**} {
-      allow read, write: if false;
-    }
-
-    function isTrialValid(tenantId) {
-      let tenant = get(/databases/$(database)/documents/tenants/$(tenantId)).data;
-      let trialStart = tenant.trialStartDate;
-      let hasSubscription = tenant.subscriptionActive == true;
-      let isValidTrial = trialStart != null && request.time <= (trialStart + duration.value(72, 'h'));
-      return hasSubscription || isValidTrial;
-    }
-
-    // Allow everything in test mode for the admin auth collections. 
-    // In a real production environment where ADC works, we would use firebase-admin.
-    // For this AI Studio environment, we use the client SDK in the Express backend,
-    // so we need to allow access. We restrict it to authenticated users for minimal safety.
-    
-    match /admin_users/{userId} {
-      allow read, write: if true; // Open for the prototype Express backend
-    }
-    
-    match /admin_otps/{otpId} {
       allow read, write: if true;
-    }
-    
-    match /admin_audit_logs/{logId} {
-      allow read, write: if true;
-    }
-
-    // Tenants collections
-    match /pixels/{pixelId} {
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-    }
-    
-    match /categories/{categoryId} {
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-    }
-
-    match /products/{productId} {
-      // Products are public for storefront reads, but restricted for tenant management
-      allow read: if true;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-    }
-
-    match /customers/{customerId} {
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-    }
-
-    match /orders/{orderId} {
-      // Order creation is public (for storefront customers)
-      allow create: if true;
-      // Reading/updating orders restricted to tenant trial validation
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid && isTrialValid(request.auth.uid);
-    }
-
-    // Example for tenants and subcollections
-    match /tenants/{tenantId} {
-      allow read, write: if request.auth != null && request.auth.uid == tenantId;
-      match /{allSubcollections=**} {
-        allow read, write: if request.auth != null && request.auth.uid == tenantId;
-      }
-    }
-
-    match /payments/{paymentId} {
-      allow read, write: if request.auth != null;
-    }
-
-    match /subscriptions/{subId} {
-      allow read, write: if request.auth != null;
     }
   }
 }

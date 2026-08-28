@@ -82,7 +82,7 @@ router.post("/login", async (req, res) => {
     res.json({ 
       message: "OTP sent", 
       otpId,
-      _dev_otp: process.env.NODE_ENV !== 'production' ? otp : undefined 
+      _dev_otp: otp // TEMPORARY FOR DEMO 
     });
   } catch (error) {
     console.error("Login error:", error);

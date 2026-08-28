@@ -10,18 +10,19 @@ export function AppLayout() {
 
   const allowedExpiredRoutes = [
     "/",
-    "/settings",
-    "/account",
-    "/notifications",
-    "/domains",
-    "/referral",
-    "/api",
-    "/subscription",
-    "/subscribe",
+    "/dashboard",
+    "/dashboard/settings",
+    "/dashboard/account",
+    "/dashboard/notifications",
+    "/dashboard/domains",
+    "/dashboard/referral",
+    "/dashboard/api",
+    "/dashboard/subscription",
+    "/dashboard/subscribe",
   ];
 
   if (isTrialExpired && !allowedExpiredRoutes.includes(location.pathname)) {
-    return <Navigate to="/subscription" replace />;
+    return <Navigate to="/dashboard/subscription" replace />;
   }
 
   const showBanner = !tenantData?.subscriptionActive;
@@ -39,7 +40,7 @@ export function AppLayout() {
               </span>
             </div>
             <Link 
-              to="/subscription" 
+              to="/dashboard/subscription" 
               className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-xs font-bold transition-colors"
             >
               <Rocket className="w-3.5 h-3.5" />

@@ -113,15 +113,15 @@ export default function DomainSettings() {
         const loadedDomains: ConnectedDomain[] = data.domains || [
           {
             id: "system-subdomain",
-            domain: `${sub}.dzbuild.app`,
+            domain: `e-nova.vercel.app/store/${sub}`,
             type: "system",
             isPrimary: true,
             status: "active",
             sslStatus: "active",
-            targetCname: "link.dzbuild.app",
+            targetCname: "cname.vercel-dns.com",
             addedAt: data.createdAt ? new Date(data.createdAt.toDate ? data.createdAt.toDate() : data.createdAt).toLocaleDateString("fr-FR") : "2026/08/19",
             dnsRecords: [
-              { type: "CNAME", name: "@", value: "link.dzbuild.app", status: "valid" }
+              { type: "CNAME", name: "@", value: "cname.vercel-dns.com", status: "valid" }
             ]
           }
         ];
@@ -130,15 +130,15 @@ export default function DomainSettings() {
         if (!loadedDomains.some(d => d.type === "system")) {
           loadedDomains.unshift({
             id: "system-subdomain",
-            domain: `${sub}.dzbuild.app`,
+            domain: `e-nova.vercel.app/store/${sub}`,
             type: "system",
             isPrimary: loadedDomains.length === 0,
             status: "active",
             sslStatus: "active",
-            targetCname: "link.dzbuild.app",
+            targetCname: "cname.vercel-dns.com",
             addedAt: "2026/08/19",
             dnsRecords: [
-              { type: "CNAME", name: "@", value: "link.dzbuild.app", status: "valid" }
+              { type: "CNAME", name: "@", value: "cname.vercel-dns.com", status: "valid" }
             ]
           });
         }
@@ -182,7 +182,7 @@ export default function DomainSettings() {
 
     const stepsInit = [
       { title: "Validation du format et syntaxe", desc: `Vérification du domaine ${raw}`, status: "running" as const },
-      { title: "Résolution DNS CNAME", desc: "Interrogation des serveurs DNS mondiaux vers link.dzbuild.app", status: "pending" as const },
+      { title: "Résolution DNS CNAME", desc: "Interrogation des serveurs DNS mondiaux vers cname.vercel-dns.com", status: "pending" as const },
       { title: "Génération du certificat SSL", desc: "Sécurisation HTTPS automatique (Let's Encrypt / Cloudflare)", status: "pending" as const },
       { title: "Liaison au serveur DZBuild", desc: "Routage du trafic de votre boutique", status: "pending" as const }
     ];
@@ -234,11 +234,11 @@ export default function DomainSettings() {
           isPrimary: connectedDomains.length === 1, // make primary if first custom
           status: "active",
           sslStatus: "active",
-          targetCname: "link.dzbuild.app",
+          targetCname: "cname.vercel-dns.com",
           addedAt: new Date().toLocaleDateString("fr-FR"),
           verifiedAt: new Date().toISOString(),
           dnsRecords: [
-            { type: "CNAME", name: raw.startsWith("www.") ? "www" : "@", value: "link.dzbuild.app", status: "valid" }
+            { type: "CNAME", name: raw.startsWith("www.") ? "www" : "@", value: "cname.vercel-dns.com", status: "valid" }
           ]
         };
 
@@ -389,13 +389,13 @@ export default function DomainSettings() {
         isPrimary: true,
         status: "active",
         sslStatus: "active",
-        targetCname: "link.dzbuild.app",
+        targetCname: "cname.vercel-dns.com",
         addedAt: now.toLocaleDateString("fr-FR"),
         verifiedAt: now.toISOString(),
         expiresAt: expiry.toLocaleDateString("fr-FR"),
         dnsRecords: [
           { type: "A", name: "@", value: "154.250.238.190", status: "valid" },
-          { type: "CNAME", name: "www", value: "link.dzbuild.app", status: "valid" }
+          { type: "CNAME", name: "www", value: "cname.vercel-dns.com", status: "valid" }
         ]
       };
 
@@ -706,9 +706,9 @@ export default function DomainSettings() {
                 <div className="grid grid-cols-[100px_1fr] sm:grid-cols-[150px_1fr] p-4 items-center group">
                   <div className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Value / Target</div>
                   <div className="flex items-center justify-end gap-3">
-                    <span className="text-sm font-medium text-yellow-500 font-mono">link.dzbuild.app</span>
+                    <span className="text-sm font-medium text-yellow-500 font-mono">cname.vercel-dns.com</span>
                     <button 
-                      onClick={() => handleCopy("link.dzbuild.app", "Valeur CNAME")}
+                      onClick={() => handleCopy("cname.vercel-dns.com", "Valeur CNAME")}
                       className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1 rounded transition-colors"
                     >
                       <Copy className="w-3 h-3" /> Copier
@@ -723,7 +723,7 @@ export default function DomainSettings() {
                 <div>
                   <h4 className="text-sm font-medium text-white mb-2">Impossible d'ajouter l'enregistrement sur le domaine racine (@) ?</h4>
                   <p className="text-xs text-neutral-300 leading-relaxed mb-3">
-                    Certains fournisseurs (GoDaddy, certains hébergeurs algériens...) n'autorisent pas un CNAME sur la racine. Le plus simple : ajoutez un CNAME sur l'hôte <span className="text-white font-medium bg-neutral-900 px-1.5 py-0.5 rounded font-mono">www</span> pointant vers <span className="text-yellow-400 font-medium font-mono">link.dzbuild.app</span> — nous gérons le reste automatiquement (votre boutique fonctionnera avec et sans www).
+                    Certains fournisseurs (GoDaddy, certains hébergeurs algériens...) n'autorisent pas un CNAME sur la racine. Le plus simple : ajoutez un CNAME sur l'hôte <span className="text-white font-medium bg-neutral-900 px-1.5 py-0.5 rounded font-mono">www</span> pointant vers <span className="text-yellow-400 font-medium font-mono">cname.vercel-dns.com</span> — nous gérons le reste automatiquement (votre boutique fonctionnera avec et sans www).
                   </p>
                   <button 
                     onClick={() => setCloudflareModalOpen(true)}
@@ -768,7 +768,7 @@ export default function DomainSettings() {
                   <div className="w-8 h-8 rounded-full bg-yellow-500 text-black flex items-center justify-center text-sm font-bold shrink-0 relative z-10">3</div>
                   <div className="pt-1">
                     <h4 className="text-sm font-medium text-white mb-1">Ajoutez un nouvel enregistrement CNAME</h4>
-                    <p className="text-xs text-neutral-400">Choisissez le type <span className="text-yellow-400 font-mono">CNAME</span>, écrivez dans Host : <span className="text-white font-mono">@</span> (ou <span className="text-white font-mono">www</span>), et dans Value : <span className="text-yellow-400 font-mono">link.dzbuild.app</span></p>
+                    <p className="text-xs text-neutral-400">Choisissez le type <span className="text-yellow-400 font-mono">CNAME</span>, écrivez dans Host : <span className="text-white font-mono">@</span> (ou <span className="text-white font-mono">www</span>), et dans Value : <span className="text-yellow-400 font-mono">cname.vercel-dns.com</span></p>
                   </div>
                 </div>
 

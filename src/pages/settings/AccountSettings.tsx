@@ -793,15 +793,15 @@ export default function AccountSettings() {
               <h3 className="text-base font-medium text-white">Accès direct</h3>
             </div>
             <div className="space-y-1">
-              <Link to="/settings" className="flex items-center gap-3 p-2.5 hover:bg-[#1e1e24] rounded-lg transition-colors text-sm text-neutral-300 hover:text-white">
+              <Link to="/dashboard/settings" className="flex items-center gap-3 p-2.5 hover:bg-[#1e1e24] rounded-lg transition-colors text-sm text-neutral-300 hover:text-white">
                 <Store className="w-4 h-4 text-yellow-500" />
                 Paramètres de la boutique
               </Link>
-              <Link to="/notifications" className="flex items-center gap-3 p-2.5 hover:bg-[#1e1e24] rounded-lg transition-colors text-sm text-neutral-300 hover:text-white">
+              <Link to="/dashboard/notifications" className="flex items-center gap-3 p-2.5 hover:bg-[#1e1e24] rounded-lg transition-colors text-sm text-neutral-300 hover:text-white">
                 <Bell className="w-4 h-4 text-emerald-500" />
                 Paramètres des notifications
               </Link>
-              <Link to="/subscription" className="flex items-center gap-3 p-2.5 hover:bg-[#1e1e24] rounded-lg transition-colors text-sm text-neutral-300 hover:text-white">
+              <Link to="/dashboard/subscription" className="flex items-center gap-3 p-2.5 hover:bg-[#1e1e24] rounded-lg transition-colors text-sm text-neutral-300 hover:text-white">
                 <KeyRound className="w-4 h-4 text-orange-500" />
                 Gérer l'abonnement
               </Link>

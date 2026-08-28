@@ -71,50 +71,50 @@ export function Sidebar() {
   }, []);
   
   const fullNavigation = [
-    { name: t("sidebar.dashboard"), href: "/", icon: LayoutDashboard },
+    { name: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard },
     { 
       name: t("sidebar.customize"), 
-      href: "/themes", 
+      href: "/dashboard/themes", 
       icon: Palette,
       children: [
-        { name: "Thèmes", href: "/themes", icon: Paintbrush },
-        { name: "Personnaliser", href: "/customize", icon: SlidersHorizontal }
+        { name: "Thèmes", href: "/dashboard/themes", icon: Paintbrush },
+        { name: "Personnaliser", href: "/dashboard/customize", icon: SlidersHorizontal }
       ]
     },
-    { name: t("sidebar.categories"), href: "/categories", icon: FolderTree },
-    { name: t("sidebar.products"), href: "/products", icon: Package },
-    { name: t("sidebar.orders"), href: "/orders", icon: ShoppingCart },
-    { name: t("sidebar.abandonedCarts"), href: "/abandoned-carts", icon: Ghost },
-    { name: t("sidebar.customers"), href: "/customers", icon: Users },
+    { name: t("sidebar.categories"), href: "/dashboard/categories", icon: FolderTree },
+    { name: t("sidebar.products"), href: "/dashboard/products", icon: Package },
+    { name: t("sidebar.orders"), href: "/dashboard/orders", icon: ShoppingCart },
+    { name: t("sidebar.abandonedCarts"), href: "/dashboard/abandoned-carts", icon: Ghost },
+    { name: t("sidebar.customers"), href: "/dashboard/customers", icon: Users },
     { 
       name: t("sidebar.delivery"), 
-      href: "/shipping",
+      href: "/dashboard/shipping",
       icon: Truck,
       children: [
-        { name: "Tarifs de livraison", href: "/shipping/rates", icon: Banknote },
-        { name: "Connecter un transporteur", href: "/shipping/carriers", icon: LinkIcon }
+        { name: "Tarifs de livraison", href: "/dashboard/shipping/rates", icon: Banknote },
+        { name: "Connecter un transporteur", href: "/dashboard/shipping/carriers", icon: LinkIcon }
       ]
     },
-    { name: t("sidebar.landingPages"), href: "/landing-pages", icon: MonitorPlay },
-    { name: t("sidebar.pixel"), href: "/pixels", icon: Radar },
-    { name: t("sidebar.extensions"), href: "/extensions", icon: Puzzle, badge: t("sidebar.new") },
-    { name: "Avis clients", href: "/reviews", icon: Star },
+    { name: t("sidebar.landingPages"), href: "/dashboard/landing-pages", icon: MonitorPlay },
+    { name: t("sidebar.pixel"), href: "/dashboard/pixels", icon: Radar },
+    { name: t("sidebar.extensions"), href: "/dashboard/extensions", icon: Puzzle, badge: t("sidebar.new") },
+    { name: "Avis clients", href: "/dashboard/reviews", icon: Star },
     { 
       name: t("sidebar.settings"), 
-      href: "/settings", 
+      href: "/dashboard/settings", 
       icon: Settings,
       children: [
-        { name: t("sidebar.storeSettings"), href: "/settings", icon: Store },
-        { name: t("sidebar.accountSettings"), href: "/account", icon: User },
-        { name: t("sidebar.notifications"), href: "/notifications", icon: Bell },
-        { name: t("sidebar.domains"), href: "/domains", icon: Globe },
-        { name: t("sidebar.referral"), href: "/referral", icon: Users },
-        { name: t("sidebar.api"), href: "/api", icon: Code }
+        { name: t("sidebar.storeSettings"), href: "/dashboard/settings", icon: Store },
+        { name: t("sidebar.accountSettings"), href: "/dashboard/account", icon: User },
+        { name: t("sidebar.notifications"), href: "/dashboard/notifications", icon: Bell },
+        { name: t("sidebar.domains"), href: "/dashboard/domains", icon: Globe },
+        { name: t("sidebar.referral"), href: "/dashboard/referral", icon: Users },
+        { name: t("sidebar.api"), href: "/dashboard/api", icon: Code }
       ]
     },
     { 
       name: t("sidebar.subscription"), 
-      href: "/subscription", 
+      href: "/dashboard/subscription", 
       icon: Gem,
       badge: isTrialExpired ? "Expiré" : undefined,
       badgeColor: isTrialExpired ? "red" : undefined
@@ -122,7 +122,7 @@ export function Sidebar() {
   ];
 
   const navigation = isTrialExpired 
-    ? fullNavigation.filter(n => ["/", "/settings", "/subscription"].includes(n.href))
+    ? fullNavigation.filter(n => ["/dashboard", "/dashboard/settings", "/dashboard/subscription"].includes(n.href))
     : fullNavigation;
 
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
@@ -148,8 +148,8 @@ export function Sidebar() {
     <div className="flex h-full w-64 flex-col overflow-y-auto border-r border-gray-200 bg-white px-3 py-4 text-gray-600 dark:border-neutral-800 dark:bg-[#1e1e24] dark:text-neutral-300">
       <div className="mb-6 flex items-center px-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500 text-black">
-            <Package size={18} />
+          <div className="flex h-8 w-8 items-center justify-center">
+            <img src="/api/images/a3541b19-7b57-41db-b6dc-8ef440ae09ba" alt="E nova" className="h-full w-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<div class="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500 text-black"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></div>'); }} />
           </div>
           <span className="text-sm font-semibold tracking-wider text-gray-900 truncate max-w-[150px] dark:text-white">{storeName}</span>
         </div>

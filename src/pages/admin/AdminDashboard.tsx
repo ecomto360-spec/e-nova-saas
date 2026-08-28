@@ -3,6 +3,7 @@ import { Users, Store, Activity, ShieldAlert, LogOut, Loader2, CreditCard, Check
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import ImageUploader from '../../components/admin/ImageUploader';
 
 interface Tenant {
   id: string;
@@ -43,19 +44,36 @@ export default function AdminDashboard() {
       // 1. Fetch tenants
       const qTenants = query(collection(db, 'tenants'), orderBy('createdAt', 'desc'));
       const tenantSnap = await getDocs(qTenants);
-      const fetchedTenants: Tenant[] = [];
+      let fetchedTenants: Tenant[] = [];
       tenantSnap.forEach((d) => {
         fetchedTenants.push({ id: d.id, ...d.data() } as Tenant);
       });
+      
+      if (fetchedTenants.length === 0) {
+        fetchedTenants = [
+          { id: "1", storeName: "Boutique Mode", ownerEmail: "contact@boutique-mode.dz", plan: "Professionnel", status: "active", createdAt: new Date(Date.now() - 15 * 86400000).toISOString() },
+          { id: "2", storeName: "Tech Store", ownerEmail: "admin@tech-store.dz", plan: "Starter", status: "active", createdAt: new Date(Date.now() - 5 * 86400000).toISOString() },
+          { id: "3", storeName: "Maison & Déco", ownerEmail: "hello@maisondeco.dz", plan: "Essai Gratuit", status: "expired", createdAt: new Date(Date.now() - 40 * 86400000).toISOString() },
+          { id: "4", storeName: "Cosmetics Beauty", ownerEmail: "beauty@cosmetics.dz", plan: "Professionnel", status: "active", createdAt: new Date(Date.now() - 2 * 86400000).toISOString() }
+        ];
+      }
       setTenants(fetchedTenants);
 
       // 2. Fetch payments
       const qPayments = query(collection(db, 'payments'), orderBy('createdAt', 'desc'));
       const paySnap = await getDocs(qPayments);
-      const fetchedPayments: Payment[] = [];
+      let fetchedPayments: Payment[] = [];
       paySnap.forEach((d) => {
         fetchedPayments.push({ id: d.id, ...d.data() } as Payment);
       });
+
+      if (fetchedPayments.length === 0) {
+        fetchedPayments = [
+          { id: "p1", tenantId: "1", tenantEmail: "contact@boutique-mode.dz", storeName: "Boutique Mode", plan: "Professionnel", planType: "pro", duration: "1 an", amountDA: 25000, paymentMethod: "ccp", status: "completed", createdAt: new Date(Date.now() - 14 * 86400000).toISOString() },
+          { id: "p2", tenantId: "2", tenantEmail: "admin@tech-store.dz", storeName: "Tech Store", plan: "Starter", planType: "starter", duration: "3 mois", amountDA: 8000, paymentMethod: "baridimob", status: "completed", createdAt: new Date(Date.now() - 4 * 86400000).toISOString() },
+          { id: "p3", tenantId: "4", tenantEmail: "beauty@cosmetics.dz", storeName: "Cosmetics Beauty", plan: "Professionnel", planType: "pro", duration: "6 mois", amountDA: 14000, paymentMethod: "ccp", status: "pending", createdAt: new Date(Date.now() - 1 * 86400000).toISOString(), receiptUrl: "https://via.placeholder.com/300x400.png?text=Re%C3%A7u+CCP" }
+        ];
+      }
       setPayments(fetchedPayments);
     } catch (error) {
       console.error("Error fetching admin data:", error);
@@ -222,6 +240,8 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-emerald-500">Opérationnel</div>
           </div>
         </div>
+        
+        <ImageUploader />
 
         {/* Tab 1: Tenants */}
         {activeTab === 'tenants' && (

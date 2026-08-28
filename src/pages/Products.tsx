@@ -718,7 +718,7 @@ export default function Products() {
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
-                          onClick={() => navigate("/landing-pages/new")}
+                          onClick={() => navigate("/dashboard/landing-pages/new")}
                           title="Créer une Landing Page"
                           className="p-2 rounded-lg text-neutral-400 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors"
                         >

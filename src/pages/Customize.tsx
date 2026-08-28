@@ -311,7 +311,7 @@ export default function Customize() {
             </div>
             <div className="flex-1 max-w-sm mx-auto bg-white dark:bg-[#16161a] rounded-lg px-3 py-1 text-xs text-gray-500 dark:text-neutral-400 font-mono text-center border border-gray-200 dark:border-neutral-800 flex items-center justify-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span>demo-{liveTheme.id}.dzbuild.app</span>
+              <span>e-nova.vercel.app/store/demo-{liveTheme.id}</span>
             </div>
             <Link
               to="/store"

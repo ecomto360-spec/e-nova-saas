@@ -12,7 +12,7 @@ export const checkTenantAndRedirect = async (user: User, navigate: any) => {
 
     const tenantDoc = (await Promise.race([fetchDocPromise, timeoutPromise])) as any;
     if (tenantDoc && tenantDoc.exists && tenantDoc.exists()) {
-      navigate("/");
+      navigate("/dashboard");
     } else {
       navigate("/create-store");
     }

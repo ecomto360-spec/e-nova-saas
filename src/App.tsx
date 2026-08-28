@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthLayout } from "./components/layout/AuthLayout";
 import { AuthGuard } from "./components/layout/AuthGuard";
+import HomePage from "./pages/HomePage";
 import Dashboard from "./pages/Dashboard";
 import Categories from "./pages/Categories";
 import Customize from "./pages/Customize";
@@ -55,7 +56,9 @@ export default function App() {
               
               {/* Standalone Public Storefront & Landing Page Routes */}
               <Route path="/store" element={<StorefrontView />} />
+              <Route path="/store/:storeSlug" element={<StorefrontView />} />
               <Route path="/landing/:slug" element={<LandingPagePublicView />} />
+              <Route path="/store/:storeSlug/landing/:slug" element={<LandingPagePublicView />} />
 
               {/* Auth Routes */}
               <Route element={<AuthLayout />}>
@@ -65,8 +68,10 @@ export default function App() {
                 <Route path="/create-store" element={<CreateStore />} />
               </Route>
 
+              <Route path="/" element={<HomePage />} />
+
               {/* Dashboard Routes */}
-              <Route path="/" element={<AuthGuard><AppLayout /></AuthGuard>}>
+              <Route path="/dashboard" element={<AuthGuard><AppLayout /></AuthGuard>}>
                 <Route index element={<Dashboard />} />
                 <Route path="themes" element={<Themes />} />
                 <Route path="customize" element={<Customize />} />
@@ -106,6 +111,7 @@ export default function App() {
                   </div>
                 } />
               </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>
         </TenantProvider>

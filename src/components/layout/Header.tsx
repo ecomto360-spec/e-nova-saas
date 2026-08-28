@@ -163,7 +163,7 @@ export function Header() {
 
               <div className="p-2">
                 <Link 
-                  to="/account" 
+                  to="/dashboard/account" 
                   onClick={() => setIsUserMenuOpen(false)}
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800/50 transition-colors"
                 >
@@ -171,7 +171,7 @@ export function Header() {
                   Paramètres du compte
                 </Link>
                 <Link 
-                  to="/support" 
+                  to="/dashboard/support" 
                   onClick={() => setIsUserMenuOpen(false)}
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800/50 transition-colors"
                 >

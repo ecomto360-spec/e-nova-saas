@@ -21,7 +21,7 @@ export default function ApiSettings() {
                 Pilotez votre boutique par programmation : produits, commandes, clients et pages de destination — depuis vos propres systèmes.
               </p>
               <div className="inline-flex items-center gap-2 bg-[#1e1e24] border border-neutral-700 px-3 py-1.5 rounded-md text-xs font-mono text-neutral-300">
-                URL de base: <span className="text-orange-400">https://api.dzbuild.app/v1</span>
+                URL de base: <span className="text-orange-400">https://api.e-nova.vercel.app/v1</span>
               </div>
             </div>
           </div>

@@ -60,13 +60,13 @@ export default function Dashboard() {
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-4">
             <Link 
-              to="/subscription"
+              to="/dashboard/subscription"
               className="bg-red-500 hover:bg-red-600 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
               Renouveler l'abonnement
             </Link>
-            <Link to="/subscription" className="text-neutral-400 hover:text-white text-sm flex items-center gap-1.5 transition-colors">
+            <Link to="/dashboard/subscription" className="text-neutral-400 hover:text-white text-sm flex items-center gap-1.5 transition-colors">
               <HelpCircle className="w-4 h-4" />
               Comment renouveler ?
             </Link>
