@@ -1,0 +1,6 @@
+{
+  "name": "DZBuild E-Commerce Platform",
+  "description": "Algerian e-commerce multi-tenant store builder with subscriptions, order management, and payments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
