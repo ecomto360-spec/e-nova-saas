@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Loader2, Copy, Check, ImageIcon } from 'lucide-react';
 
-export default function ImageUploader() {
+export default function ImageUploader({ onUploadSuccess }: { onUploadSuccess?: () => void }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -28,6 +28,7 @@ export default function ImageUploader() {
         // Construct full URL
         const fullUrl = window.location.origin + data.url;
         setUploadedUrl(fullUrl);
+        if (onUploadSuccess) onUploadSuccess();
       } else {
         alert(data.error || "Erreur lors de l'upload");
       }

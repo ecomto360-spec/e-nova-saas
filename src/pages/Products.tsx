@@ -300,7 +300,7 @@ export default function Products() {
             name: formName.trim(),
             description: formDescription.trim(),
             price: Number(formPrice),
-            originalPrice: formOriginalPrice !== "" ? Number(formOriginalPrice) : undefined,
+            ...(formOriginalPrice !== "" && { originalPrice: Number(formOriginalPrice) }),
             category: formCategory || "Général",
             stock: formStock !== "" ? Number(formStock) : 0,
             sku: formSku.trim(),

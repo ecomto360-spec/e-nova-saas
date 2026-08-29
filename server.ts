@@ -6,7 +6,7 @@ import adminAuthRoutes from "./src/routes/adminAuth.js";
 import multer from "multer";
 import crypto from "crypto";
 import { db } from "./src/lib/firebase-backend.js";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 
 // Setup multer to use memory storage since Cloud Run disk is ephemeral
 const storage = multer.memoryStorage();
@@ -76,6 +76,39 @@ async function startServer() {
     } catch (error) {
       console.error("Error fetching image:", error);
       res.status(500).send("Error fetching image");
+    }
+  });
+
+  // Media Manager endpoints
+  app.get("/api/admin/images", async (req, res) => {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'hosted_images'));
+      const images: any[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        images.push({
+          id: data.id,
+          mimeType: data.mimeType,
+          createdAt: data.createdAt,
+          url: `/api/images/${data.id}`
+        });
+      });
+      // Sort by newest first
+      images.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      res.json({ images });
+    } catch (error) {
+      console.error("Error listing images:", error);
+      res.status(500).json({ error: "Failed to list images" });
+    }
+  });
+
+  app.delete("/api/admin/images/:id", async (req, res) => {
+    try {
+      await deleteDoc(doc(db, 'hosted_images', req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting image:", error);
+      res.status(500).json({ error: "Failed to delete image" });
     }
   });
 

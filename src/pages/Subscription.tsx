@@ -294,7 +294,7 @@ export default function Subscription() {
         status: status,
         receiptUrl: receiptPreview || null,
         receiptFileName: receiptFile?.name || null,
-        employeesCount: selectedPlan === "enterprise" ? employeeCount : undefined,
+        ...(selectedPlan === "enterprise" && { employeesCount: employeeCount }),
         promoCodeApplied: appliedDiscount?.code || null,
         createdAt: new Date().toISOString()
       };

@@ -6,7 +6,7 @@ import { AlertTriangle, Rocket } from "lucide-react";
 
 export function AppLayout() {
   const location = useLocation();
-  const { tenantData, isTrialExpired, remainingTrialDays } = useTenant();
+  const { tenantData, isTrialExpired, showBanner, bannerMessage } = useTenant();
 
   const allowedExpiredRoutes = [
     "/",
@@ -25,8 +25,6 @@ export function AppLayout() {
     return <Navigate to="/dashboard/subscription" replace />;
   }
 
-  const showBanner = !tenantData?.subscriptionActive;
-
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900 dark:bg-[#16161a] dark:text-neutral-200">
       <Sidebar />
@@ -36,7 +34,7 @@ export function AppLayout() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" />
               <span className="font-medium">
-                Vous explorez E-Nova ! Il reste dans votre essai gratuit <span className="bg-white/20 px-2 py-0.5 rounded-md font-bold">{remainingTrialDays} jours</span>
+                {bannerMessage}
               </span>
             </div>
             <Link 

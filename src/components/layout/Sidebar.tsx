@@ -146,13 +146,11 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full w-64 flex-col overflow-y-auto border-r border-gray-200 bg-white px-3 py-4 text-gray-600 dark:border-neutral-800 dark:bg-[#1e1e24] dark:text-neutral-300">
-      <div className="mb-6 flex items-center px-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center">
-            <img src="/api/images/a3541b19-7b57-41db-b6dc-8ef440ae09ba" alt="E nova" className="h-full w-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<div class="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500 text-black"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></div>'); }} />
-          </div>
-          <span className="text-sm font-semibold tracking-wider text-gray-900 truncate max-w-[150px] dark:text-white">{storeName}</span>
+      <div className="mb-6 flex flex-col items-start px-3 gap-2">
+        <div className="flex h-8 items-center justify-start">
+          <img src="/api/images/a3541b19-7b57-41db-b6dc-8ef440ae09ba" alt="E nova" className="h-full w-auto object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<div class="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500 text-black"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></div>'); }} />
         </div>
+        <span className="text-sm font-semibold tracking-wider text-gray-900 truncate w-full dark:text-white">{storeName}</span>
       </div>
 
       <nav className="flex-1 space-y-1">

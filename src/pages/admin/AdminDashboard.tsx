@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import ImageUploader from '../../components/admin/ImageUploader';
+import MediaManager from '../../components/admin/MediaManager';
 
 interface Tenant {
   id: string;
@@ -33,10 +34,11 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'payments'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'payments' | 'media'>('tenants');
   const [isLoading, setIsLoading] = useState(true);
   const [previewReceipt, setPreviewReceipt] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [mediaRefreshCount, setMediaRefreshCount] = useState(0);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -179,10 +181,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* Tab buttons */}
-          <div className="flex items-center gap-2 bg-[#161616] p-1 rounded-xl border border-neutral-800">
+          <div className="flex items-center gap-2 bg-[#161616] p-1 rounded-xl border border-neutral-800 overflow-x-auto">
             <button
               onClick={() => setActiveTab('tenants')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
                 activeTab === 'tenants' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-400 hover:text-white'
               }`}
             >
@@ -190,7 +192,7 @@ export default function AdminDashboard() {
             </button>
             <button
               onClick={() => setActiveTab('payments')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 activeTab === 'payments' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-400 hover:text-white'
               }`}
             >
@@ -200,6 +202,14 @@ export default function AdminDashboard() {
                   {pendingPaymentsCount}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => setActiveTab('media')}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'media' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Médias
             </button>
           </div>
         </div>
@@ -241,7 +251,13 @@ export default function AdminDashboard() {
           </div>
         </div>
         
-        <ImageUploader />
+        {/* Tab: Media */}
+        {activeTab === 'media' && (
+          <div className="space-y-6">
+            <ImageUploader onUploadSuccess={() => setMediaRefreshCount(c => c + 1)} />
+            <MediaManager refreshTrigger={mediaRefreshCount} />
+          </div>
+        )}
 
         {/* Tab 1: Tenants */}
         {activeTab === 'tenants' && (
