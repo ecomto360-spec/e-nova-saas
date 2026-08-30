@@ -34,7 +34,7 @@ import {
   SlidersHorizontal
 } from "lucide-react";
 
-export function Sidebar() {
+export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -196,6 +196,7 @@ export function Sidebar() {
                         <Link
                           key={child.name}
                           to={child.href}
+                          onClick={onMobileClose}
                           className={cn(
                             "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors border-l-2",
                             isChildActive
@@ -224,6 +225,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               to={item.href}
+              onClick={onMobileClose}
               className={cn(
                 "group flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors border-l-2",
                 isActive 
@@ -259,6 +261,7 @@ export function Sidebar() {
       <div className="mt-8 space-y-1 border-t border-gray-200 pt-4 dark:border-neutral-800">
         <Link
           to="/community"
+          onClick={onMobileClose}
           className="group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-neutral-800/50 dark:hover:text-white"
         >
           <Users className="h-5 w-5 flex-shrink-0 text-gray-400 group-hover:text-gray-600 dark:text-neutral-500 dark:group-hover:text-neutral-300" />

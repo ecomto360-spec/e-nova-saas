@@ -7,6 +7,8 @@ import multer from "multer";
 import crypto from "crypto";
 import { db } from "./src/lib/firebase-backend.js";
 import { doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
+import { v2 as cloudinary } from "cloudinary";
+import { Readable } from "stream";
 
 // Setup multer to use memory storage since Cloud Run disk is ephemeral
 const storage = multer.memoryStorage();
@@ -17,6 +19,13 @@ const upload = multer({
 });
 
 async function startServer() {
+  // Configuration Cloudinary avec les clés intégrées directement en dur
+  cloudinary.config({ 
+    cloud_name: 'ie6edvfe', 
+    api_key: '571992972679788', 
+    api_secret: 'ojRyuQn_r0KsBbWKH0dtLUY4-3I'
+  });
+
   const app = express();
   const PORT = 3000;
   
@@ -33,6 +42,34 @@ async function startServer() {
   // API routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // Example Cloudinary Upload Endpoint
+  app.post("/api/cloudinary-upload", upload.single('image'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No image uploaded" });
+    }
+
+    try {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: "enova-products" }, 
+        (error, result) => {
+          if (error) {
+            console.error("Cloudinary upload error:", error);
+            return res.status(500).json({ error: "Failed to upload to Cloudinary" });
+          }
+          res.json({ url: result?.secure_url });
+        }
+      );
+      
+      const stream = new Readable();
+      stream.push(req.file.buffer);
+      stream.push(null);
+      stream.pipe(uploadStream);
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({ error: "Échec de l'enregistrement." });
+    }
   });
 
   app.post("/api/admin/upload", upload.single('image'), async (req, res) => {
@@ -93,7 +130,6 @@ async function startServer() {
           url: `/api/images/${data.id}`
         });
       });
-      // Sort by newest first
       images.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       res.json({ images });
     } catch (error) {

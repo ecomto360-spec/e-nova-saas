@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Globe, Moon, Sun, Eye, Bell, Check, ChevronDown, ChevronUp, UserCog, HelpCircle, LogOut, User } from "lucide-react";
+import { Globe, Moon, Sun, Eye, Bell, Check, ChevronDown, ChevronUp, UserCog, HelpCircle, LogOut, User, Menu } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -7,7 +7,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { signOut } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 
-export function Header() {
+export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const { user } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
@@ -45,9 +45,16 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 dark:border-neutral-800 dark:bg-[#16161a]">
+    <header className="sticky top-0 z-10 flex h-16 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 md:px-6 dark:border-neutral-800 dark:bg-[#16161a]">
       <div className="flex flex-1 items-center gap-4">
-        {/* Placeholder for potential breadcrumbs or search */}
+        {onMenuClick && (
+          <button 
+            onClick={onMenuClick}
+            className="md:hidden flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-4">

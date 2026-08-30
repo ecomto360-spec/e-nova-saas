@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   Plus, 
@@ -21,10 +21,20 @@ import {
   DollarSign,
   Boxes,
   Check,
-  Sparkles
+  Sparkles,
+  ArrowLeft,
+  Wand2,
+  UploadCloud,
+  ChevronRight,
+  ChevronDown,
+  PlusCircle,
+  FolderTree,
+  Star,
+  Info
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
-import { db } from "../lib/firebase";
+import { db, storage } from "../lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { 
   collection, 
   query, 
@@ -52,10 +62,16 @@ export interface ProductItem {
   description: string;
   price: number;
   originalPrice?: number;
+  costPrice?: number;
+  weight?: number;
   image: string;
   images?: string[];
   category: string;
   stock: number;
+  trackStock?: boolean;
+  fragile?: boolean;
+  trackVariantStock?: boolean;
+  featured?: boolean;
   sku?: string;
   status: "active" | "inactive";
   variants?: ProductVariant[];
@@ -64,16 +80,7 @@ export interface ProductItem {
   updatedAt?: any;
 }
 
-const PRESET_IMAGES = [
-  { label: "T-shirt Blanc", url: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80" },
-  { label: "Montre Luxe", url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80" },
-  { label: "Baskets Sport", url: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&auto=format&fit=crop&q=80" },
-  { label: "Sérum Beauté", url: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=800&auto=format&fit=crop&q=80" },
-  { label: "Casque Audio", url: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80" },
-  { label: "Sac en Cuir", url: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800&auto=format&fit=crop&q=80" },
-  { label: "Lunettes Soleil", url: "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&auto=format&fit=crop&q=80" },
-  { label: "Parfum Élégant", url: "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=800&auto=format&fit=crop&q=80" },
-];
+
 
 export default function Products() {
   const { user } = useAuth();
@@ -104,11 +111,19 @@ export default function Products() {
   const [formDescription, setFormDescription] = useState("");
   const [formPrice, setFormPrice] = useState<number | "">("");
   const [formOriginalPrice, setFormOriginalPrice] = useState<number | "">("");
+  const [formCostPrice, setFormCostPrice] = useState<number | "">("");
+  const [formWeight, setFormWeight] = useState<number | "">("");
+  const [formTrackStock, setFormTrackStock] = useState(true);
+  const [formFragile, setFormFragile] = useState(false);
+  const [formTrackVariantStock, setFormTrackVariantStock] = useState(false);
+  const [formFeatured, setFormFeatured] = useState(false);
   const [formCategory, setFormCategory] = useState("");
   const [formStock, setFormStock] = useState<number | "">(20);
   const [formSku, setFormSku] = useState("");
   const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
   const [formImage, setFormImage] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formVariants, setFormVariants] = useState<ProductVariant[]>([]);
   const [variantInputName, setVariantInputName] = useState("");
   const [variantInputOptions, setVariantInputOptions] = useState("");
@@ -116,6 +131,75 @@ export default function Products() {
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("L'image est trop grande (max 5 Mo).", "error");
+      return;
+    }
+
+    setIsUploading(true);
+    setFormError("");
+
+    try {
+      // Pour éviter les problèmes liés à Firebase Storage (non initialisé ou CORS),
+      // nous compressons l'image en Base64 pour l'enregistrer directement.
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        
+        reader.onload = (event) => {
+          const img = new Image();
+          img.src = event.target?.result as string;
+          
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 800;
+            const MAX_HEIGHT = 800;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            
+            resolve(canvas.toDataURL('image/jpeg', 0.7)); // Qualité JPEG 70% pour Firebase Firestore
+          };
+          
+          img.onerror = (error) => reject(error);
+        };
+        
+        reader.onerror = (error) => reject(error);
+      });
+      
+      setFormImage(base64Image);
+      showToast("Image ajoutée avec succès");
+    } catch (error) {
+      console.error("Erreur lors du traitement de l'image:", error);
+      showToast("Erreur lors du traitement de l'image.", "error");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
   useEffect(() => {
@@ -167,7 +251,7 @@ export default function Products() {
                 description: p.description || "",
                 price: Number(p.price) || 0,
                 originalPrice: p.originalPrice ? Number(p.originalPrice) : undefined,
-                image: p.image || p.imageUrl || PRESET_IMAGES[0].url,
+                image: p.image || p.imageUrl || "",
                 category: p.category || "Général",
                 stock: p.stock !== undefined ? Number(p.stock) : 20,
                 sku: p.sku || "",
@@ -197,11 +281,17 @@ export default function Products() {
       setFormDescription(prod.description || "");
       setFormPrice(prod.price);
       setFormOriginalPrice(prod.originalPrice || "");
+      setFormCostPrice(prod.costPrice || "");
+      setFormWeight(prod.weight || "");
+      setFormTrackStock(prod.trackStock ?? true);
+      setFormFragile(prod.fragile ?? false);
+      setFormTrackVariantStock(prod.trackVariantStock ?? false);
+      setFormFeatured(prod.featured ?? false);
       setFormCategory(prod.category || (categoriesList[0] || "Général"));
       setFormStock(prod.stock ?? 20);
       setFormSku(prod.sku || "");
       setFormStatus(prod.status || "active");
-      setFormImage(prod.image || PRESET_IMAGES[0].url);
+      setFormImage(prod.image || "");
       setFormVariants(prod.variants || []);
     } else {
       setEditingProduct(null);
@@ -209,11 +299,17 @@ export default function Products() {
       setFormDescription("");
       setFormPrice("");
       setFormOriginalPrice("");
+      setFormCostPrice("");
+      setFormWeight("");
+      setFormTrackStock(true);
+      setFormFragile(false);
+      setFormTrackVariantStock(false);
+      setFormFeatured(false);
       setFormCategory(categoriesList[0] || "Général");
       setFormStock(20);
       setFormSku(`SKU-${Math.floor(1000 + Math.random() * 9000)}`);
       setFormStatus("active");
-      setFormImage(PRESET_IMAGES[0].url);
+      setFormImage("");
       setFormVariants([]);
     }
     setVariantInputName("");
@@ -262,11 +358,17 @@ export default function Products() {
         description: formDescription.trim(),
         price: Number(formPrice),
         originalPrice: formOriginalPrice !== "" ? Number(formOriginalPrice) : null,
+        costPrice: formCostPrice !== "" ? Number(formCostPrice) : null,
+        weight: formWeight !== "" ? Number(formWeight) : null,
+        trackStock: formTrackStock,
+        fragile: formFragile,
+        trackVariantStock: formTrackVariantStock,
+        featured: formFeatured,
         category: formCategory || "Général",
         stock: formStock !== "" ? Number(formStock) : 0,
         sku: formSku.trim() || `SKU-${Date.now().toString().slice(-4)}`,
         status: formStatus,
-        image: formImage.trim() || PRESET_IMAGES[0].url,
+        image: formImage.trim(),
         variants: formVariants,
         userId: user.uid,
         updatedAt: serverTimestamp()
@@ -301,11 +403,17 @@ export default function Products() {
             description: formDescription.trim(),
             price: Number(formPrice),
             ...(formOriginalPrice !== "" && { originalPrice: Number(formOriginalPrice) }),
+            ...(formCostPrice !== "" && { costPrice: Number(formCostPrice) }),
+            ...(formWeight !== "" && { weight: Number(formWeight) }),
+            trackStock: formTrackStock,
+            fragile: formFragile,
+            trackVariantStock: formTrackVariantStock,
+            featured: formFeatured,
             category: formCategory || "Général",
             stock: formStock !== "" ? Number(formStock) : 0,
             sku: formSku.trim(),
             status: formStatus,
-            image: formImage.trim() || PRESET_IMAGES[0].url,
+            image: formImage.trim(),
             variants: formVariants
           };
 
@@ -388,6 +496,12 @@ export default function Products() {
         description: prod.description || "",
         price: prod.price,
         originalPrice: prod.originalPrice || null,
+        costPrice: prod.costPrice || null,
+        weight: prod.weight || null,
+        trackStock: prod.trackStock ?? true,
+        fragile: prod.fragile ?? false,
+        trackVariantStock: prod.trackVariantStock ?? false,
+        featured: prod.featured ?? false,
         category: prod.category || "Général",
         stock: prod.stock || 20,
         sku: `${prod.sku || "SKU"}-COPY`,
@@ -434,8 +548,310 @@ export default function Products() {
   const activeProducts = products.filter(p => p.status === "active").length;
   const lowStockProducts = products.filter(p => p.stock <= 5).length;
   const totalInventoryValue = products.reduce((acc, p) => acc + (p.price * (p.stock || 0)), 0);
+  if (isModalOpen) {
+    return (
+      <div className="pb-24 max-w-7xl mx-auto">
+        {toast && (
+          <div className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all ${
+            toast.type === "success" 
+              ? "bg-emerald-950/90 text-emerald-300 border-emerald-800 backdrop-blur-md" 
+              : "bg-red-950/90 text-red-300 border-red-800 backdrop-blur-md"
+          }`}>
+            {toast.type === "success" ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertCircle className="w-5 h-5 text-red-400" />}
+            {toast.message}
+          </div>
+        )}
+        
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-transparent border border-neutral-700 text-white flex items-center justify-center">
+              <PlusCircle className="w-5 h-5" />
+            </div>
+            <h1 className="text-2xl font-bold text-white">
+              {editingProduct ? "Modifier le produit" : "Ajouter un nouveau produit"}
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-neutral-700 text-sm font-medium text-neutral-300 hover:bg-neutral-800 transition-colors">
+              <span className="text-red-500 font-bold">▶</span> Voir le tutoriel
+            </button>
+            <button onClick={handleCloseModal} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-neutral-700 text-sm font-medium text-neutral-300 hover:bg-neutral-800 transition-colors">
+              <ArrowLeft className="w-4 h-4" /> Retour aux produits
+            </button>
+          </div>
+        </div>
+
+        <form id="product-form" onSubmit={handleSaveProduct} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* LEFT COLUMN */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Informations de base */}
+            <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <Info className="w-5 h-5 text-neutral-400" />
+                <h2 className="text-base font-semibold text-white">Informations de base</h2>
+              </div>
+              
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Nom du produit <span className="text-red-500">*</span></label>
+                  <input type="text" required value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Exemple : iPhone 15 Pro" className="w-full rounded-lg border border-neutral-700 bg-[#16161a] px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors" />
+                </div>
+                
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-neutral-300">Description</label>
+                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500 text-xs font-bold text-black hover:bg-yellow-400 transition-colors">
+                      <Wand2 className="w-3.5 h-3.5" /> Générer la description par IA
+                    </button>
+                  </div>
+                  <div className="border border-neutral-700 rounded-lg overflow-hidden bg-[#16161a]">
+                    <div className="flex items-center flex-wrap gap-1 p-2 border-b border-neutral-700 bg-[#1e1e24] text-neutral-400">
+                       <span className="text-xs px-2 py-1 cursor-pointer hover:bg-neutral-700 rounded">Texte normal <ChevronDown className="w-3 h-3 inline" /></span>
+                       <div className="w-px h-4 bg-neutral-700 mx-1"></div>
+                       <span className="font-bold px-2 py-1 cursor-pointer hover:bg-neutral-700 rounded">B</span>
+                       <span className="italic px-2 py-1 cursor-pointer hover:bg-neutral-700 rounded">I</span>
+                       <span className="underline px-2 py-1 cursor-pointer hover:bg-neutral-700 rounded">U</span>
+                       <span className="line-through px-2 py-1 cursor-pointer hover:bg-neutral-700 rounded">S</span>
+                       <div className="w-px h-4 bg-neutral-700 mx-1"></div>
+                       <span className="px-2 py-1 cursor-pointer hover:bg-neutral-700 rounded text-xs">"</span>
+                    </div>
+                    <textarea rows={6} value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Rédigez une description détaillée du produit..." className="w-full bg-transparent p-4 text-sm text-white placeholder-neutral-500 focus:outline-none resize-y" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Prix et stock */}
+            <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <DollarSign className="w-5 h-5 text-neutral-400" />
+                <h2 className="text-base font-semibold text-white">Prix et stock</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Prix <span className="text-red-500">*</span></label>
+                  <div className="flex">
+                    <input type="number" required min={0} value={formPrice} onChange={(e) => setFormPrice(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0.00" className="flex-1 rounded-l-lg border border-neutral-700 border-r-0 bg-[#16161a] px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors" />
+                    <span className="flex items-center px-4 rounded-r-lg border border-neutral-700 bg-[#25252d] text-neutral-400 text-sm">DA</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Prix avant remise</label>
+                  <div className="flex mb-1">
+                    <input type="number" min={0} value={formOriginalPrice} onChange={(e) => setFormOriginalPrice(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0.00" className="flex-1 rounded-l-lg border border-neutral-700 border-r-0 bg-[#16161a] px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors" />
+                    <span className="flex items-center px-4 rounded-r-lg border border-neutral-700 bg-[#25252d] text-neutral-400 text-sm">DA</span>
+                  </div>
+                  <p className="text-xs text-neutral-500">Laisser vide s'il n'y a pas de remise</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Coût du produit</label>
+                  <div className="flex mb-1">
+                    <input type="number" min={0} value={formCostPrice} onChange={(e) => setFormCostPrice(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0.00" className="flex-1 rounded-l-lg border border-neutral-700 border-r-0 bg-[#16161a] px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors" />
+                    <span className="flex items-center px-4 rounded-r-lg border border-neutral-700 bg-[#25252d] text-neutral-400 text-sm">DA</span>
+                  </div>
+                  <p className="text-xs text-neutral-500">Prix d'achat ou coût (usage interne uniquement)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Code produit (SKU) <span className="text-neutral-500 font-normal text-xs">(optionnel)</span></label>
+                  <input type="text" value={formSku} onChange={(e) => setFormSku(e.target.value)} placeholder="Code produit (SKU)" className="w-full rounded-lg border border-neutral-700 bg-[#16161a] px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Poids <span className="text-neutral-500 font-normal text-xs">(optionnel)</span></label>
+                  <div className="flex mb-1">
+                    <span className="flex items-center px-3 border border-neutral-700 border-r-0 bg-[#16161a] rounded-l-lg"><AlertCircle className="w-4 h-4 text-yellow-500" /></span>
+                    <input type="number" min={0} value={formWeight} onChange={(e) => setFormWeight(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0.00" className="flex-1 border border-neutral-700 bg-[#16161a] px-3 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors" />
+                    <span className="flex items-center px-4 rounded-r-lg border border-neutral-700 bg-[#25252d] text-neutral-400 text-sm">kg</span>
+                  </div>
+                  <p className="text-xs text-neutral-500 leading-relaxed">Poids du produit en kilogrammes. Au-delà de 5 kg, des frais de livraison supplémentaires s'appliquent</p>
+                </div>
+              </div>
+
+              <div className="mt-8 space-y-6">
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formTrackStock ? "bg-white" : "bg-neutral-600"}`} onClick={() => setFormTrackStock(!formTrackStock)}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-black transition-transform ${formTrackStock ? "translate-x-4" : "translate-x-1"}`} />
+                    </div>
+                    <span className="text-sm font-medium text-white">Suivi du stock</span>
+                  </label>
+                  <p className="text-xs text-neutral-500 mt-2 flex items-start gap-1"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Lorsque le suivi du stock est désactivé, le produit apparaîtra toujours comme disponible</p>
+                </div>
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formFragile ? "bg-white" : "bg-neutral-600"}`} onClick={() => setFormFragile(!formFragile)}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-black transition-transform ${formFragile ? "translate-x-4" : "translate-x-1"}`} />
+                    </div>
+                    <span className="text-sm font-medium text-white">Produit fragile</span>
+                  </label>
+                  <p className="text-xs text-neutral-500 mt-2 flex items-start gap-1"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Le colis sera marqué comme fragile lors de l'envoi à la société de livraison (si elle prend en charge cette option)</p>
+                </div>
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formTrackVariantStock ? "bg-white" : "bg-neutral-600"}`} onClick={() => setFormTrackVariantStock(!formTrackVariantStock)}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-black transition-transform ${formTrackVariantStock ? "translate-x-4" : "translate-x-1"}`} />
+                    </div>
+                    <span className="text-sm font-medium text-white flex items-center gap-2"><Boxes className="w-4 h-4" /> Suivi du stock des variantes</span>
+                  </label>
+                  <p className="text-xs text-neutral-500 mt-2 flex items-start gap-1"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Le stock sera suivi pour chaque option (couleur/taille) séparément. Lorsque toutes les options sont épuisées, le produit apparaît comme indisponible.</p>
+                  <p className="text-xs text-neutral-500 mt-1 flex items-start gap-1"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Suivre le stock de chaque combinaison d'options séparément (ex: Taille 32 + Bleu = 2 en stock)</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Variantes */}
+            <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Boxes className="w-5 h-5 text-neutral-400" />
+                  <h2 className="text-base font-semibold text-white">Variantes (Couleurs / Options)</h2>
+                </div>
+                <button type="button" onClick={handleAddVariant} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-600 text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition-colors">
+                  <PlusCircle className="w-3.5 h-3.5" /> Ajouter un groupe
+                </button>
+              </div>
+              <p className="text-xs text-neutral-500 flex items-start gap-1 mb-6"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Ajoutez des groupes de variantes comme : couleurs, tailles, capacité... Le client doit choisir une option de chaque groupe</p>
+              
+              <div className="space-y-4">
+                {formVariants.map((variant, idx) => (
+                  <div key={idx} className="flex items-start gap-4 p-4 rounded-xl bg-[#16161a] border border-neutral-800">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-white">{variant.name}</span>
+                        <button type="button" onClick={() => handleRemoveVariant(idx)} className="text-neutral-500 hover:text-red-400"><X className="w-4 h-4" /></button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {variant.options.map((opt, i) => (
+                          <span key={i} className="px-2.5 py-1 rounded-md bg-neutral-800 text-xs text-neutral-300">{opt}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex items-center gap-3 p-4 rounded-xl border border-neutral-800 bg-[#16161a]">
+                  <input type="text" placeholder="Type (ex: Taille)" value={variantInputName} onChange={(e) => setVariantInputName(e.target.value)} className="w-1/3 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
+                  <input type="text" placeholder="Options séparées par des virgules" value={variantInputOptions} onChange={(e) => setVariantInputOptions(e.target.value)} className="flex-1 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
+                  <button type="button" onClick={handleAddVariant} className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm font-semibold transition-colors">+ Ajouter</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div className="space-y-6">
+            {/* Images du produit */}
+            <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <UploadCloud className="w-5 h-5 text-neutral-400" />
+                <h2 className="text-base font-semibold text-white">Images du produit <span className="text-red-500">*</span></h2>
+              </div>
+              
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*" 
+                onChange={handleImageFileChange}
+              />
+              
+              {formImage ? (
+                <div className="relative rounded-xl overflow-hidden border border-neutral-700 bg-[#16161a] aspect-square flex items-center justify-center group mb-4">
+                  <img src={formImage} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button 
+                      type="button" 
+                      onClick={() => setFormImage("")}
+                      className="px-4 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/40 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border border-dashed border-neutral-600 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-neutral-800/50 transition-colors mb-4 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mb-3" />
+                      <span className="text-sm font-medium text-white mb-1">Téléchargement...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-8 h-8 text-neutral-400 mb-3" />
+                      <span className="text-sm font-medium text-white mb-1">Cliquez pour télécharger</span>
+                      <span className="text-xs text-neutral-500">Au moins une image requise (Max 5 Mo)</span>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Optional: URL Input fallback for images since backend uses URLs for preset */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <label className="block text-xs font-medium text-neutral-400 mb-2">Ou URL de l'image</label>
+                <input type="text" value={formImage} onChange={(e) => setFormImage(e.target.value)} placeholder="https://..." className="w-full rounded-lg border border-neutral-700 bg-[#16161a] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none" />
+              </div>
+            </div>
+
+            {/* Catégorie et statut */}
+            <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <FolderTree className="w-5 h-5 text-neutral-400" />
+                <h2 className="text-base font-semibold text-white">Catégorie et statut</h2>
+              </div>
+              
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Catégorie</label>
+                  <div className="relative">
+                    <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="w-full rounded-lg border border-neutral-700 bg-[#16161a] px-4 py-2.5 text-sm text-white focus:border-yellow-500 focus:outline-none transition-colors appearance-none">
+                      <option value="Sans catégorie">Sans catégorie</option>
+                      {categoriesList.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      <option value="Général">Général</option>
+                      <option value="Vêtements">Vêtements</option>
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Statut</label>
+                  <select value={formStatus} onChange={(e) => setFormStatus(e.target.value as any)} className="w-full rounded-lg border border-neutral-700 bg-[#16161a] px-4 py-2.5 text-sm text-white focus:border-yellow-500 focus:outline-none transition-colors">
+                    <option value="active">Actif - Disponible à la vente</option>
+                    <option value="inactive">Inactif - Masqué</option>
+                  </select>
+                </div>
+
+                <div className="pt-2">
+                  <label className="flex items-center gap-3 cursor-pointer mb-2">
+                    <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formFeatured ? "bg-white" : "bg-neutral-600"}`} onClick={() => setFormFeatured(!formFeatured)}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-black transition-transform ${formFeatured ? "translate-x-4" : "translate-x-1"}`} />
+                    </div>
+                    <span className="text-sm font-medium text-white flex items-center gap-1.5"><Star className="w-4 h-4 text-yellow-500 fill-yellow-500" /> Produit en vedette</span>
+                  </label>
+                  <p className="text-xs text-neutral-500 leading-relaxed">Les produits en vedette apparaissent dans la section "Produits en vedette" de la page d'accueil</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <button type="submit" disabled={isSaving} className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-yellow-500 text-sm font-bold text-black hover:bg-yellow-400 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/10">
+              {isSaving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Enregistrement...</>
+              ) : (
+                <><Check className="w-4 h-4 stroke-[2.5]" /> {editingProduct ? "Mettre à jour le produit" : "Ajouter le produit"}</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
+
     <div className="space-y-6 pb-12">
       {/* Toast Notification */}
       {toast && (
@@ -848,306 +1264,6 @@ export default function Products() {
           </div>
         )}
       </div>
-
-      {/* Product Creation / Edition Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md overflow-y-auto">
-          <div className="bg-[#1e1e24] border border-neutral-800 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden my-8 max-h-[90vh] flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-5 border-b border-neutral-800 bg-[#16161a]">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-yellow-500/10 text-yellow-500 flex items-center justify-center">
-                  <Package className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">
-                    {editingProduct ? "Modifier le produit" : "Ajouter un nouveau produit"}
-                  </h2>
-                  <p className="text-xs text-neutral-400">Renseignez les caractéristiques de votre article.</p>
-                </div>
-              </div>
-              <button 
-                onClick={handleCloseModal}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Form */}
-            <form onSubmit={handleSaveProduct} className="p-6 space-y-6 overflow-y-auto flex-1">
-              {formError && (
-                <div className="p-4 rounded-xl bg-red-950/60 border border-red-800/80 text-red-300 text-sm flex items-center gap-3">
-                  <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
-                  <span>{formError}</span>
-                </div>
-              )}
-
-              {/* General Info */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-yellow-500">1. Informations générales</h4>
-                
-                <div>
-                  <label className="block text-sm font-medium text-neutral-200 mb-1.5">
-                    Nom du produit <span className="text-red-400">*</span>
-                  </label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Ex: T-shirt Oversize Coton Premium"
-                    className="w-full rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-3 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-200 mb-1.5">Catégorie</label>
-                    <select
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-3 text-sm text-white focus:border-yellow-500 focus:outline-none transition-colors"
-                    >
-                      <option value="Général">Général</option>
-                      {categoriesList.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                      <option value="Vêtements">Vêtements</option>
-                      <option value="Accessoires">Accessoires</option>
-                      <option value="Chaussures">Chaussures</option>
-                      <option value="Cosmétiques">Cosmétiques</option>
-                      <option value="Électronique">Électronique</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-200 mb-1.5">Code SKU / Référence</label>
-                    <input 
-                      type="text" 
-                      value={formSku}
-                      onChange={(e) => setFormSku(e.target.value)}
-                      placeholder="Ex: TSH-001"
-                      className="w-full rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-3 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-200 mb-1.5">Description</label>
-                  <textarea 
-                    rows={3}
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    placeholder="Description détaillée du produit, caractéristiques techniques, matières..."
-                    className="w-full rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Pricing & Stock */}
-              <div className="space-y-4 pt-4 border-t border-neutral-800">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-yellow-500">2. Prix & Inventaire</h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-200 mb-1.5">
-                      Prix de vente (DZD) <span className="text-red-400">*</span>
-                    </label>
-                    <input 
-                      type="number" 
-                      required
-                      min={0}
-                      value={formPrice}
-                      onChange={(e) => setFormPrice(e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="Ex: 2500"
-                      className="w-full rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-3 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-200 mb-1.5">Prix barré (DZD)</label>
-                    <input 
-                      type="number" 
-                      min={0}
-                      value={formOriginalPrice}
-                      onChange={(e) => setFormOriginalPrice(e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="Ex: 3500 (Optionnel)"
-                      className="w-full rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-3 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-200 mb-1.5">Quantité en stock</label>
-                    <input 
-                      type="number" 
-                      min={0}
-                      value={formStock}
-                      onChange={(e) => setFormStock(e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="Ex: 50"
-                      className="w-full rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-3 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Image selection */}
-              <div className="space-y-4 pt-4 border-t border-neutral-800">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-yellow-500">3. Image du produit</h4>
-                
-                <div>
-                  <label className="block text-sm font-medium text-neutral-200 mb-1.5">URL de l'image</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="url" 
-                      value={formImage}
-                      onChange={(e) => setFormImage(e.target.value)}
-                      placeholder="https://images.unsplash.com/..."
-                      className="flex-1 rounded-xl border border-neutral-700 bg-[#16161a] px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                {/* Presets & Preview */}
-                <div>
-                  <p className="text-xs text-neutral-400 mb-2">Ou choisissez une image prédéfinie :</p>
-                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                    {PRESET_IMAGES.map((preset, idx) => (
-                      <button
-                        type="button"
-                        key={idx}
-                        onClick={() => setFormImage(preset.url)}
-                        className={`aspect-square rounded-xl overflow-hidden border-2 transition-all relative ${
-                          formImage === preset.url ? "border-yellow-500 scale-105 shadow-md shadow-yellow-500/20" : "border-neutral-800 hover:border-neutral-600 opacity-70 hover:opacity-100"
-                        }`}
-                      >
-                        <img src={preset.url} alt={preset.label} className="w-full h-full object-cover" />
-                        {formImage === preset.url && (
-                          <div className="absolute inset-0 bg-yellow-500/20 flex items-center justify-center">
-                            <Check className="w-4 h-4 text-white drop-shadow" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Status & Options */}
-              <div className="space-y-4 pt-4 border-t border-neutral-800">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-yellow-500">4. Statut & Variantes</h4>
-                
-                <div>
-                  <label className="block text-sm font-medium text-neutral-200 mb-1.5">Statut de mise en vente</label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
-                      <input 
-                        type="radio" 
-                        name="status"
-                        checked={formStatus === "active"}
-                        onChange={() => setFormStatus("active")}
-                        className="text-yellow-500 focus:ring-yellow-500"
-                      />
-                      <span>Actif (Visible dans la boutique)</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
-                      <input 
-                        type="radio" 
-                        name="status"
-                        checked={formStatus === "inactive"}
-                        onChange={() => setFormStatus("inactive")}
-                        className="text-yellow-500 focus:ring-yellow-500"
-                      />
-                      <span>Inactif (Masqué)</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Simple Variants */}
-                <div className="bg-[#16161a] border border-neutral-800 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-300">Variantes personnalisées (Tailles, Couleurs...)</span>
-                  </div>
-
-                  {formVariants.map((v, vIdx) => (
-                    <div key={vIdx} className="flex items-center justify-between bg-[#1e1e24] p-3 rounded-xl border border-neutral-700/50">
-                      <div>
-                        <span className="text-xs font-bold text-yellow-500">{v.name}:</span>
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {v.options.map((opt, oIdx) => (
-                            <span key={oIdx} className="px-2 py-0.5 rounded bg-neutral-800 text-xs text-neutral-200">
-                              {opt}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <button 
-                        type="button" 
-                        onClick={() => handleRemoveVariant(vIdx)}
-                        className="text-neutral-500 hover:text-red-400 p-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-
-                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                    <input 
-                      type="text" 
-                      placeholder="Type (ex: Taille)"
-                      value={variantInputName}
-                      onChange={(e) => setVariantInputName(e.target.value)}
-                      className="w-full sm:w-1/3 rounded-xl border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500"
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="Options séparées par des virgules (ex: M, L, XL)"
-                      value={variantInputOptions}
-                      onChange={(e) => setVariantInputOptions(e.target.value)}
-                      className="flex-1 rounded-xl border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddVariant}
-                      className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold whitespace-nowrap transition-colors"
-                    >
-                      + Ajouter
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-3 pt-6 border-t border-neutral-800">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="px-5 py-2.5 rounded-xl border border-neutral-700 text-sm font-medium text-neutral-300 hover:bg-neutral-800 transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-yellow-500 text-sm font-bold text-black hover:bg-yellow-400 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/10"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Enregistrement...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 stroke-[2.5]" />
-                      {editingProduct ? "Mettre à jour" : "Créer le produit"}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       {/* Modal: Confirmation de suppression d'un produit */}
       <ConfirmModal
         isOpen={!!productToDelete}
