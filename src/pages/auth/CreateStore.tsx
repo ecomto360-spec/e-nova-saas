@@ -70,7 +70,7 @@ export default function CreateStore() {
       
       {/* Header with Logo */}
       <div className="flex flex-col items-center justify-center mb-8">
-        <img src="/api/images/a3541b19-7b57-41db-b6dc-8ef440ae09ba" alt="E nova" className="h-14 w-auto object-contain mb-4" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        <img src="/logo.png" alt="E nova" className="h-14 w-auto object-contain mb-4" onError={(e) => { e.currentTarget.style.display = "none"; }} />
         <h1 className="text-3xl font-semibold text-white mb-2">Créez votre site web</h1>
         <p className="text-neutral-400 text-sm">Un nom + un lien et votre site est prêt !</p>
       </div>

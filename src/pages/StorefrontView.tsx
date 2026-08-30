@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Edit3, Palette, Sparkles, Store } from "lucide-react";
 import { auth, db } from "../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { STORE_THEMES, StoreTheme } from "../data/themesData";
 import { ThemeStorePreview } from "../components/storefront/ThemeStorePreview";
 
@@ -11,6 +11,7 @@ export default function StorefrontView() {
   const [activeTheme, setActiveTheme] = useState<StoreTheme>(STORE_THEMES[0]);
   const [storeName, setStoreName] = useState<string>("أزياء الموضة");
   const [loading, setLoading] = useState(true);
+  const [actualProducts, setActualProducts] = useState<any[]>([]);
 
   useEffect(() => {
     const loadStoreSettings = async () => {
@@ -27,7 +28,7 @@ export default function StorefrontView() {
         if (found) setActiveTheme(found);
       }
 
-      if (user) {
+            if (user) {
         try {
           const docRef = doc(db, "tenants", user.uid);
           const docSnap = await getDoc(docRef);
@@ -39,6 +40,15 @@ export default function StorefrontView() {
               if (found) setActiveTheme(found);
             }
           }
+          
+          // Fetch products
+          const prodQuery = query(collection(db, "products"), where("userId", "==", user.uid));
+          const prodSnap = await getDocs(prodQuery);
+          const loadedProducts: any[] = [];
+          prodSnap.forEach(docSnap => {
+            loadedProducts.push({ id: docSnap.id, ...docSnap.data() });
+          });
+          setActualProducts(loadedProducts);
         } catch (error) {
           console.error("Error loading store configuration:", error);
         }
@@ -92,6 +102,7 @@ export default function StorefrontView() {
           theme={activeTheme} 
           customStoreName={storeName}
           isStandaloneView={true}
+          actualProducts={actualProducts}
         />
       </div>
     </div>

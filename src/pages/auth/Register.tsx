@@ -34,7 +34,7 @@ export default function Register() {
   return (
     <div className="w-full max-w-[440px] bg-[#1e1e24] rounded-[24px] p-10 shadow-2xl border border-neutral-800/50 my-8">
       <div className="flex justify-center mb-6">
-        <img src="/api/images/a3541b19-7b57-41db-b6dc-8ef440ae09ba" alt="E nova" className="h-14 w-auto object-contain" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        <img src="/logo.png" alt="E nova" className="h-14 w-auto object-contain" onError={(e) => { e.currentTarget.style.display = "none"; }} />
       </div>
       <h1 className="text-3xl font-semibold text-white mb-8 text-center">Créez votre site web</h1>
       

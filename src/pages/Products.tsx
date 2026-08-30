@@ -703,8 +703,8 @@ export default function Products() {
                 ))}
 
                 <div className="flex items-center gap-3 p-4 rounded-xl border border-neutral-800 bg-[#16161a]">
-                  <input type="text" placeholder="Type (ex: Taille)" value={variantInputName} onChange={(e) => setVariantInputName(e.target.value)} className="w-1/3 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
-                  <input type="text" placeholder="Options séparées par des virgules" value={variantInputOptions} onChange={(e) => setVariantInputOptions(e.target.value)} className="flex-1 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
+                  <input type="text" placeholder="Type (ex: Couleur, Taille, Poids)" value={variantInputName} onChange={(e) => setVariantInputName(e.target.value)} className="w-1/3 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
+                  <input type="text" placeholder="Ex: Rouge, Bleu, XL (séparées par virgules)" value={variantInputOptions} onChange={(e) => setVariantInputOptions(e.target.value)} className="flex-1 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
                   <button type="button" onClick={handleAddVariant} className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm font-semibold transition-colors">+ Ajouter</button>
                 </div>
               </div>

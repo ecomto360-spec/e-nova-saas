@@ -46,9 +46,10 @@ interface ThemeStorePreviewProps {
   theme: StoreTheme;
   customStoreName?: string;
   isStandaloneView?: boolean;
+  actualProducts?: any[];
 }
 
-export function ThemeStorePreview({ theme, customStoreName, isStandaloneView = false }: ThemeStorePreviewProps) {
+export function ThemeStorePreview({ theme, customStoreName, isStandaloneView = false, actualProducts }: ThemeStorePreviewProps) {
   const storeName = customStoreName || theme.nameAr || theme.name || "أزياء الموضة";
   
   // Selected category filter
@@ -81,19 +82,19 @@ export function ThemeStorePreview({ theme, customStoreName, isStandaloneView = f
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
-    return theme.products.filter(product => {
+    return (actualProducts ? actualProducts : theme.products).filter(product => {
       const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
       const matchesSearch = searchQuery === "" || 
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (product.nameAr && product.nameAr.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchesCategory && matchesSearch;
     });
-  }, [theme.products, selectedCategory, searchQuery]);
+  }, [(actualProducts ? actualProducts : theme.products), selectedCategory, searchQuery]);
 
   // Featured products
   const featuredProducts = useMemo(() => {
-    return theme.products.filter(p => p.isFeatured).slice(0, 4);
-  }, [theme.products]);
+    return (actualProducts ? actualProducts : theme.products).filter(p => p.isFeatured).slice(0, 4);
+  }, [(actualProducts ? actualProducts : theme.products)]);
 
   // Calculate pricing for checkout
   const currentWilaya = useMemo(() => {
@@ -191,7 +192,7 @@ export function ThemeStorePreview({ theme, customStoreName, isStandaloneView = f
           <div className="flex items-center gap-3">
             <button 
               onClick={() => {
-                if (theme.products.length > 0) handleOpenProduct(theme.products[0]);
+                if ((actualProducts ? actualProducts : theme.products).length > 0) handleOpenProduct((actualProducts ? actualProducts : theme.products)[0]);
               }}
               className="relative p-2.5 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors"
               title="السلة"
@@ -210,7 +211,7 @@ export function ThemeStorePreview({ theme, customStoreName, isStandaloneView = f
               href="#order-now"
               onClick={(e) => {
                 e.preventDefault();
-                if (theme.products.length > 0) handleOpenProduct(theme.products[0]);
+                if ((actualProducts ? actualProducts : theme.products).length > 0) handleOpenProduct((actualProducts ? actualProducts : theme.products)[0]);
               }}
               className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white shadow-sm hover:opacity-95 transition-all transform active:scale-95"
               style={{ backgroundColor: theme.primaryColor || "#f59e0b" }}
@@ -424,7 +425,7 @@ export function ThemeStorePreview({ theme, customStoreName, isStandaloneView = f
                 <h3 className="text-xl sm:text-2xl font-black text-gray-900">المنتجات المميزة</h3>
               </div>
               <a href="#all-products" className="text-xs sm:text-sm font-bold text-amber-600 hover:underline">
-                عرض الكل ({theme.products.length})
+                عرض الكل ({(actualProducts ? actualProducts : theme.products).length})
               </a>
             </div>
 
@@ -679,7 +680,7 @@ export function ThemeStorePreview({ theme, customStoreName, isStandaloneView = f
                 <div className="pt-2">
                   <button 
                     onClick={() => {
-                      if (theme.products.length > 0) handleOpenProduct(theme.products[0]);
+                      if ((actualProducts ? actualProducts : theme.products).length > 0) handleOpenProduct((actualProducts ? actualProducts : theme.products)[0]);
                     }}
                     className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-black bg-amber-500 hover:bg-amber-400 transition-all shadow-md text-center"
                   >

@@ -15,7 +15,7 @@ export default function HomePage() {
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center">
               {/* Utilise ici le logo uploadé */}
-              <img src="/api/images/a3541b19-7b57-41db-b6dc-8ef440ae09ba" alt="E nova" className="h-10 w-auto object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<span class="font-bold text-xl text-blue-600">E nova</span>'); }} />
+              <img src="/logo.png" alt="E nova" className="h-10 w-auto object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<span class="font-bold text-xl text-blue-600">E nova</span>'); }} />
             </div>
             <div className="hidden md:flex space-x-8">
               <a href="#plans" className="text-gray-600 hover:text-blue-600 transition">Plans</a>
