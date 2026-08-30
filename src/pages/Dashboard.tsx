@@ -1,10 +1,12 @@
+import { wipeUserData } from "../lib/cleanup";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useTenant } from "../contexts/TenantContext";
 import { Rocket, AlertTriangle, RefreshCw, HelpCircle, ChevronRight, ShoppingCart, CheckCircle, Wallet, TrendingUp, ReceiptText, Eye, LineChart, Filter, Users, XCircle } from "lucide-react";
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user } = useAuth(); useEffect(() => { if (user?.uid) { wipeUserData(user.uid); } }, [user]);
   const { isTrialExpired, tenantData } = useTenant();
   const firstName = user?.displayName?.split(" ")[0] || user?.email?.split("@")[0] || "Utilisateur";
 

@@ -237,33 +237,6 @@ export default function Products() {
         } as ProductItem);
       });
 
-      // 3. Check if products exist in tenant doc if none in collection
-      if (loadedProducts.length === 0) {
-        const tenantRef = doc(db, "tenants", user.uid);
-        const tenantSnap = await getDoc(tenantRef);
-        if (tenantSnap.exists()) {
-          const tData = tenantSnap.data();
-          if (tData.products && Array.isArray(tData.products) && tData.products.length > 0) {
-            tData.products.forEach((p: any, idx: number) => {
-              loadedProducts.push({
-                id: p.id || `prod-${idx}`,
-                name: p.name || "Produit sans titre",
-                description: p.description || "",
-                price: Number(p.price) || 0,
-                originalPrice: p.originalPrice ? Number(p.originalPrice) : undefined,
-                image: p.image || p.imageUrl || "",
-                category: p.category || "Général",
-                stock: p.stock !== undefined ? Number(p.stock) : 20,
-                sku: p.sku || "",
-                status: p.status || "active",
-                variants: p.variants || [],
-                userId: user.uid
-              });
-            });
-          }
-        }
-      }
-
       setProducts(loadedProducts);
     } catch (err) {
       console.error("Error loading products:", err);

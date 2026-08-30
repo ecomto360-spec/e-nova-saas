@@ -166,27 +166,7 @@ export default function Orders() {
         });
       });
 
-      // Seed initial demo orders if collection is empty and never seeded
-      const hasSeeded = localStorage.getItem(`orders_seeded_${user.uid}`);
-      if (loaded.length === 0 && !hasSeeded) {
-        localStorage.setItem(`orders_seeded_${user.uid}`, "true");
-        const seededList: OrderItem[] = [];
-        for (const item of INITIAL_DEMO_ORDERS) {
-          const docRef = await addDoc(collection(db, "orders"), {
-            ...item,
-            userId: user.uid,
-            createdAt: serverTimestamp()
-          });
-          seededList.push({
-            id: docRef.id,
-            ...item,
-            userId: user.uid
-          });
-        }
-        setOrders(seededList);
-      } else {
-        setOrders(loaded);
-      }
+      setOrders(loaded);
     } catch (err) {
       console.error("Error loading orders:", err);
       showToast("Erreur lors du chargement des commandes", "error");

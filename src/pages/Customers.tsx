@@ -201,28 +201,7 @@ export default function Customers() {
         });
       });
 
-      // If user has 0 customers in database and never seeded before, seed initial demo records
-      const hasSeeded = localStorage.getItem(`customers_seeded_${user.uid}`);
-      if (loaded.length === 0 && !hasSeeded) {
-        localStorage.setItem(`customers_seeded_${user.uid}`, "true");
-        const seededList: Customer[] = [];
-        for (const item of INITIAL_DEMO_CUSTOMERS) {
-          const docRef = await addDoc(collection(db, "customers"), {
-            ...item,
-            userId: user.uid,
-            createdAt: serverTimestamp()
-          });
-          seededList.push({
-            id: docRef.id,
-            ...item,
-            userId: user.uid,
-            avatar: getInitials(item.name)
-          });
-        }
-        setCustomers(seededList);
-      } else {
-        setCustomers(loaded);
-      }
+      setCustomers(loaded);
     } catch (error) {
       console.error("Error loading customers:", error);
       showToast("Erreur lors du chargement des clients", "error");
