@@ -1,4 +1,5 @@
-import { useState, useEffect, FormEvent, useRef } from "react";
+import React, { useState, useEffect, FormEvent, useRef } from "react";
+import { useLanguage } from "../contexts/LanguageContext";
 import { useNavigate } from "react-router-dom";
 import { 
   Plus, 
@@ -26,6 +27,8 @@ import {
   Wand2,
   UploadCloud,
   ChevronRight,
+  ChevronLeft,
+  Eye,
   ChevronDown,
   PlusCircle,
   FolderTree,
@@ -50,10 +53,24 @@ import {
   runTransaction
 } from "firebase/firestore";
 import { ConfirmModal } from "../components/common/ConfirmModal";
+import { VariantManager } from "../components/admin/VariantManager";
+
+export type VariantType = "text" | "color" | "image_text" | "multiple";
+
+export interface VariantOptionDef {
+  value: string;
+  priceDiff?: number;
+  quantity?: number;
+  stock?: number;
+  colorCode?: string;
+  image?: string;
+  hasImageCard?: boolean;
+}
 
 export interface ProductVariant {
   name: string;
-  options: string[];
+  type?: VariantType;
+  options: any[];
 }
 
 export interface ProductItem {
@@ -83,6 +100,7 @@ export interface ProductItem {
 
 
 export default function Products() {
+  const { t, dir } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -94,8 +112,10 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
+  const [featuredFilter, setFeaturedFilter] = useState(false);
   const [sortBy, setSortBy] = useState<"newest" | "price-asc" | "price-desc" | "stock">("newest");
-  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -121,7 +141,7 @@ export default function Products() {
   const [formStock, setFormStock] = useState<number | "">(20);
   const [formSku, setFormSku] = useState("");
   const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
-  const [formImage, setFormImage] = useState("");
+  const [formImages, setFormImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formVariants, setFormVariants] = useState<ProductVariant[]>([]);
@@ -189,7 +209,7 @@ export default function Products() {
         reader.onerror = (error) => reject(error);
       });
       
-      setFormImage(base64Image);
+      setFormImages(prev => [...prev, base64Image]);
       showToast("Image ajoutée avec succès");
     } catch (error) {
       console.error("Erreur lors du traitement de l'image:", error);
@@ -264,7 +284,7 @@ export default function Products() {
       setFormStock(prod.stock ?? 20);
       setFormSku(prod.sku || "");
       setFormStatus(prod.status || "active");
-      setFormImage(prod.image || "");
+      setFormImages(prod.images && prod.images.length > 0 ? prod.images : (prod.image ? [prod.image] : []));
       setFormVariants(prod.variants || []);
     } else {
       setEditingProduct(null);
@@ -282,7 +302,7 @@ export default function Products() {
       setFormStock(20);
       setFormSku(`SKU-${Math.floor(1000 + Math.random() * 9000)}`);
       setFormStatus("active");
-      setFormImage("");
+      setFormImages([]);
       setFormVariants([]);
     }
     setVariantInputName("");
@@ -296,19 +316,7 @@ export default function Products() {
     setFormError("");
   };
 
-  const handleAddVariant = () => {
-    if (!variantInputName.trim() || !variantInputOptions.trim()) return;
-    const options = variantInputOptions.split(",").map(o => o.trim()).filter(Boolean);
-    if (options.length === 0) return;
 
-    setFormVariants([...formVariants, { name: variantInputName.trim(), options }]);
-    setVariantInputName("");
-    setVariantInputOptions("");
-  };
-
-  const handleRemoveVariant = (idx: number) => {
-    setFormVariants(formVariants.filter((_, i) => i !== idx));
-  };
 
   const handleSaveProduct = async (e: FormEvent) => {
     e.preventDefault();
@@ -338,10 +346,15 @@ export default function Products() {
         trackVariantStock: formTrackVariantStock,
         featured: formFeatured,
         category: formCategory || "Général",
-        stock: formStock !== "" ? Number(formStock) : 0,
+        stock: formStock !== "" 
+          ? Number(formStock) 
+          : (formTrackVariantStock && formVariants.length > 0 
+              ? formVariants.reduce((sum, v) => sum + (v.options?.reduce((s: number, opt: any) => s + (Number(opt.quantity ?? opt.stock) || 0), 0) || 0), 0) 
+              : 0),
         sku: formSku.trim() || `SKU-${Date.now().toString().slice(-4)}`,
         status: formStatus,
-        image: formImage.trim(),
+        image: formImages[0] || "",
+        images: formImages,
         variants: formVariants,
         userId: user.uid,
         updatedAt: serverTimestamp()
@@ -386,7 +399,8 @@ export default function Products() {
             stock: formStock !== "" ? Number(formStock) : 0,
             sku: formSku.trim(),
             status: formStatus,
-            image: formImage.trim(),
+            image: formImages[0] || "",
+            images: formImages,
             variants: formVariants
           };
 
@@ -506,9 +520,16 @@ export default function Products() {
     let matchStatus = true;
     if (statusFilter === "active") matchStatus = p.status === "active";
     else if (statusFilter === "inactive") matchStatus = p.status === "inactive";
-    else if (statusFilter === "out_of_stock") matchStatus = p.stock <= 0;
+    else if (statusFilter === "active_hidden") matchStatus = p.status === "active_hidden";
 
-    return matchSearch && matchCategory && matchStatus;
+    let matchStock = true;
+    if (stockFilter === "in_stock") matchStock = p.stock > 0;
+    else if (stockFilter === "out_of_stock") matchStock = p.stock <= 0;
+
+    let matchFeatured = true;
+    if (featuredFilter) matchFeatured = !!p.featured;
+
+    return matchSearch && matchCategory && matchStatus && matchStock && matchFeatured;
   }).sort((a, b) => {
     if (sortBy === "price-asc") return a.price - b.price;
     if (sortBy === "price-desc") return b.price - a.price;
@@ -650,7 +671,20 @@ export default function Products() {
                   </label>
                   <p className="text-xs text-neutral-500 mt-2 flex items-start gap-1"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Lorsque le suivi du stock est désactivé, le produit apparaîtra toujours comme disponible</p>
                 </div>
-                <div>
+                {formTrackStock && (
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">
+                      Quantité disponible
+                    </label>
+                    <input
+                      type="number"
+                      value={formStock}
+                      onChange={(e) => setFormStock(e.target.value)}
+                      className="w-full rounded-lg border border-neutral-700 bg-[#1e1e24] px-4 py-2 text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500"
+                    />
+                  </div>
+                )}
+                <div className="mt-4">
                   <label className="flex items-center gap-3 cursor-pointer">
                     <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formFragile ? "bg-white" : "bg-neutral-600"}`} onClick={() => setFormFragile(!formFragile)}>
                       <span className={`inline-block h-4 w-4 transform rounded-full bg-black transition-transform ${formFragile ? "translate-x-4" : "translate-x-1"}`} />
@@ -679,35 +713,19 @@ export default function Products() {
                   <Boxes className="w-5 h-5 text-neutral-400" />
                   <h2 className="text-base font-semibold text-white">Variantes (Couleurs / Options)</h2>
                 </div>
-                <button type="button" onClick={handleAddVariant} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-600 text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition-colors">
+                <button type="button" onClick={() => setFormVariants([...formVariants, { name: "", type: "text", options: [] }])} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-600 text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition-colors">
                   <PlusCircle className="w-3.5 h-3.5" /> Ajouter un groupe
                 </button>
               </div>
               <p className="text-xs text-neutral-500 flex items-start gap-1 mb-6"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Ajoutez des groupes de variantes comme : couleurs, tailles, capacité... Le client doit choisir une option de chaque groupe</p>
               
-              <div className="space-y-4">
-                {formVariants.map((variant, idx) => (
-                  <div key={idx} className="flex items-start gap-4 p-4 rounded-xl bg-[#16161a] border border-neutral-800">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-white">{variant.name}</span>
-                        <button type="button" onClick={() => handleRemoveVariant(idx)} className="text-neutral-500 hover:text-red-400"><X className="w-4 h-4" /></button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {variant.options.map((opt, i) => (
-                          <span key={i} className="px-2.5 py-1 rounded-md bg-neutral-800 text-xs text-neutral-300">{opt}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="flex items-center gap-3 p-4 rounded-xl border border-neutral-800 bg-[#16161a]">
-                  <input type="text" placeholder="Type (ex: Couleur, Taille, Poids)" value={variantInputName} onChange={(e) => setVariantInputName(e.target.value)} className="w-1/3 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
-                  <input type="text" placeholder="Ex: Rouge, Bleu, XL (séparées par virgules)" value={variantInputOptions} onChange={(e) => setVariantInputOptions(e.target.value)} className="flex-1 rounded-lg border border-neutral-700 bg-[#1e1e24] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-500" />
-                  <button type="button" onClick={handleAddVariant} className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm font-semibold transition-colors">+ Ajouter</button>
-                </div>
-              </div>
+              <VariantManager 
+                variants={formVariants} 
+                onChange={setFormVariants} 
+                productImages={formImages} 
+                onAddProductImage={(img) => setFormImages(prev => [...prev, img])}
+                trackVariantStock={formTrackVariantStock}
+              />
             </div>
           </div>
 
@@ -728,43 +746,101 @@ export default function Products() {
                 onChange={handleImageFileChange}
               />
               
-              {formImage ? (
-                <div className="relative rounded-xl overflow-hidden border border-neutral-700 bg-[#16161a] aspect-square flex items-center justify-center group mb-4">
-                  <img src={formImage} alt="Preview" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <button 
-                      type="button" 
-                      onClick={() => setFormImage("")}
-                      className="px-4 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/40 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                    >
-                      Supprimer
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border border-dashed border-neutral-600 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-neutral-800/50 transition-colors mb-4 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mb-3" />
-                      <span className="text-sm font-medium text-white mb-1">Téléchargement...</span>
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud className="w-8 h-8 text-neutral-400 mb-3" />
-                      <span className="text-sm font-medium text-white mb-1">Cliquez pour télécharger</span>
-                      <span className="text-xs text-neutral-500">Au moins une image requise (Max 5 Mo)</span>
-                    </>
-                  )}
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className={`border border-dashed border-neutral-600 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-neutral-800/50 transition-colors mb-6 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-6 h-6 text-yellow-500 animate-spin mb-2" />
+                    <span className="text-sm font-medium text-white">Téléchargement...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-6 h-6 text-neutral-400 mb-2" />
+                    <span className="text-sm font-medium text-white mb-1">Cliquez pour télécharger</span>
+                    <span className="text-xs text-neutral-500">Au moins une image requise</span>
+                  </>
+                )}
+              </div>
+
+              {formImages.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {formImages.map((img, idx) => (
+                    <div key={idx} className="relative rounded-xl overflow-hidden border border-neutral-700 bg-[#16161a] aspect-square flex items-center justify-center group">
+                      <img src={img} alt={`Preview ${idx}`} className="w-full h-full object-cover" />
+                      {idx === 0 && (
+                        <div className="absolute bottom-2 left-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded">
+                          Principale
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                        <button 
+                          type="button" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFormImages(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          className="p-2 bg-red-500/20 text-red-400 hover:bg-red-500/40 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        {idx > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFormImages(prev => {
+                                const newArr = [...prev];
+                                [newArr[0], newArr[idx]] = [newArr[idx], newArr[0]];
+                                return newArr;
+                              });
+                            }}
+                            className="p-2 bg-neutral-700/80 text-white hover:bg-neutral-600 rounded-lg transition-colors text-xs font-medium"
+                          >
+                            Rendre principale
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* Optional: URL Input fallback for images since backend uses URLs for preset */}
+              {/* Optional: URL Input fallback */}
               <div className="mt-4 pt-4 border-t border-neutral-800">
-                <label className="block text-xs font-medium text-neutral-400 mb-2">Ou URL de l'image</label>
-                <input type="text" value={formImage} onChange={(e) => setFormImage(e.target.value)} placeholder="https://..." className="w-full rounded-lg border border-neutral-700 bg-[#16161a] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none" />
+                <label className="block text-xs font-medium text-neutral-400 mb-2">Ajouter via URL</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    id="img-url-input"
+                    placeholder="https://..." 
+                    className="flex-1 rounded-lg border border-neutral-700 bg-[#16161a] px-3 py-2 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none" 
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = e.currentTarget.value;
+                        if (val) {
+                          setFormImages(prev => [...prev, val]);
+                          e.currentTarget.value = "";
+                        }
+                      }
+                    }}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById('img-url-input') as HTMLInputElement;
+                      if (input && input.value) {
+                        setFormImages(prev => [...prev, input.value]);
+                        input.value = "";
+                      }
+                    }}
+                    className="px-3 py-2 bg-neutral-700 text-white rounded-lg text-sm hover:bg-neutral-600"
+                  >
+                    Ajouter
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -866,8 +942,8 @@ export default function Products() {
             <Boxes className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs text-neutral-400">Total catalogue</p>
-            <p className="text-xl font-bold text-white mt-0.5">{totalProducts} <span className="text-xs font-normal text-neutral-500">produits</span></p>
+            <p className="text-xs text-neutral-400">{t("products.totalCatalog")}</p>
+            <p className="text-xl font-bold text-white mt-0.5">{totalProducts} <span className="text-xs font-normal text-neutral-500">{t("products.productsCount")}</span></p>
           </div>
         </div>
 
@@ -876,8 +952,8 @@ export default function Products() {
             <Check className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs text-neutral-400">Produits actifs</p>
-            <p className="text-xl font-bold text-white mt-0.5">{activeProducts} <span className="text-xs font-normal text-neutral-500">en ligne</span></p>
+            <p className="text-xs text-neutral-400">{t("products.activeProducts")}</p>
+            <p className="text-xl font-bold text-white mt-0.5">{activeProducts} <span className="text-xs font-normal text-neutral-500">{t("products.online")}</span></p>
           </div>
         </div>
 
@@ -886,8 +962,8 @@ export default function Products() {
             <AlertCircle className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs text-neutral-400">Stock critique (≤5)</p>
-            <p className="text-xl font-bold text-white mt-0.5">{lowStockProducts} <span className="text-xs font-normal text-neutral-500">alertes</span></p>
+            <p className="text-xs text-neutral-400">{t("products.criticalStock")}</p>
+            <p className="text-xl font-bold text-white mt-0.5">{lowStockProducts} <span className="text-xs font-normal text-neutral-500">{t("products.alerts")}</span></p>
           </div>
         </div>
 
@@ -896,7 +972,7 @@ export default function Products() {
             <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs text-neutral-400">Valeur d'inventaire</p>
+            <p className="text-xs text-neutral-400">{t("products.inventoryValue")}</p>
             <p className="text-xl font-bold text-white mt-0.5">{totalInventoryValue.toLocaleString()} <span className="text-xs font-normal text-neutral-500">DZD</span></p>
           </div>
         </div>
@@ -913,8 +989,8 @@ export default function Products() {
               type="text" 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher par titre, SKU, catégorie..." 
-              className="w-full rounded-xl border border-neutral-700 bg-[#16161a] py-2.5 pl-10 pr-4 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors"
+              placeholder="Rechercher un produit..." 
+              className="w-full rounded-lg border border-neutral-700 bg-[#25252d] py-2 pl-10 pr-4 text-sm text-white placeholder-neutral-500 focus:border-yellow-500 focus:outline-none transition-colors"
             />
           </div>
 
@@ -924,9 +1000,9 @@ export default function Products() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded-xl border border-neutral-700 bg-[#16161a] px-3 py-2 text-sm text-neutral-200 focus:border-yellow-500 focus:outline-none"
+              className="rounded-lg border border-neutral-700 bg-[#25252d] px-3 py-2 text-sm text-neutral-200 focus:border-yellow-500 focus:outline-none appearance-none"
             >
-              <option value="all">Toutes les catégories</option>
+              <option value="all">{t("products.allCategories")}</option>
               {categoriesList.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
@@ -936,41 +1012,54 @@ export default function Products() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-xl border border-neutral-700 bg-[#16161a] px-3 py-2 text-sm text-neutral-200 focus:border-yellow-500 focus:outline-none"
+              className="rounded-lg border border-neutral-700 bg-[#25252d] px-3 py-2 text-sm text-neutral-200 focus:border-yellow-500 focus:outline-none appearance-none"
             >
-              <option value="all">Tous les statuts</option>
-              <option value="active">Actifs uniquement</option>
-              <option value="inactive">Inactifs</option>
-              <option value="out_of_stock">Rupture de stock</option>
+              <option value="all">{t("products.allStatuses")}</option>
+              <option value="active">Actif</option>
+              <option value="active_hidden">Actif - Masqué</option>
+              <option value="inactive">Brouillon</option>
             </select>
 
-            {/* Sort */}
+            {/* Stock Filter */}
             <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="rounded-xl border border-neutral-700 bg-[#16161a] px-3 py-2 text-sm text-neutral-200 focus:border-yellow-500 focus:outline-none"
+              value={stockFilter}
+              onChange={(e) => setStockFilter(e.target.value)}
+              className="rounded-lg border border-neutral-700 bg-[#25252d] px-3 py-2 text-sm text-neutral-200 focus:border-yellow-500 focus:outline-none appearance-none"
             >
-              <option value="newest">Plus récents</option>
-              <option value="price-asc">Prix croissant</option>
-              <option value="price-desc">Prix décroissant</option>
-              <option value="stock">Stock disponible</option>
+              <option value="all">{t("products.allStock")}</option>
+              <option value="in_stock">En stock</option>
+              <option value="out_of_stock">Épuisé</option>
             </select>
+
+            {/* En vedette toggle */}
+            <button 
+              onClick={() => setFeaturedFilter(!featuredFilter)}
+              className={`flex items-center gap-1.5 rounded-lg border border-neutral-700 px-3 py-2 text-sm transition-colors ${featuredFilter ? "bg-amber-500/10 text-amber-500 border-amber-500/50" : "bg-[#25252d] text-neutral-400 hover:text-white"}`}>
+              <Star className="w-4 h-4" />
+              <span>{t("products.featured")}</span>
+            </button>
+
+            {/* Tout sélectionner */}
+            <label className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-[#25252d] px-3 py-2 text-sm text-neutral-400 cursor-pointer hover:text-white transition-colors">
+              <input type="checkbox" className="rounded bg-[#16161a] border-neutral-700 text-yellow-500 focus:ring-yellow-500/20" />
+              <span>{t("products.selectAll")}</span>
+            </label>
 
             {/* View Mode Toggle */}
-            <div className="flex items-center bg-[#16161a] border border-neutral-700 rounded-xl p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode("table")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${viewMode === "table" ? "bg-neutral-800 text-white" : "text-neutral-400 hover:text-white"}`}
-              >
-                Tableau
-              </button>
+            <div className="flex items-center bg-[#25252d] border border-neutral-700 rounded-lg p-0.5 ml-2">
               <button
                 type="button"
                 onClick={() => setViewMode("grid")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${viewMode === "grid" ? "bg-neutral-800 text-white" : "text-neutral-400 hover:text-white"}`}
+                className={`p-1.5 rounded-md transition-colors ${viewMode === "grid" ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"}`}
               >
-                Grille
+                <Boxes className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`p-1.5 rounded-md transition-colors ${viewMode === "table" ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"}`}
+              >
+                <SlidersHorizontal className="w-4 h-4 rotate-90" />
               </button>
             </div>
           </div>
@@ -989,255 +1078,166 @@ export default function Products() {
               <Package className="h-8 w-8" />
             </div>
             <h3 className="text-xl font-bold text-white mb-2">
-              {products.length === 0 ? "Ajoutez votre premier produit" : "Aucun produit ne correspond aux filtres"}
+              Aucun produit trouvé
             </h3>
-            <p className="text-sm text-neutral-400 max-w-md mb-6 leading-relaxed">
-              {products.length === 0 
-                ? "Commencez à construire votre catalogue dès maintenant pour publier des pages de vente, accepter des commandes et développer vos ventes."
-                : "Modifiez vos termes de recherche ou réinitialisez les filtres pour afficher vos produits."}
+            <p className="text-sm text-neutral-400 mb-6 max-w-sm mx-auto">
+              {search || categoryFilter !== "all" || statusFilter !== "all" 
+                ? "Essayez de modifier vos filtres pour voir plus de résultats."
+                : "Commencez par ajouter votre premier produit à votre catalogue."}
             </p>
-            {products.length === 0 ? (
-              <button 
-                onClick={() => handleOpenModal()}
-                className="flex items-center gap-2.5 rounded-xl bg-yellow-500 px-6 py-3 text-sm font-semibold text-black hover:bg-yellow-400 active:scale-95 transition-all shadow-xl shadow-yellow-500/10"
-              >
-                <Plus className="h-4 w-4 stroke-[2.5]" />
-                Ajouter un produit
-              </button>
-            ) : (
-              <button 
-                onClick={() => { setSearch(""); setCategoryFilter("all"); setStatusFilter("all"); }}
-                className="px-4 py-2 text-sm text-yellow-500 hover:underline"
-              >
-                Réinitialiser les filtres
-              </button>
-            )}
           </div>
-        ) : viewMode === "table" ? (
-          /* Table View */
-          <div className="overflow-x-auto rounded-xl border border-neutral-800">
-            <table className="w-full text-left text-sm text-neutral-300">
-              <thead className="bg-[#16161a] text-xs uppercase text-neutral-400 border-b border-neutral-800">
-                <tr>
-                  <th className="py-3.5 px-4 font-semibold">Produit</th>
-                  <th className="py-3.5 px-4 font-semibold">Catégorie</th>
-                  <th className="py-3.5 px-4 font-semibold">Prix</th>
-                  <th className="py-3.5 px-4 font-semibold">Stock</th>
-                  <th className="py-3.5 px-4 font-semibold">Statut</th>
-                  <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-800/60">
-                {filteredProducts.map((prod) => (
-                  <tr key={prod.id} className="hover:bg-neutral-800/30 transition-colors">
-                    {/* Product info */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-[#16161a] border border-neutral-700/80 overflow-hidden shrink-0 flex items-center justify-center">
-                          {prod.image ? (
-                            <img src={prod.image} alt={prod.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <ImageIcon className="w-5 h-5 text-neutral-600" />
-                          )}
-                        </div>
-                        <div className="min-w-0 max-w-xs">
-                          <p className="font-semibold text-white truncate">{prod.name}</p>
-                          <p className="text-xs text-neutral-500 truncate mt-0.5">
-                            {prod.sku ? `SKU: ${prod.sku}` : "Pas de SKU"}
-                            {prod.variants && prod.variants.length > 0 && ` • ${prod.variants.length} variante(s)`}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Category */}
-                    <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-800/90 text-neutral-300 text-xs font-medium border border-neutral-700/50">
-                        <Tag className="w-3 h-3 text-yellow-500/80" />
-                        {prod.category || "Général"}
-                      </span>
-                    </td>
-
-                    {/* Price */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-white text-base">
-                          {prod.price.toLocaleString()} <span className="text-xs text-yellow-500 font-medium">DZD</span>
-                        </span>
-                        {prod.originalPrice && prod.originalPrice > prod.price && (
-                          <span className="text-xs text-neutral-500 line-through">
-                            {prod.originalPrice.toLocaleString()} DZD
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Stock */}
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                        prod.stock <= 0
-                          ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                          : prod.stock <= 5
-                          ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                          : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          prod.stock <= 0 ? "bg-red-400" : prod.stock <= 5 ? "bg-amber-400" : "bg-emerald-400"
-                        }`} />
-                        {prod.stock <= 0 ? "Épuisé" : `${prod.stock} en stock`}
-                      </span>
-                    </td>
-
-                    {/* Status */}
-                    <td className="py-3.5 px-4">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStatus(prod)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                          prod.status === "active"
-                            ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
-                            : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
-                        }`}
-                      >
-                        {prod.status === "active" ? "Actif" : "Inactif"}
-                      </button>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => navigate("/dashboard/landing-pages/new")}
-                          title="Créer une Landing Page"
-                          className="p-2 rounded-lg text-neutral-400 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenModal(prod)}
-                          title="Modifier"
-                          className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDuplicateProduct(prod)}
-                          title="Dupliquer"
-                          className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setProductToDelete(prod)}
-                          title="Supprimer"
-                          className="p-2 rounded-lg text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          /* Grid View */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        ) : viewMode === "grid" ? (
+          /* Grid View (Screenshot 1) */
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {filteredProducts.map((prod) => (
               <div 
                 key={prod.id} 
-                className="bg-[#16161a] border border-neutral-800 hover:border-neutral-700 rounded-2xl overflow-hidden flex flex-col transition-all group"
+                className="bg-[#1e1e24] border border-neutral-800 rounded-xl overflow-hidden flex flex-col transition-all group"
               >
                 {/* Image header */}
-                <div className="relative aspect-4/3 w-full bg-neutral-900 overflow-hidden">
+                <div className="relative aspect-4/3 w-full bg-[#f8f9fa] overflow-hidden flex items-center justify-center">
+                  <div className="absolute top-2 left-2 z-10">
+                    <input type="checkbox" className="rounded bg-white/80 border-gray-300 w-4 h-4 text-amber-500 focus:ring-amber-500/20" />
+                  </div>
                   {prod.image ? (
                     <img 
                       src={prod.image} 
                       alt={prod.name} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                      className="max-w-full max-h-full object-contain mix-blend-multiply" 
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-neutral-600">
-                      <ImageIcon className="w-8 h-8" />
-                    </div>
+                    <ImageIcon className="w-8 h-8 text-neutral-400" />
                   )}
                   
-                  {/* Category Pill */}
-                  <span className="absolute top-3 left-3 bg-black/70 backdrop-blur-md text-white text-[11px] font-medium px-2.5 py-1 rounded-full border border-white/10">
-                    {prod.category || "Général"}
-                  </span>
-
                   {/* Status Pill */}
-                  <button 
-                    onClick={() => handleToggleStatus(prod)}
-                    className={`absolute top-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-md border cursor-pointer transition-colors ${
-                      prod.status === "active" 
-                        ? "bg-emerald-950/80 text-emerald-300 border-emerald-700/50" 
-                        : "bg-neutral-900/80 text-neutral-400 border-neutral-700/50"
-                    }`}
-                  >
+                  <div className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-md ${
+                    prod.status === "active" 
+                      ? "bg-emerald-100 text-emerald-600" 
+                      : "bg-neutral-200 text-neutral-600"
+                  }`}>
                     {prod.status === "active" ? "Actif" : "Inactif"}
-                  </button>
+                  </div>
                 </div>
 
                 {/* Body */}
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                <div className="p-4 flex flex-col space-y-2 bg-[#16161a]">
                   <div>
-                    <h3 className="font-bold text-white text-base leading-snug line-clamp-1">{prod.name}</h3>
-                    {prod.description && (
-                      <p className="text-xs text-neutral-400 line-clamp-2 mt-1">{prod.description}</p>
+                    <h3 className="font-bold text-white text-sm leading-snug line-clamp-1">{prod.name}</h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">{prod.category || "Sans catégorie"}</p>
+                  </div>
+                  
+                  <div className="flex items-baseline gap-2 pt-1">
+                    <span className="text-sm font-extrabold text-amber-500">{prod.price.toLocaleString()} DA</span>
+                    {prod.originalPrice && prod.originalPrice > prod.price && (
+                      <span className="text-xs text-neutral-500 line-through">{prod.originalPrice.toLocaleString()}</span>
                     )}
                   </div>
-
-                  <div className="flex items-end justify-between pt-2 border-t border-neutral-800">
-                    <div>
-                      <p className="text-xs text-neutral-500">Prix de vente</p>
-                      <p className="text-lg font-extrabold text-white">
-                        {prod.price.toLocaleString()} <span className="text-xs text-yellow-500 font-semibold">DZD</span>
-                      </p>
-                    </div>
-                    <span className={`text-xs px-2.5 py-1 rounded-lg font-medium ${
-                      prod.stock <= 0 
-                        ? "bg-red-500/10 text-red-400" 
-                        : prod.stock <= 5 
-                        ? "bg-amber-500/10 text-amber-400" 
-                        : "bg-neutral-800 text-neutral-300"
-                    }`}>
-                      {prod.stock <= 0 ? "Rupture" : `${prod.stock} en stock`}
-                    </span>
-                  </div>
-
+                  
                   {/* Actions bar */}
-                  <div className="grid grid-cols-3 gap-2 pt-2">
-                    <button
-                      onClick={() => handleOpenModal(prod)}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-white transition-colors"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      Modifier
+                  <div className="grid grid-cols-4 gap-2 pt-3 border-t border-neutral-800/50">
+                    <button className="flex items-center justify-center py-1.5 rounded-lg bg-blue-900/30 text-blue-500 hover:bg-blue-900/50 transition-colors">
+                      <ExternalLink className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={() => handleDuplicateProduct(prod)}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-white transition-colors"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      Copier
+                    <button onClick={() => window.open(`/store?productId=${prod.id}`, '_blank')} className="flex items-center justify-center py-1.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors">
+                      <Eye className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={() => setProductToDelete(prod)}
-                      className="flex items-center justify-center py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
+                    <button onClick={() => handleOpenModal(prod)} className="flex items-center justify-center py-1.5 rounded-lg bg-amber-900/30 text-amber-500 hover:bg-amber-900/50 transition-colors">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setProductToDelete(prod)} className="flex items-center justify-center py-1.5 rounded-lg bg-red-900/30 text-red-500 hover:bg-red-900/50 transition-colors">
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               </div>
             ))}
           </div>
+        ) : (
+          /* List View (Screenshot 2) */
+          <div className="flex flex-col gap-3">
+            {filteredProducts.map((prod) => (
+              <div 
+                key={prod.id} 
+                className="bg-[#1e1e24] border border-neutral-800 rounded-xl overflow-hidden flex items-center p-3 gap-4 transition-all hover:border-neutral-700"
+              >
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" className="rounded bg-[#16161a] border-neutral-700 w-4 h-4 text-amber-500 focus:ring-amber-500/20" />
+                  
+                  {/* Image */}
+                  <div className="relative w-16 h-16 rounded-lg bg-[#f8f9fa] overflow-hidden flex items-center justify-center shrink-0">
+                    {prod.image ? (
+                      <img src={prod.image} alt={prod.name} className="max-w-full max-h-full object-contain mix-blend-multiply" />
+                    ) : (
+                      <ImageIcon className="w-5 h-5 text-neutral-400" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 min-w-0 grid grid-cols-12 gap-4 items-center">
+                  <div className="col-span-5 flex flex-col">
+                    <h3 className="font-bold text-white text-sm line-clamp-1 flex items-center gap-2">
+                      {prod.name}
+                      {prod.featured && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />}
+                    </h3>
+                  </div>
+                  
+                  <div className="col-span-3 text-xs text-neutral-500 line-clamp-1">
+                    {prod.category || "Sans catégorie"}
+                  </div>
+                  
+                  <div className="col-span-4 flex items-baseline justify-end gap-2 pr-4">
+                    <span className="text-sm font-extrabold text-amber-500">{prod.price.toLocaleString()} DA</span>
+                    {prod.originalPrice && prod.originalPrice > prod.price && (
+                      <span className="text-xs text-neutral-500 line-through">{prod.originalPrice.toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-neutral-800">
+                  <button className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-900/30 text-blue-500 hover:bg-blue-900/50 transition-colors">
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => window.open(`/store?productId=${prod.id}`, '_blank')} className="flex items-center justify-center w-8 h-8 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors">
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleOpenModal(prod)} className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-900/30 text-amber-500 hover:bg-amber-900/50 transition-colors">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setProductToDelete(prod)} className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-900/30 text-red-500 hover:bg-red-900/50 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
+
+        {/* Pagination placeholder */}
+        <div className="flex items-center justify-between pt-4 mt-4 border-t border-neutral-800/50 text-xs text-neutral-500">
+          <div>
+            Affichage de <span className="font-bold text-white">1</span> à <span className="font-bold text-white">{filteredProducts.length}</span> sur <span className="font-bold text-white">{filteredProducts.length}</span> produit(s)
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-neutral-800 bg-[#16161a] hover:bg-neutral-800 transition-colors opacity-50 cursor-not-allowed">
+              <ChevronLeft className="w-3.5 h-3.5" /> Précédent
+            </button>
+            <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-neutral-800 bg-[#16161a] hover:bg-neutral-800 transition-colors opacity-50 cursor-not-allowed">
+              Suivant <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span>Afficher :</span>
+            <select className="bg-[#16161a] border border-neutral-800 rounded px-2 py-1 text-white">
+              <option>10</option>
+              <option>20</option>
+              <option>50</option>
+            </select>
+          </div>
+        </div>
       </div>
-      {/* Modal: Confirmation de suppression d'un produit */}
+{/* Modal: Confirmation de suppression d'un produit */}
       <ConfirmModal
         isOpen={!!productToDelete}
         title="Supprimer le produit"

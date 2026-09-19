@@ -1,7 +1,16 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Store, Link as LinkIcon, CheckCircle, Copy, ExternalLink, Eye, PlusCircle, ShoppingCart, Info, MapPin, Phone, Search, Zap } from "lucide-react";
 
+import { useTenant } from "../../contexts/TenantContext";
+import { useAuth } from "../../hooks/useAuth";
+import { format, differenceInDays } from "date-fns";
+import { fr } from "date-fns/locale";
+import { AlertTriangle } from "lucide-react";
+import { cleanAndLimitPhone, getPhoneMaxLength } from "../../lib/phoneUtils";
+
 export default function StoreSettings() {
+  const { tenantData, isTrialExpired } = useTenant();
   const [formData, setFormData] = useState({
     storeName: "boutikdz",
     description: "",
@@ -34,10 +43,14 @@ export default function StoreSettings() {
             <div className="flex items-center gap-3">
               <LinkIcon className="w-5 h-5 text-neutral-400" />
               <span className="text-neutral-300 text-sm">Lien de votre boutique :</span>
-              <a href="https://e-nova.vercel.app/store/boutikdz" target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400 text-sm font-medium flex items-center gap-2">
-                https://e-nova.vercel.app/store/boutikdz
-                <ExternalLink className="w-4 h-4" />
-              </a>
+              {tenantData?.storeUrl ? (
+                <Link to={`/store/${tenantData.storeUrl}`} target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400 text-sm font-medium flex items-center gap-2">
+                  {window.location.origin}/store/{tenantData.storeUrl}
+                  <ExternalLink className="w-4 h-4" />
+                </Link>
+              ) : (
+                <span className="text-neutral-500 text-sm italic">URL non configurée</span>
+              )}
             </div>
           </div>
 
@@ -121,22 +134,26 @@ export default function StoreSettings() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-neutral-300">Numéro de téléphone</label>
                   <input
-                    type="text"
+                    type="tel"
+                    maxLength={getPhoneMaxLength(formData.phone)}
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="05XXXXXXXX"
+                    onChange={(e) => setFormData({ ...formData, phone: cleanAndLimitPhone(e.target.value) })}
+                    placeholder="0550252565 ou 213550252565"
                     className="w-full bg-[#1e1e24] border border-neutral-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors placeholder-neutral-600"
                   />
+                  <p className="text-[11px] text-neutral-500">10 chiffres (05, 06 ou 07) ou avec indicatif 213</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-neutral-300">WhatsApp</label>
                   <input
-                    type="text"
+                    type="tel"
+                    maxLength={getPhoneMaxLength(formData.whatsapp)}
                     value={formData.whatsapp}
-                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-                    placeholder="05XXXXXXXX"
+                    onChange={(e) => setFormData({ ...formData, whatsapp: cleanAndLimitPhone(e.target.value) })}
+                    placeholder="0550252565 ou 213550252565"
                     className="w-full bg-[#1e1e24] border border-neutral-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors placeholder-neutral-600"
                   />
+                  <p className="text-[11px] text-neutral-500">10 chiffres (05, 06 ou 07) ou avec indicatif 213</p>
                 </div>
               </div>
               <div className="space-y-2">
@@ -206,31 +223,89 @@ export default function StoreSettings() {
               <h3 className="text-base font-medium text-white">Statut de la boutique</h3>
             </div>
             
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                <CheckCircle className="w-5 h-5 text-emerald-500" />
+            {isTrialExpired ? (
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                </div>
+                <div>
+                  <h4 className="text-red-500 font-medium">Expiré</h4>
+                  <p className="text-sm text-neutral-400">Votre boutique est suspendue</p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-white font-medium">Actif</h4>
-                <p className="text-sm text-neutral-400">Votre boutique est accessible aux clients</p>
+            ) : (
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                  <CheckCircle className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div>
+                  <h4 className="text-white font-medium">Actif</h4>
+                  <p className="text-sm text-neutral-400">Votre boutique est accessible aux clients</p>
+                </div>
               </div>
-            </div>
+            )}
 
+            {/* Dynamic Store Status */}
             <div className="space-y-4 pt-4 border-t border-neutral-800">
               <div>
                 <div className="text-sm text-neutral-500 mb-1">Plan actuel</div>
-                <div className="text-white font-medium">Pro</div>
+                <div className="text-white font-medium capitalize">{tenantData?.plan || "Essai Gratuit"}</div>
               </div>
               <div>
-                <div className="text-sm text-neutral-500 mb-1">Date d'expiration de l'abonnement</div>
+                <div className="text-sm text-neutral-500 mb-1">Date d'expiration</div>
                 <div className="flex items-center gap-2">
-                  <span className="text-white font-medium">2026/08/22</span>
-                  <span className="text-[10px] uppercase tracking-wider font-bold bg-yellow-500 text-black px-2 py-0.5 rounded">2 jours restants</span>
+                  <span className="text-white font-medium">
+                    {tenantData?.planExpiresAt ? format(new Date(tenantData.planExpiresAt), 'dd/MM/yyyy') : 
+                     tenantData?.trialStartDate ? (
+                       (() => {
+                         const start = typeof tenantData.trialStartDate === 'object' && tenantData.trialStartDate.seconds 
+                           ? new Date(tenantData.trialStartDate.seconds * 1000)
+                           : new Date(tenantData.trialStartDate);
+                         const end = new Date(start.getTime() + 14 * 24 * 60 * 60 * 1000);
+                         return format(end, 'dd/MM/yyyy');
+                       })()
+                     ) : "N/A"}
+                  </span>
+                  {(() => {
+                    let endDate = null;
+                    if (tenantData?.planExpiresAt) {
+                      endDate = new Date(tenantData.planExpiresAt);
+                    } else if (tenantData?.trialStartDate) {
+                      const start = typeof tenantData.trialStartDate === 'object' && tenantData.trialStartDate.seconds 
+                           ? new Date(tenantData.trialStartDate.seconds * 1000)
+                           : new Date(tenantData.trialStartDate);
+                      endDate = new Date(start.getTime() + 14 * 24 * 60 * 60 * 1000);
+                    }
+                    
+                    if (endDate) {
+                      const daysLeft = differenceInDays(endDate, new Date());
+                      if (daysLeft < 0) {
+                        return <span className="text-[10px] uppercase tracking-wider font-bold bg-red-500/20 text-red-500 px-2 py-0.5 rounded">Expiré</span>;
+                      }
+                      if (daysLeft <= 3) {
+                        return <span className="text-[10px] uppercase tracking-wider font-bold bg-red-500 text-white px-2 py-0.5 rounded">{daysLeft} jours restants</span>;
+                      }
+                      return <span className="text-[10px] uppercase tracking-wider font-bold bg-yellow-500 text-black px-2 py-0.5 rounded">{daysLeft} jours restants</span>;
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
               <div>
                 <div className="text-sm text-neutral-500 mb-1">Date de création</div>
-                <div className="text-white font-medium">2026/08/19</div>
+                <div className="text-white font-medium">
+                  {tenantData?.createdAt ? (
+                    typeof tenantData.createdAt === 'object' && tenantData.createdAt.seconds 
+                      ? format(new Date(tenantData.createdAt.seconds * 1000), 'dd/MM/yyyy')
+                      : format(new Date(tenantData.createdAt), 'dd/MM/yyyy')
+                  ) : (
+                    tenantData?.trialStartDate ? (
+                      typeof tenantData.trialStartDate === 'object' && tenantData.trialStartDate.seconds 
+                        ? format(new Date(tenantData.trialStartDate.seconds * 1000), 'dd/MM/yyyy')
+                        : format(new Date(tenantData.trialStartDate), 'dd/MM/yyyy')
+                    ) : "N/A"
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -242,13 +317,23 @@ export default function StoreSettings() {
               <h3 className="text-base font-medium text-white">Liens rapides</h3>
             </div>
             <div className="space-y-1">
-              <a href="#" className="flex items-center justify-between p-2 hover:bg-[#1e1e24] rounded-lg transition-colors group">
-                <div className="flex items-center gap-3 text-sm text-neutral-300 group-hover:text-white">
-                  <Eye className="w-4 h-4 text-yellow-500" />
-                  Aperçu de la boutique
+              {isTrialExpired ? (
+                <div className="flex items-center justify-between p-2 rounded-lg opacity-50 cursor-not-allowed select-none">
+                  <div className="flex items-center gap-3 text-sm text-neutral-500">
+                    <Eye className="w-4 h-4 text-neutral-600" />
+                    Aperçu de la boutique
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-neutral-700" />
                 </div>
-                <ExternalLink className="w-4 h-4 text-neutral-600 group-hover:text-neutral-400" />
-              </a>
+              ) : (
+                <Link to={tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store"} target="_blank" className="flex items-center justify-between p-2 hover:bg-[#1e1e24] rounded-lg transition-colors group">
+                  <div className="flex items-center gap-3 text-sm text-neutral-300 group-hover:text-white">
+                    <Eye className="w-4 h-4 text-yellow-500" />
+                    Aperçu de la boutique
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-neutral-600 group-hover:text-neutral-400" />
+                </Link>
+              )}
               <a href="#" className="flex items-center justify-between p-2 hover:bg-[#1e1e24] rounded-lg transition-colors group">
                 <div className="flex items-center gap-3 text-sm text-neutral-300 group-hover:text-white">
                   <PlusCircle className="w-4 h-4 text-emerald-500" />

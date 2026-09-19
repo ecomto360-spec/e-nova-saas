@@ -1,6 +1,6 @@
 {
-  "name": "DZBuild E-Commerce Platform",
-  "description": "Algerian e-commerce multi-tenant store builder with subscriptions, order management, and payments.",
+  "name": "Enova",
+  "description": "Plateforme SaaS e-commerce (Enova) avec gestion des abonnements, commandes et paiements pour l'Algérie.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Users, Store, Activity, ShieldAlert, LogOut, Loader2, CreditCard, CheckCircle, XCircle, Eye, X, Check, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import ImageUploader from '../../components/admin/ImageUploader';
 import MediaManager from '../../components/admin/MediaManager';
@@ -97,13 +97,26 @@ export default function AdminDashboard() {
         approvedAt: new Date().toISOString()
       });
 
-      // 2. Update tenant doc
-      const now = new Date();
-      let expiresAt = new Date();
-      if (payment.duration.includes("3 mois")) expiresAt.setMonth(now.getMonth() + 3);
-      else if (payment.duration.includes("6 mois")) expiresAt.setMonth(now.getMonth() + 6);
-      else if (payment.duration.includes("1 an")) expiresAt.setFullYear(now.getFullYear() + 1);
-      else expiresAt.setMonth(now.getMonth() + 1);
+      // 2. Fetch current tenant data to stack renewal
+      const tenantRef = doc(db, 'tenants', payment.tenantId);
+      const tenantSnap = await getDoc(tenantRef);
+      
+      let baseDate = new Date();
+      if (tenantSnap.exists()) {
+        const tData = tenantSnap.data();
+        if (tData.planExpiresAt) {
+          const currentExp = new Date(tData.planExpiresAt);
+          if (currentExp > baseDate) {
+            baseDate = currentExp; // Stack from current expiration
+          }
+        }
+      }
+      
+      let expiresAt = new Date(baseDate);
+      if (payment.duration.includes("3 mois")) expiresAt.setMonth(baseDate.getMonth() + 3);
+      else if (payment.duration.includes("6 mois")) expiresAt.setMonth(baseDate.getMonth() + 6);
+      else if (payment.duration.includes("1 an") || payment.duration.includes("12 mois")) expiresAt.setFullYear(baseDate.getFullYear() + 1);
+      else expiresAt.setMonth(baseDate.getMonth() + 1);
 
       await updateDoc(doc(db, 'tenants', payment.tenantId), {
         plan: payment.planType || 'pro',

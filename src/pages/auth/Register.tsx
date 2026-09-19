@@ -16,15 +16,22 @@ export default function Register() {
       setIsLoading(true);
       setError("");
       const result = await signInWithPopup(auth, googleProvider);
-      await checkTenantAndRedirect(result.user, navigate);
+      if (result && result.user) {
+        await checkTenantAndRedirect(result.user, navigate);
+      }
     } catch (err: any) {
-      console.error(err);
-      if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
-        setError("Inscription annulée.");
-      } else if (err.code === "auth/operation-not-allowed") {
-        setError("La connexion Google n'est pas activée. Veuillez l'activer dans la console Firebase.");
+      if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
+        // User intentionally closed the popup window - normal user action, not a system error
+        return;
+      }
+      
+      if (err?.code === "auth/popup-blocked") {
+        setError("La fenêtre d'inscription a été bloquée par le navigateur. Veuillez autoriser les fenêtres pop-up ou ouvrir l'application dans un nouvel onglet.");
+      } else if (err?.code === "auth/operation-not-allowed") {
+        setError("La connexion Google n'est pas encore activée. Veuillez l'activer dans la console Firebase.");
       } else {
-        setError("Erreur lors de l'inscription avec Google.");
+        console.warn("Google registration error:", err);
+        setError("Erreur lors de l'inscription avec Google. Veuillez réessayer.");
       }
     } finally {
       setIsLoading(false);
@@ -34,7 +41,7 @@ export default function Register() {
   return (
     <div className="w-full max-w-[440px] bg-[#1e1e24] rounded-[24px] p-10 shadow-2xl border border-neutral-800/50 my-8">
       <div className="flex justify-center mb-6">
-        <img src="/logo.png" alt="E nova" className="h-14 w-auto object-contain" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        <img src="/logo.png" alt="E nova" className="h-14 w-auto max-w-[200px] object-contain shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />
       </div>
       <h1 className="text-3xl font-semibold text-white mb-8 text-center">Créez votre site web</h1>
       

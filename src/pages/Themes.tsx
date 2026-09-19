@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLanguage } from "../contexts/LanguageContext";
 import { 
   Palette, 
   Sparkles, 
@@ -64,6 +65,7 @@ const renderIcon = (name?: string, size: number = 24, className?: string) => {
 };
 
 export default function Themes() {
+  const { t, dir } = useLanguage();
   // Tabs: 'store' | 'checkout' | 'variant'
   const [activeTab, setActiveTab] = useState<"store" | "checkout" | "variant">("store");
   
@@ -142,12 +144,22 @@ export default function Themes() {
     if (user) {
       try {
         const docRef = doc(db, "tenants", user.uid);
+        // Vider la configuration pour forcer le client à personnaliser le nouveau thème
         await updateDoc(docRef, {
           activeTheme: theme.id,
           activeThemeName: theme.name,
           themeVersion: theme.version || "V2",
+          storeName: "", // Blank slate
+          themeSettings: {
+            primaryColor: "", // Blank slate
+            fontFamily: "", // Blank slate
+            logo: "" // Blank slate
+          },
           updatedAt: new Date()
         });
+        
+        // Vider aussi le localStorage
+        localStorage.removeItem("dzbuild_store_name");
       } catch (err) {
         console.error("Error updating theme in database:", err);
       }
@@ -259,7 +271,7 @@ export default function Themes() {
           }`}
         >
           <Store size={16} />
-          <span>Boutique</span>
+          <span>{t("store.storeFront")}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
             activeTab === "store" ? "bg-white/20 text-white" : "bg-gray-200 text-gray-800 dark:bg-neutral-800 dark:text-neutral-400"
           }`}>
@@ -293,7 +305,7 @@ export default function Themes() {
           }`}
         >
           <Layers size={16} />
-          <span>Variantes</span>
+          <span>{t("store.variants")}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
             activeTab === "variant" ? "bg-white/20 text-white" : "bg-gray-200 text-gray-800 dark:bg-neutral-800 dark:text-neutral-400"
           }`}>
@@ -436,12 +448,12 @@ export default function Themes() {
                       {isCurrent ? (
                         <>
                           <Check size={14} />
-                          <span>Thème actuel</span>
+                          <span>{t("store.activeTheme")}</span>
                         </>
                       ) : (
                         <>
                           <Zap size={14} />
-                          <span>Activer ce thème</span>
+                          <span>{t("store.activate")}</span>
                         </>
                       )}
                     </button>
@@ -451,7 +463,7 @@ export default function Themes() {
                       className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border border-gray-300 text-gray-700 hover:bg-gray-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-white transition-colors"
                     >
                       <Eye size={14} />
-                      <span>Aperçu</span>
+                      <span>{t("store.preview")}</span>
                     </button>
                   </div>
                 </div>

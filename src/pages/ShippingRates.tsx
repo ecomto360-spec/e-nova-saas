@@ -1,4 +1,5 @@
 import React from "react";
+import { useLanguage } from "../contexts/LanguageContext";
 import { useState } from "react";
 import { 
   Truck, 
@@ -83,6 +84,7 @@ interface WilayaRate {
 }
 
 export default function ShippingRates() {
+  const { t, dir } = useLanguage();
   const [freeAll, setFreeAll] = useState(false);
   const [freeThreshold, setFreeThreshold] = useState(false);
   const [thresholdValue, setThresholdValue] = useState("5000");
@@ -173,7 +175,7 @@ export default function ShippingRates() {
                 <Gift className="w-5 h-5 text-neutral-400" />
               </div>
               <div>
-                <h3 className="text-white font-medium">Livraison gratuite pour toutes les commandes</h3>
+                <h3 className="text-white font-medium">{t("delivery.freeAll")}</h3>
                 <span className={`text-[10px] px-2 py-0.5 rounded mt-1 inline-block ${freeAll ? 'bg-yellow-500/20 text-yellow-500' : 'bg-neutral-800 text-neutral-400'}`}>
                   {freeAll ? 'Activé' : 'Désactivé'}
                 </span>
@@ -200,7 +202,7 @@ export default function ShippingRates() {
                 <Truck className="w-5 h-5 text-neutral-400" />
               </div>
               <div>
-                <h3 className="text-white font-medium">Livraison gratuite au-dessus d'un montant</h3>
+                <h3 className="text-white font-medium">{t("delivery.freeOver")}</h3>
                 <span className={`text-[10px] px-2 py-0.5 rounded mt-1 inline-block ${freeThreshold ? 'bg-yellow-500/20 text-yellow-500' : 'bg-neutral-800 text-neutral-400'}`}>
                   {freeThreshold ? 'Activé' : 'Désactivé'}
                 </span>
@@ -251,8 +253,8 @@ export default function ShippingRates() {
           <div className="flex items-center gap-3">
             <MapPin className="w-5 h-5 text-blue-500" />
             <div>
-              <h2 className="text-white font-medium">Système de wilayas</h2>
-              <p className="text-sm text-neutral-400">Choisissez le nombre de wilayas à afficher dans votre boutique</p>
+              <h2 className="text-white font-medium">{t("delivery.system")}</h2>
+              <p className="text-sm text-neutral-400">{t("delivery.systemSub")}</p>
             </div>
           </div>
           <div className="flex items-center bg-[#16161a] rounded-lg p-1 border border-neutral-800">
@@ -260,7 +262,7 @@ export default function ShippingRates() {
               onClick={() => setWilayaSystem(58)}
               className={`px-4 py-1.5 text-sm rounded-md transition-colors flex items-center gap-2 ${wilayaSystem === 58 ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'}`}
             >
-              58 wilaya <span className="bg-emerald-500 text-white text-[9px] px-1.5 py-0.5 rounded font-medium">Recommandé</span>
+              58 wilaya <span className="bg-emerald-500 text-white text-[9px] px-1.5 py-0.5 rounded font-medium">{t("delivery.recommended")}</span>
             </button>
             <button 
               onClick={() => setWilayaSystem(69)}
@@ -283,15 +285,15 @@ export default function ShippingRates() {
       <div className="bg-[#1e1e24] border border-neutral-800 rounded-xl p-5 space-y-5">
         <div className="flex items-center gap-3">
           <Zap className="w-5 h-5 text-yellow-500" />
-          <h2 className="text-white font-medium">Source des tarifs</h2>
+          <h2 className="text-white font-medium">{t("delivery.source")}</h2>
         </div>
         <button className="w-full bg-yellow-500 text-black py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 hover:bg-yellow-400 transition-colors">
-          <StarIcon /> Appliquer les tarifs par défaut <span className="bg-black/20 text-black text-[10px] px-1.5 py-0.5 rounded">Recommandé</span>
+          <StarIcon /> Appliquer les tarifs par défaut <span className="bg-black/20 text-black text-[10px] px-1.5 py-0.5 rounded">{t("delivery.recommended")}</span>
         </button>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
           <div>
-            <label className="text-xs text-neutral-400 font-medium mb-1.5 block">Prix livraison à domicile (DA)</label>
+            <label className="text-xs text-neutral-400 font-medium mb-1.5 block">{t("delivery.homePrice")}</label>
             <input 
               type="text" 
               value={globalHomePrice}
@@ -300,7 +302,7 @@ export default function ShippingRates() {
             />
           </div>
           <div>
-            <label className="text-xs text-neutral-400 font-medium mb-1.5 block">Prix livraison au bureau (DA)</label>
+            <label className="text-xs text-neutral-400 font-medium mb-1.5 block">{t("delivery.deskPrice")}</label>
             <input 
               type="text" 
               value={globalDeskPrice}
@@ -309,7 +311,7 @@ export default function ShippingRates() {
             />
           </div>
           <div>
-            <label className="text-xs text-neutral-400 font-medium mb-1.5 block">Durée de livraison (jours)</label>
+            <label className="text-xs text-neutral-400 font-medium mb-1.5 block">{t("delivery.duration")}</label>
             <div className="flex gap-2">
               <input 
                 type="text" 
@@ -352,7 +354,7 @@ export default function ShippingRates() {
               >
                 <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-transform ${showOnlyActive ? "left-[22px]" : "left-1"}`} />
               </button>
-              <span className="text-sm text-neutral-400">Afficher uniquement les actives</span>
+              <span className="text-sm text-neutral-400">{t("delivery.showActiveOnly")}</span>
             </div>
           </div>
         </div>
@@ -362,10 +364,10 @@ export default function ShippingRates() {
             <thead>
               <tr className="border-b border-neutral-800 text-xs font-semibold text-neutral-400 uppercase tracking-wider">
                 <th className="p-4 w-12"><input type="checkbox" className="rounded border-neutral-700 bg-[#16161a]" /></th>
-                <th className="p-4">WILAYA</th>
-                <th className="p-4 w-48 text-center">LIVRAISON À DOMICILE</th>
-                <th className="p-4 w-48 text-center">LIVRAISON AU BUREAU</th>
-                <th className="p-4 w-32 text-center">DURÉE (JOURS)</th>
+                <th className="p-4">{t("delivery.wilayaCol")}</th>
+                <th className="p-4 w-48 text-center">{t("delivery.homeCol")}</th>
+                <th className="p-4 w-48 text-center">{t("delivery.deskCol")}</th>
+                <th className="p-4 w-32 text-center">{t("delivery.durationCol")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/50">
@@ -392,7 +394,7 @@ export default function ShippingRates() {
                           <div className={`w-8 h-4 rounded-full transition-colors relative ${rate.homeActive ? "bg-emerald-500" : "bg-neutral-600"}`}>
                             <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-transform ${rate.homeActive ? "left-[18px]" : "left-0.5"}`} />
                           </div>
-                          <span className={`text-xs ${rate.homeActive ? 'text-emerald-500' : 'text-neutral-500'}`}>Activé</span>
+                          <span className={`text-xs ${rate.homeActive ? 'text-emerald-500' : 'text-neutral-500'}`}>{t("delivery.active")}</span>
                         </button>
                         <input 
                           type="text"
@@ -411,7 +413,7 @@ export default function ShippingRates() {
                           <div className={`w-8 h-4 rounded-full transition-colors relative ${rate.deskActive ? "bg-emerald-500" : "bg-neutral-600"}`}>
                             <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-transform ${rate.deskActive ? "left-[18px]" : "left-0.5"}`} />
                           </div>
-                          <span className={`text-xs ${rate.deskActive ? 'text-emerald-500' : 'text-neutral-500'}`}>Activé</span>
+                          <span className={`text-xs ${rate.deskActive ? 'text-emerald-500' : 'text-neutral-500'}`}>{t("delivery.active")}</span>
                         </button>
                         <input 
                           type="text"

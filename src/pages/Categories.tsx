@@ -1,4 +1,5 @@
 import React from "react";
+import { useLanguage } from "../contexts/LanguageContext";
 import { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { db } from "../lib/firebase";
@@ -35,6 +36,7 @@ interface Category {
 }
 
 export default function Categories() {
+  const { t, dir } = useLanguage();
   const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,8 +168,8 @@ export default function Categories() {
               <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${showSubcatToggle ? "left-5" : "left-1"}`} />
             </button>
             <div className="flex flex-col">
-              <span className="text-sm font-medium text-white">Sous-catégories uniquement dans la catégorie parente</span>
-              <span className="text-xs text-neutral-500">Les sous-catégories seront masquées sur la page d'accueil</span>
+              <span className="text-sm font-medium text-white">{t("categories.subcategoriesOnly")}</span>
+              <span className="text-xs text-neutral-500">{t("categories.subcategoriesInfo")}</span>
             </div>
           </div>
           <button 
@@ -197,7 +199,7 @@ export default function Categories() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="bg-[#16161a] border border-neutral-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-neutral-500 min-w-[200px]"
         >
-          <option value="all">Tous les statuts</option>
+          <option value="all">{t("categories.allStatuses")}</option>
           <option value="active">Actif</option>
           <option value="inactive">Inactif</option>
         </select>
@@ -272,7 +274,7 @@ export default function Categories() {
           <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-neutral-800">
               <h2 className="text-lg font-semibold text-white">
-                {editingCategory ? "Modifier la catégorie" : "Ajouter une catégorie"}
+                {editingCategory ? "Modifier la catégorie" : t("categories.add")}
               </h2>
               <button onClick={handleCloseModal} className="text-neutral-400 hover:text-white transition-colors">
                 <X className="w-5 h-5" />

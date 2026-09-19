@@ -83,7 +83,7 @@ export const TenantProvider = ({ children }: { children: React.ReactNode }) => {
         bannerMessage = "";
       }
     } else {
-      // Sinon, on applique la logique de l'essai gratuit de 3 jours
+      // Sinon, on applique la logique de l'essai gratuit de 5 jours
       let trialStart: Date | null = null;
       if (tenantData.trialStartDate) {
         if (typeof tenantData.trialStartDate === 'number') {
@@ -107,14 +107,14 @@ export const TenantProvider = ({ children }: { children: React.ReactNode }) => {
         const diffMs = now.getTime() - trialStart.getTime();
         const diffHours = diffMs / (1000 * 60 * 60);
         
-        isTrialExpired = diffHours >= 72;
+        isTrialExpired = diffHours >= 120;
         
         if (isTrialExpired) {
           remainingTrialDays = 0;
           showBanner = true;
           bannerMessage = "Votre essai gratuit a expiré.";
         } else {
-          const remainingHours = 72 - diffHours;
+          const remainingHours = 120 - diffHours;
           remainingTrialDays = Math.floor(remainingHours / 24);
           if (remainingTrialDays === 0) remainingTrialDays = 1;
           showBanner = true;

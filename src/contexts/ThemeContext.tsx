@@ -10,7 +10,10 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('admin-theme');
+    return (saved as Theme) || 'dark';
+  });
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -18,6 +21,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } else {
       document.documentElement.classList.remove('dark');
     }
+    localStorage.setItem('admin-theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {

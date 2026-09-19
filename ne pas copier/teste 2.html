@@ -1,0 +1,868 @@
+Voici une solution complète **en un seul fichier** (`index.html`) pour faciliter le test et le déploiement. Ce code reproduit fidèlement l'expérience utilisateur de dzbuild.com (courbe personnalisée, défilement fluide, menu plein écran, effet de survol de projet avec image qui suit la souris) tout en appliquant strictement l'identité **"E nova"**.
+
+### Instructions d'utilisation
+1.  Créez un fichier nommé `index.html`.
+2.  Copiez-collez le code ci-dessous.
+3.  Ouvrez le fichier dans votre navigateur (idéalement avec un serveur local pour les meilleures performances, mais il fonctionne en local aussi).
+
+```html
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E nova | Architecture & Construction</title>
+    <meta name="description" content="E nova - Cabinet d'architecture et de construction. Conception, maîtrise d'œuvre et réalisation de projets.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Style -->
+    <style>
+        :root {
+            --bg: #000000;
+            --fg: #ffffff;
+            --grey: #888888;
+            --font-main: 'Inter', sans-serif;
+            --font-head: 'Space Grotesk', sans-serif;
+            --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Reset */
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        html { scroll-behavior: smooth; }
+        body { 
+            background: var(--bg); 
+            color: var(--fg); 
+            font-family: var(--font-main); 
+            overflow-x: hidden;
+            cursor: none; /* Custom cursor */
+        }
+        
+        a { text-decoration: none; color: inherit; }
+        img { width: 100%; display: block; }
+        button { background: none; border: none; color: inherit; cursor: none; font-family: inherit; }
+
+        /* Custom Cursor */
+        .cursor {
+            position: fixed;
+            top: 0; left: 0;
+            width: 20px; height: 20px;
+            border: 1px solid var(--fg);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            transition: width 0.3s var(--ease-expo), height 0.3s var(--ease-expo), background 0.3s var(--ease-expo);
+        }
+        .cursor.hover {
+            width: 60px; height: 60px;
+            background: rgba(255, 255, 255, 0.1);
+            border-color: transparent;
+            backdrop-filter: blur(2px);
+        }
+        @media (max-width: 768px) { .cursor { display: none; } }
+
+        /* Header */
+        header {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%;
+            padding: 2rem 4rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            mix-blend-mode: difference;
+            pointer-events: none;
+        }
+        .logo {
+            font-family: var(--font-head);
+            font-weight: 700;
+            font-size: 1.5rem;
+            letter-spacing: -0.02em;
+            text-transform: uppercase;
+        }
+        .menu-btn {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            padding: 1rem 2rem;
+            border: 1px solid var(--fg);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.4s var(--ease-expo);
+        }
+        .menu-btn.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .menu-btn:hover {
+            background: var(--fg);
+            color: var(--bg);
+        }
+
+        /* Menu Overlay */
+        .menu-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100vh;
+            background: var(--bg);
+            z-index: 90;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.6s var(--ease-expo);
+        }
+        .menu-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .menu-overlay .close {
+            position: absolute;
+            top: 2rem; right: 2rem;
+            font-size: 1.5rem;
+            font-family: var(--font-head);
+        }
+        .menu-overlay nav {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            text-align: center;
+        }
+        .menu-overlay a {
+            font-family: var(--font-head);
+            font-size: clamp(2rem, 6vw, 5rem);
+            font-weight: 400;
+            text-transform: uppercase;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s var(--ease-expo);
+        }
+        .menu-overlay.active a {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .menu-overlay.active a:nth-child(1) { transition-delay: 0.1s; }
+        .menu-overlay.active a:nth-child(2) { transition-delay: 0.2s; }
+        .menu-overlay.active a:nth-child(3) { transition-delay: 0.3s; }
+        .menu-overlay.active a:nth-child(4) { transition-delay: 0.4s; }
+        .menu-overlay a:hover {
+            color: var(--grey);
+        }
+        .menu-footer {
+            position: absolute;
+            bottom: 3rem;
+            display: flex;
+            gap: 3rem;
+            font-size: 0.9rem;
+            color: var(--grey);
+            opacity: 0;
+            transition: opacity 1s var(--ease-expo) 0.5s;
+        }
+        .menu-overlay.active .menu-footer { opacity: 1; }
+
+        /* Hero */
+        .hero {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 0 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero-bg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: -1;
+        }
+        .hero-bg img {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scale(1.1);
+            transition: transform 1.5s ease;
+        }
+        .hero:hover .hero-bg img { transform: scale(1); }
+        
+        .hero-content {
+            z-index: 2;
+            max-width: 600px;
+        }
+        .hero-label {
+            font-size: 0.9rem;
+            color: var(--grey);
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            margin-bottom: 1rem;
+        }
+        .hero-title {
+            font-family: var(--font-head);
+            font-size: clamp(2.5rem, 8vw, 7rem);
+            font-weight: 400;
+            line-height: 0.95;
+            letter-spacing: -0.03em;
+            text-transform: uppercase;
+        }
+        .hero-title span {
+            display: block;
+            overflow: hidden;
+            transform: translateY(100%);
+        }
+        .hero:hover .hero-title span {
+            transform: translateY(0);
+            transition: transform 0.8s var(--ease-expo);
+        }
+        .hero-title span:nth-child(1) { transition-delay: 0.2s; }
+        .hero-title span:nth-child(2) { transition-delay: 0.4s; }
+        .hero-title span:nth-child(3) { transition-delay: 0.6s; }
+
+        .scroll-indicator {
+            font-size: 0.8rem;
+            color: var(--grey);
+            margin-top: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            opacity: 0;
+            animation: fadeIn 1s forwards 1.5s;
+        }
+        .line {
+            width: 100%; height: 1px;
+            background: var(--grey);
+            transform-origin: left;
+            animation: scaleLine 2s infinite;
+        }
+        @keyframes scaleLine {
+            0% { transform: scaleX(0); transform-origin: left; }
+            50% { transform: scaleX(1); transform-origin: left; }
+            100% { transform: scaleX(0); transform-origin: right; }
+        }
+
+        /* Sections */
+        section {
+            padding: 8rem 4rem;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .section-title {
+            font-family: var(--font-head);
+            font-size: clamp(2rem, 5vw, 4rem);
+            font-weight: 400;
+            text-transform: uppercase;
+            margin-bottom: 4rem;
+            letter-spacing: -0.02em;
+        }
+        .section-subtitle {
+            font-size: 0.9rem;
+            color: var(--grey);
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            margin-bottom: 1rem;
+        }
+
+        /* Projects */
+        .projects-list {
+            display: flex;
+            flex-direction: column;
+        }
+        .project-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 2rem 0;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+            cursor: none;
+        }
+        .project-item:last-child { border-bottom: 1px solid rgba(255,255,255,0.1); }
+        
+        .project-info {
+            display: flex;
+            align-items: center;
+            gap: 3rem;
+            flex: 1;
+        }
+        .project-num {
+            font-family: var(--font-main);
+            color: var(--grey);
+            font-size: 0.9rem;
+            width: 2rem;
+        }
+        .project-text {
+            flex: 1;
+        }
+        .project-title {
+            font-family: var(--font-head);
+            font-size: clamp(1.5rem, 3vw, 3.5rem);
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            opacity: 1;
+            transform: translateX(0);
+            transition: all 0.4s var(--ease-expo);
+        }
+        .project-meta {
+            font-size: 0.9rem;
+            color: var(--grey);
+            margin-top: 0.5rem;
+        }
+        .project-arrow {
+            font-size: 1.5rem;
+            color: var(--fg);
+            opacity: 0;
+            transform: translate(-10px, 10px) rotate(45deg);
+            transition: all 0.4s var(--ease-expo);
+        }
+        
+        /* Hover Effect */
+        .project-item:hover .project-title {
+            opacity: 0.5;
+            transform: translateX(20px);
+        }
+        .project-item:hover .project-arrow {
+            opacity: 1;
+            transform: translate(0, 0) rotate(45deg);
+        }
+
+        /* Project Preview Image */
+        .project-preview {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100vh;
+            z-index: 50;
+            background: rgba(0,0,0,0.9);
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .project-preview.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .project-preview img {
+            width: 40vw;
+            max-width: 800px;
+            opacity: 0;
+            transform: scale(0.9);
+            transition: all 1s var(--ease-expo);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .project-preview.visible img {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .project-preview-close {
+            position: absolute;
+            top: 2rem; right: 2rem;
+            font-size: 2rem;
+            color: var(--fg);
+        }
+
+        /* About */
+        .about-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6rem;
+            align-items: start;
+        }
+        .about-text p {
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-bottom: 2rem;
+            color: #ccc;
+            max-width: 600px;
+        }
+        .about-features {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+        .about-feature {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .about-feature:last-child { border-bottom: none; }
+        .about-feature h3 {
+            font-family: var(--font-head);
+            font-size: 1.2rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .about-feature p {
+            font-size: 0.95rem;
+            color: var(--grey);
+            margin-bottom: 0;
+        }
+
+        /* Contact */
+        .contact-section {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 6rem;
+        }
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6rem;
+        }
+        .contact-text h2 {
+            font-family: var(--font-head);
+            font-size: clamp(2rem, 5vw, 4rem);
+            font-weight: 400;
+            text-transform: uppercase;
+            line-height: 0.95;
+            margin-bottom: 3rem;
+        }
+        .contact-links {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            margin-bottom: 4rem;
+        }
+        .contact-link {
+            font-family: var(--font-head);
+            font-size: 1.5rem;
+            position: relative;
+        }
+        .contact-link::after {
+            content: '';
+            position: absolute;
+            bottom: -4px; left: 0;
+            width: 100%; height: 1px;
+            background: var(--fg);
+            scaleX(0);
+            transform-origin: right;
+            transition: transform 0.4s var(--ease-expo);
+        }
+        .contact-link:hover::after { transform: scaleX(1); transform-origin: left; }
+        
+        .contact-info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+        .contact-info-item h4 {
+            font-size: 0.9rem;
+            color: var(--grey);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+        .contact-info-item p {
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        /* Footer */
+        footer {
+            padding: 2rem 4rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            color: var(--grey);
+        }
+        .footer-logo {
+            font-family: var(--font-head);
+            font-weight: 700;
+            color: var(--fg);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .footer-nav { display: flex; gap: 2rem; }
+        .footer-nav a { transition: color 0.3s; }
+        .footer-nav a:hover { color: var(--fg); }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            header { padding: 1.5rem 2rem; }
+            .hero { padding: 0 2rem; }
+            section { padding: 5rem 2rem; }
+            .contact-info-grid { grid-template-columns: 1fr; gap: 3rem; }
+            .about-grid { grid-template-columns: 1fr; gap: 3rem; }
+            .contact-grid { grid-template-columns: 1fr; gap: 3rem; }
+            .project-preview img { width: 80vw; }
+        }
+        @media (max-width: 768px) {
+            .menu-btn { padding: 0.5rem 1rem; font-size: 0.8rem; }
+            .hero-title { font-size: 2.5rem; }
+            .project-info { gap: 1.5rem; }
+            .project-title { font-size: 1.5rem; }
+        }
+
+        @keyframes fadeIn { to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <!-- Custom Cursor -->
+    <div class="cursor" id="cursor"></div>
+
+    <!-- Header -->
+    <header>
+        <a href="#home" class="logo">E nova</a>
+        <button class="menu-btn" id="menuBtn">Menu</button>
+    </header>
+
+    <!-- Menu Overlay -->
+    <div class="menu-overlay" id="menuOverlay">
+        <button class="close" id="closeMenu">×</button>
+        <nav>
+            <a href="#projets">Projets</a>
+            <a href="#agence">Agence</a>
+            <a href="#approche">Approche</a>
+            <a href="#contact">Contact</a>
+        </nav>
+        <div class="menu-footer">
+            <div>contact@enova.dz</div>
+            <div>+213 XX XX XX XX</div>
+            <div>Alger, Algérie</div>
+        </div>
+    </div>
+
+    <!-- Project Preview Image -->
+    <div class="project-preview" id="projectPreview">
+        <button class="project-preview-close">×</button>
+        <img src="" alt="Preview du projet">
+    </div>
+
+    <main class="smooth-wrapper">
+
+        <!-- Hero -->
+        <section class="hero" id="home">
+            <div class="hero-bg">
+                <img src="https://images.unsplash.com/photo-1487958449943-2429e8be8625?q=80&w=2070&auto=format&fit=crop" alt="Architecture moderne">
+            </div>
+            <div class="hero-content">
+                <p class="hero-label">Architecture • Construction • Maîtrise d'œuvre</p>
+                <h1 class="hero-title">
+                    <span>E nova conçoit etréalise</span>
+                    <span>des projets d'architecture</span>
+                    <span>à forte identité.</span>
+                </h1>
+                <div class="scroll-indicator">
+                    <span>Défiler</span>
+                    <div class="line"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Projects -->
+        <section id="projets">
+            <p class="section-subtitle">Sélection de projets</p>
+            <h2 class="section-title">Travaux Récents</h2>
+            
+            <div class="projects-list">
+                <!-- Project 01 -->
+                <div class="project-item" data-img="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=2070&auto=format&fit=crop">
+                    <div class="project-info">
+                        <span class="project-num">01</span>
+                        <div class="project-text">
+                            <h3 class="project-title">Villa Atlas</h3>
+                            <p class="project-meta">Résidentiel — 2025</p>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </div>
+                </div>
+
+                <!-- Project 02 -->
+                <div class="project-item" data-img="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop">
+                    <div class="project-info">
+                        <span class="project-num">02</span>
+                        <div class="project-text">
+                            <h3 class="project-title">Immeuble Nexus</h3>
+                            <p class="project-meta">Commercial — 2024</p>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </div>
+                </div>
+
+                <!-- Project 03 -->
+                <div class="project-item" data-img="https://images.unsplash.com/photo-1518005020951-eccb494ad742?q=80&w=2152&auto=format&fit=crop">
+                    <div class="project-info">
+                        <span class="project-num">03</span>
+                        <div class="project-text">
+                            <h3 class="project-title">Pôle Culturel</h3>
+                            <p class="project-meta">Public — 2024</p>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </div>
+                </div>
+
+                <!-- Project 04 -->
+                <div class="project-item" data-img="https://images.unsplash.com/photo-1613490493576-7fde63acd811?q=80&w=2071&auto=format&fit=crop">
+                    <div class="project-info">
+                        <span class="project-num">04</span>
+                        <div class="project-text">
+                            <h3 class="project-title">Villa Horizon</h3>
+                            <p class="project-meta">Résidentiel — 2023</p>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </div>
+                </div>
+
+                <!-- Project 05 -->
+                <div class="project-item" data-img="https://images.unsplash.com/photo-1505691723518-36a5ac3be353?q=80&w=2070&auto=format&fit=crop">
+                    <div class="project-info">
+                        <span class="project-num">05</span>
+                        <div class="project-text">
+                            <h3 class="project-title">Espace Galaxia</h3>
+                            <p class="project-meta">Commercial — 2023</p>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </div>
+                </div>
+
+                <!-- Project 06 -->
+                <div class="project-item" data-img="https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=1974&auto=format&fit=crop">
+                    <div class="project-info">
+                        <span class="project-num">06</span>
+                        <div class="project-text">
+                            <h3 class="project-title">Résidence Linéa</h3>
+                            <p class="project-meta">Résidentiel — 2022</p>
+                        </div>
+                        <span class="project-arrow">→</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- About -->
+        <section id="agence">
+            <div class="about-grid">
+                <div>
+                    <p class="section-subtitle">L'Agence</p>
+                    <h2 class="section-title">À propos</h2>
+                    <div class="about-text">
+                        <p>E nova est un cabinet d'architecture et de construction fondé sur le principe d'une approche globale, alliant conception, technique et réalisation.</p>
+                        <p>Nous privilégions la clarté volumétrique, la justesse des matériaux et la précision d'exécution. Chaque projet naît d'un dialogue rigoureux entre le programme, le site et l'ambition du maître d'ouvrage.</p>
+                        <p>De l'esquisse à la livraison, E nova assure un pilotage cohérent à chaque étape, dans un souci constant de sobriété, de fonctionnalité et d'intemporalité.</p>
+                    </div>
+                </div>
+                <div>
+                    <div class="about-features">
+                        <div class="about-feature">
+                            <h3>Architecture</h3>
+                            <p>Conception / Permis de construire / Dossiers techniques</p>
+                        </div>
+                        <div class="about-feature">
+                            <h3>Maîtrise d'œuvre</h3>
+                            <p>Pilotage / Coordination / Contrôle qualité</p>
+                        </div>
+                        <div class="about-feature">
+                            <h3>Construction</h3>
+                            <p>Gros œuvre / Second œuvre / Réalisations clé en main</p>
+                        </div>
+                        <div class="about-feature">
+                            <h3>Réhabilitation</h3>
+                            <p>Extension / Rénovation / Valorisation</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Approach -->
+        <section id="approche" style="border-top: 1px solid rgba(255,255,255,0.1);">
+            <p class="section-subtitle">Méthodologie</p>
+            <h2 class="section-title">Notre Approche</h2>
+            <div class="about-features" style="margin-top: 2rem;">
+                <div class="about-feature">
+                    <h3>01 — Comprendre</h3>
+                    <p>Analyse du contexte, contraintes, besoins et enjeux du projet.</p>
+                </div>
+                <div class="about-feature">
+                    <h3>02 — Concevoir</h3>
+                    <p>Volumétrie, organisation, lumière et matérialité.</p>
+                </div>
+                <div class="about-feature">
+                    <h3>03 — Préciser</h3>
+                    <p>Dossiers techniques, choix constructifs et estimatifs.</p>
+                </div>
+                <div class="about-feature">
+                    <h3>04 — Réaliser</h3>
+                    <p>Suivi rigoureux du chantier jusqu'à réception.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Contact -->
+        <section id="contact" class="contact-section">
+            <p class="section-subtitle">Contact</p>
+            <h2 class="section-title">Entrer en relation</h2>
+            
+            <div class="contact-grid">
+                <div class="contact-text">
+                    <h2>Un projet à nous<br>soumettre ?<br><br>Échangeons.</h2>
+                    <div class="contact-links">
+                        <a href="mailto:contact@enova.dz" class="contact-link">contact@enova.dz</a>
+                        <a href="tel:+213XXXXXXXXX" class="contact-link">+213 XX XX XX XX</a>
+                    </div>
+                    <div class="contact-info-grid">
+                        <div class="contact-info-item">
+                            <h4>Bureau</h4>
+                            <p>Alger, Algérie</p>
+                        </div>
+                        <div class="contact-info-item">
+                            <h4>Horaires</h4>
+                            <p>Lundi — Vendredi<br>08:00 — 17:00</p>
+                        </div>
+                        <div class="contact-info-item">
+                            <h4>Crédits</h4>
+                            <p>© E nova — 2025<br>Tous droits réservés</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer>
+        <a href="#home" class="footer-logo">E nova</a>
+        <div class="footer-nav">
+            <a href="#projets">Projets</a>
+            <a href="#agence">Agence</a>
+            <a href="#contact">Contact</a>
+        </div>
+        <p>Architecture • Construction</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+    <script>
+        // --- Lenis Smooth Scroll ---
+        const lenis = new Lenis({
+            lerp: 0.08,
+            smoothWheel: true,
+            wheelMultiplier: 1,
+            gestureOrientation: "vertical",
+            normalizeWheel: true,
+            smoothTouch: false
+        });
+
+        function raf(time) {
+            lenis.raf(time);
+            requestAnimationFrame(raf);
+        }
+        requestAnimationFrame(raf);
+
+        // --- Custom Cursor ---
+        const cursor = document.getElementById('cursor');
+        let mouseX = 0, mouseY = 0;
+        let cursorX = 0, cursorY = 0;
+
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        function animateCursor() {
+            cursorX += (mouseX - cursorX) * 0.15;
+            cursorY += (mouseY - cursorY) * 0.15;
+            cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
+            requestAnimationFrame(animateCursor);
+        }
+        animateCursor();
+
+        // Hover effect on interactive elements
+        const hoverTargets = document.querySelectorAll('a, button, .project-item, .menu-btn');
+        hoverTargets.forEach(el => {
+            el.addEventListener('mouseenter', () => cursor.classList.add('hover'));
+            el.addEventListener('mouseleave', () => cursor.classList.remove('hover'));
+        });
+
+        // --- Menu System ---
+        const menuBtn = document.getElementById('menuBtn');
+        const menuOverlay = document.getElementById('menuOverlay');
+        const closeMenu = document.getElementById('closeMenu');
+        const body = document.body;
+
+        function toggleMenu() {
+            menuOverlay.classList.toggle('active');
+            menuBtn.classList.toggle('active');
+            body.classList.toggle('overflow-hidden'); // Prevent scroll
+            if(menuOverlay.classList.contains('active')) {
+                document.body.style.cursor = 'none'; // Hide system cursor
+            } else {
+                document.body.style.cursor = 'none'; // Keep custom
+            }
+        }
+
+        menuBtn.addEventListener('click', toggleMenu);
+        closeMenu.addEventListener('click', toggleMenu);
+
+        // Close menu on link click
+        document.querySelectorAll('.menu-overlay a').forEach(link => {
+            link.addEventListener('click', () => {
+                toggleMenu();
+                // Scroll to section
+                const target = link.getAttribute('href');
+                if(target && target.startsWith('#')) {
+                    lenis.scrollTo(target);
+                }
+            });
+        });
+
+        // --- Project Hover Preview ---
+        const projectItems = document.querySelectorAll('.project-item');
+        const projectPreview = document.getElementById('projectPreview');
+        const previewImg = projectPreview.querySelector('img');
+        const previewClose = projectPreview.querySelector('.project-preview-close');
+        
+        let previewX = 0, previewY = 0;
+        let currentX = 0, currentY = 0;
+
+        function movePreview() {
+            currentX += (previewX - currentX) * 0.15;
+            currentY += (previewY - currentY) * 0.15;
+            projectPreview.style.transform = `translate(${currentX}px, ${currentY}px)`;
+            requestAnimationFrame(movePreview);
+        }
+        movePreview();
+
+        window.addEventListener('mousemove', e => {
+            previewX = e.clientX;
+            previewY = e.clientY;
+        });
+
+        projectItems.forEach(item => {
+            item.addEventListener('mouseenter', () => {
+                const imgSrc = item.getAttribute('data-img');
+                previewImg.src = imgSrc;
+                projectPreview.classList.add('visible');
+                projectPreview.style.transform = `translate(${previewX}px, ${previewY}px)`;
+            });
+
+            item.addEventListener('mouseleave', () => {
+                projectPreview.classList.remove('visible');
+            });
+        });
+
+        previewClose.addEventListener('click', () => {
+            projectPreview.classList.remove('visible');
+        });
+        
+        // Close preview on click outside image
+        projectPreview.addEventListener('click', (e) => {
+            if(e.target === projectPreview) {
+                projectPreview.classList.remove('visible');
+            }
+        });
+    </script>
+</body>
+</html>
+```

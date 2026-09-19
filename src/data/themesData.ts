@@ -27,7 +27,7 @@ export interface StoreDemoProduct {
   }[];
   variants?: {
     name: string;
-    options: string[];
+    options: any[];
   }[];
 }
 

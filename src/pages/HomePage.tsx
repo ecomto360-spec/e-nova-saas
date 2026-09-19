@@ -15,7 +15,7 @@ export default function HomePage() {
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center">
               {/* Utilise ici le logo uploadé */}
-              <img src="/logo.png" alt="E nova" className="h-10 w-auto object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<span class="font-bold text-xl text-blue-600">E nova</span>'); }} />
+              <img src="/logo.png" alt="E nova" className="h-10 w-auto max-w-[180px] object-contain shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<span class="font-bold text-xl text-blue-600">E nova</span>'); }} />
             </div>
             <div className="hidden md:flex space-x-8">
               <a href="#plans" className="text-gray-600 hover:text-blue-600 transition">Plans</a>
@@ -64,7 +64,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900">Aperçu des plans</h2>
-            <p className="text-gray-600 mt-2">3 jours gratuits de Pro pour tester, sans carte bancaire.</p>
+            <p className="text-gray-600 mt-2">5 jours gratuits de Pro pour tester, sans carte bancaire.</p>
             <div className="mt-4 inline-flex items-center bg-amber-500/10 text-amber-600 px-4 py-2 rounded-full text-sm font-semibold">
               <i className="fas fa-gift mr-2"></i> L'abonnement annuel économise 2 mois !
             </div>

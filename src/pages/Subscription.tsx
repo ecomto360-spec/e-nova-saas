@@ -271,13 +271,20 @@ export default function Subscription() {
       const isInstant = paymentMethod === "card" || paymentMethod === "cib_edahabia";
       const status = isInstant ? "completed" : "pending";
 
-      // Calculate expiration date
-      const now = new Date();
-      let expiresAt = new Date();
-      if (selectedDuration === "1m") expiresAt.setMonth(now.getMonth() + 1);
-      else if (selectedDuration === "3m") expiresAt.setMonth(now.getMonth() + 3);
-      else if (selectedDuration === "6m") expiresAt.setMonth(now.getMonth() + 6);
-      else if (selectedDuration === "1y") expiresAt.setFullYear(now.getFullYear() + 1);
+      // Calculate expiration date by stacking from current if active
+      let baseDate = new Date();
+      if (tenantData?.planExpiresAt) {
+        const currentExp = new Date(tenantData.planExpiresAt);
+        if (currentExp > baseDate) {
+          baseDate = currentExp;
+        }
+      }
+      
+      let expiresAt = new Date(baseDate);
+      if (selectedDuration === "1m") expiresAt.setMonth(baseDate.getMonth() + 1);
+      else if (selectedDuration === "3m") expiresAt.setMonth(baseDate.getMonth() + 3);
+      else if (selectedDuration === "6m") expiresAt.setMonth(baseDate.getMonth() + 6);
+      else if (selectedDuration === "1y") expiresAt.setFullYear(baseDate.getFullYear() + 1);
 
       // 1. Create Payment record in Firestore
       const paymentData = {

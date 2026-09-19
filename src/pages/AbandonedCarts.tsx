@@ -1,7 +1,9 @@
+import { useLanguage } from "../contexts/LanguageContext";
 import { useState } from "react";
 import { Ghost, Search, Filter, Loader2, Send } from "lucide-react";
 
 export default function AbandonedCarts() {
+  const { t, dir } = useLanguage();
   const [isRelancing, setIsRelancing] = useState(false);
   const [lastRelanceTime, setLastRelanceTime] = useState(0);
 
@@ -37,15 +39,15 @@ export default function AbandonedCarts() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-neutral-800 bg-[#1e1e24] p-5 shadow-sm">
-          <p className="text-sm font-medium text-neutral-400">Total Paniers Abandonnés</p>
+          <p className="text-sm font-medium text-neutral-400">{t("abandoned.totalAbandoned")}</p>
           <p className="mt-2 text-3xl font-semibold text-white">1</p>
         </div>
         <div className="rounded-xl border border-neutral-800 bg-[#1e1e24] p-5 shadow-sm">
-          <p className="text-sm font-medium text-neutral-400">Paniers Récupérés</p>
+          <p className="text-sm font-medium text-neutral-400">{t("abandoned.recoveredCarts")}</p>
           <p className="mt-2 text-3xl font-semibold text-emerald-500">0</p>
         </div>
         <div className="rounded-xl border border-neutral-800 bg-[#1e1e24] p-5 shadow-sm">
-          <p className="text-sm font-medium text-neutral-400">Valeur Récupérée</p>
+          <p className="text-sm font-medium text-neutral-400">{t("abandoned.recoveredValue")}</p>
           <p className="mt-2 text-3xl font-semibold text-blue-500">0 DA</p>
         </div>
       </div>

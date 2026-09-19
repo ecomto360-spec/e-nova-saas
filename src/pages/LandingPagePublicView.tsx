@@ -1,61 +1,90 @@
-import { useState, useEffect, FormEvent } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useState, useEffect, useMemo, FormEvent } from "react";
+import { useParams } from "react-router-dom";
 import { db } from "../lib/firebase";
-import { collection, getDocs, doc, addDoc, updateDoc, increment } from "firebase/firestore";
+import { collection, getDocs, doc, addDoc } from "firebase/firestore";
 import { LandingPage, AlgerianWilaya } from "../types/landing";
 import { SAMPLE_PRODUCTS, ALGERIAN_WILAYAS, getDefaultSectionsForProduct } from "../data/landingData";
-import { 
-  Clock, ShieldCheck, Truck, Banknote, RotateCcw, 
-  ShoppingCart, Check, CheckCircle2, ChevronDown, Phone, MessageCircle 
-} from "lucide-react";
+import { getCommunesForWilaya } from "../data/algerianCommunes";
+import { StoreUnavailable } from "../components/storefront/StoreUnavailable";
+import { Clock, ShieldCheck, Truck, Banknote, RotateCcw, ShoppingCart, Check, CheckCircle2, Star, ChevronDown, MapPin, Map } from "lucide-react";
+import { isTenantExpired } from "../lib/checkExpiration";
+import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../lib/phoneUtils";
+import { isPhoneBlacklisted } from "../lib/blacklist";
 
-export default function LandingPagePublicView() {
+interface Props { previewData?: LandingPage; onOrderPlaced?: (order: any) => void; }
+
+export default function LandingPagePublicView({ previewData, onOrderPlaced }: Props = {}) {
   const { slug } = useParams<{ slug: string }>();
-  const [page, setPage] = useState<LandingPage | null>(null);
+  const isPreview = !!previewData;
+  const [loadedPage, setLoadedPage] = useState<LandingPage | null>(null);
+  const page = (isPreview && previewData) ? previewData : loadedPage;
   const [tenantId, setTenantId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isPreview);
+  const [isExpired, setIsExpired] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // Form state
-  const [selectedWilayaCode, setSelectedWilayaCode] = useState<number>(16);
+  const [selectedWilayaCode, setSelectedWilayaCode] = useState<number | "">(16);
+  const [commune, setCommune] = useState("");
   const [deliveryType, setDeliveryType] = useState<"home" | "desk">("home");
   const [selectedBundleId, setSelectedBundleId] = useState<string>("b2");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [address, setAddress] = useState("");
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderReference, setOrderReference] = useState("");
 
+  const availableCommunes = useMemo(() => {
+    if (!selectedWilayaCode) return [];
+    return getCommunesForWilaya(Number(selectedWilayaCode));
+  }, [selectedWilayaCode]);
+
+  const curWilaya = useMemo(() => {
+    if (!selectedWilayaCode) return null;
+    return ALGERIAN_WILAYAS.find(w => w.code === Number(selectedWilayaCode)) || null;
+  }, [selectedWilayaCode]);
+
   useEffect(() => {
+    if (isPreview) {
+      setLoading(false);
+      return;
+    }
     async function loadLandingPage() {
       try {
         const tenantsSnap = await getDocs(collection(db, "tenants"));
         let foundPage: LandingPage | null = null;
         let foundTenantId: string | null = null;
-
+        
         for (const tenantDoc of tenantsSnap.docs) {
           const tData = tenantDoc.data();
-          if (tData.landingPages && Array.isArray(tData.landingPages)) {
-            const match = tData.landingPages.find((p: LandingPage) => p.slug === slug || p.id === slug);
-            if (match) {
-              foundPage = match;
+          
+          // First check subcollection
+          const pagesSnap = await getDocs(collection(db, "tenants", tenantDoc.id, "landingPages"));
+          const match = pagesSnap.docs.map(d => d.data() as LandingPage).find(p => p.slug === slug || p.id === slug);
+          
+          if (match) {
+            foundPage = match;
+            foundTenantId = tenantDoc.id;
+            setIsExpired(isTenantExpired(tData));
+            break;
+          }
+          
+          // Fallback to array for backward compatibility
+          if (!match && tData.landingPages && Array.isArray(tData.landingPages)) {
+            const arrMatch = tData.landingPages.find((p: LandingPage) => p.slug === slug || p.id === slug);
+            if (arrMatch) {
+              foundPage = arrMatch;
               foundTenantId = tenantDoc.id;
+              setIsExpired(isTenantExpired(tData));
               break;
             }
           }
         }
 
         if (foundPage) {
-          setPage(foundPage);
+          setLoadedPage(foundPage);
           setTenantId(foundTenantId);
-          // Increment views count in background
-          if (foundTenantId) {
-            try {
-              const tenantRef = doc(db, "tenants", foundTenantId);
-              // best effort increment
-            } catch (e) {
-              console.warn(e);
-            }
-          }
         } else {
           // Fallback sample landing page matching requested slug
           const fallbackPage: LandingPage = {
@@ -71,14 +100,14 @@ export default function LandingPagePublicView() {
             updatedAt: "2026/08/22",
             sections: getDefaultSectionsForProduct(SAMPLE_PRODUCTS[0]),
             theme: {
-              primaryColor: "#f59e0b",
-              accentColor: "#10b981",
+              primaryColor: "#16a34a",
+              accentColor: "#16a34a",
               backgroundColor: "#ffffff",
               textColor: "#111827",
               fontFamily: "Inter, sans-serif"
             }
           };
-          setPage(fallbackPage);
+          setLoadedPage(fallbackPage);
         }
       } catch (err) {
         console.error("Error loading landing page:", err);
@@ -86,15 +115,16 @@ export default function LandingPagePublicView() {
         setLoading(false);
       }
     }
-
     loadLandingPage();
-  }, [slug]);
+  }, [slug, isPreview]);
+
+  if (isExpired) return <StoreUnavailable />;
 
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-900 flex items-center justify-center text-white">
         <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm font-medium text-neutral-400">Chargement de votre offre...</p>
         </div>
       </div>
@@ -105,21 +135,15 @@ export default function LandingPagePublicView() {
     return (
       <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4 text-center">
         <div className="bg-[#16161a] border border-neutral-800 rounded-2xl p-8 max-w-md text-white space-y-4 shadow-2xl shadow-black/50">
-          <div className="mx-auto w-16 h-16 bg-red-500/10 text-red-500 flex items-center justify-center rounded-2xl mb-2">
-            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
           <h2 className="text-2xl font-bold">Page indisponible</h2>
-          <p className="text-sm text-neutral-400">Cette offre n'est plus disponible pour le moment ou a été désactivée par le vendeur.</p>
+          <p className="text-sm text-neutral-400">Cette offre n'est plus disponible pour le moment.</p>
         </div>
       </div>
     );
   }
 
-  const curWilaya = ALGERIAN_WILAYAS.find(w => w.code === selectedWilayaCode) || ALGERIAN_WILAYAS[0];
   const currentPrice = page.product?.price || 1500;
-  const originalPrice = page.product?.originalPrice || Math.round(currentPrice * 1.4);
+  const originalPrice = page.product?.originalPrice || Math.round(currentPrice * 1.3);
 
   let quantity = 1;
   let itemsTotal = currentPrice;
@@ -131,340 +155,703 @@ export default function LandingPagePublicView() {
     itemsTotal = Math.round(currentPrice * 2.5);
   }
 
-  const deliveryFee = selectedBundleId === "b3" ? 0 : (deliveryType === "home" ? curWilaya.homeDeliveryPrice : curWilaya.deskDeliveryPrice);
+  const deliveryFee = selectedBundleId === "b3" ? 0 : (!curWilaya ? 400 : (deliveryType === "home" ? curWilaya.homeDeliveryPrice : curWilaya.deskDeliveryPrice));
   const grandTotal = itemsTotal + deliveryFee;
 
   const handleCreatePublicOrder = async (e: FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim() || !phone.trim()) {
-      alert("Veuillez saisir votre Nom et Numéro de téléphone");
+    if (!fullName.trim()) {
+      alert("Veuillez saisir votre Nom et Prénom");
+      return;
+    }
+
+    const phoneValidation = validatePhoneNumber(phone);
+    if (!phoneValidation.isValid) {
+      setPhoneError(phoneValidation.error || "Numéro de téléphone invalide");
+      return;
+    }
+    setPhoneError("");
+
+    if (!selectedWilayaCode) {
+      alert("Veuillez sélectionner votre Wilaya");
+      return;
+    }
+
+    if (!commune.trim()) {
+      alert("Veuillez sélectionner votre Commune");
       return;
     }
 
     const refNumber = `CMD-${Date.now().toString().slice(-6)}`;
     setOrderReference(refNumber);
 
+    if (isPreview && onOrderPlaced) {
+      onOrderPlaced({ fullName, phone, total: grandTotal, bundle: selectedBundleId, refNumber, wilaya: curWilaya ? curWilaya.name : "", commune, address, deliveryType, quantity, productName: page.product?.name || page.title, itemsTotal, deliveryFee });
+      setOrderSuccess(true);
+      return;
+    }
+
     try {
       if (tenantId) {
-        // Save into Firestore orders
-        await addDoc(collection(db, "tenants", tenantId, "orders"), {
+        const isBanned = await isPhoneBlacklisted(tenantId, phone);
+        if (isBanned) {
+          alert("عذراً، هذا الرقم محظور من إتمام الطلبات. / Désolé, ce numéro de téléphone est sur liste noire.");
+          return;
+        }
+
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const formattedDate = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+        const gallerySection = page.sections?.find(s => s.type === "gallery");
+        const heroImages = gallerySection?.data?.images || (page.product?.image ? [page.product.image] : ["https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80"]);
+        const orderImg = page.product?.image || (heroImages && heroImages.length > 0 ? heroImages[0] : "");
+
+        const orderData = {
           orderNumber: refNumber,
           customerName: fullName,
+          client: fullName,
           customerPhone: phone,
-          wilaya: curWilaya.name,
-          address,
+          phone,
+          wilaya: curWilaya ? curWilaya.name : "",
+          commune: commune || "",
+          address: address.trim() || commune,
           deliveryType,
           quantity,
           productName: page.product?.name || page.title,
+          itemsSummary: `${quantity}x ${page.product?.name || page.title}`,
           itemsTotal,
           deliveryFee,
           total: grandTotal,
-          status: "pending",
+          status: "En attente",
           source: `Landing Page: ${page.title}`,
-          createdAt: new Date().toISOString()
-        });
+          date: formattedDate,
+          userId: tenantId,
+          image: orderImg,
+          productImage: orderImg,
+          items: [{
+            productId: page.productId || page.product?.id || "landing-product",
+            name: page.product?.name || page.title,
+            price: itemsTotal / (quantity || 1),
+            quantity: quantity,
+            image: orderImg
+          }],
+          createdAt: new Date()
+        };
+
+        await addDoc(collection(db, "tenants", tenantId, "orders"), orderData);
+        await addDoc(collection(db, "orders"), orderData);
+
+        // Real-time alert for Header notification bell and audio chime
+        try {
+          const alertPayload = {
+            ...orderData,
+            createdAt: Date.now()
+          };
+          window.dispatchEvent(new CustomEvent("order_created", { detail: alertPayload }));
+          localStorage.setItem("last_order_alert", JSON.stringify(alertPayload));
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "order_created", data: alertPayload }, "*");
+          }
+        } catch (evErr) {
+          console.warn("Order notification dispatch error:", evErr);
+        }
       }
     } catch (err) {
-      console.warn("Could not write order into Firestore subcollection, local success shown:", err);
+      console.warn("Could not write order into Firestore", err);
     }
-
     setOrderSuccess(true);
   };
 
-  return (
-    <div className="min-h-screen bg-neutral-100 flex justify-center py-0 sm:py-8">
-      <div className="w-full max-w-lg bg-white shadow-2xl overflow-hidden font-sans border-x border-neutral-200">
-        {/* Top Urgency Header */}
-        <div className="bg-red-600 text-white text-xs font-bold py-2 px-4 text-center flex items-center justify-center gap-2 animate-pulse">
-          <Clock className="w-4 h-4" />
-          <span>⚡ Offre Spéciale limitée • Paiement à la livraison 58 Wilayas</span>
-        </div>
+  
+  const gallerySection = page.sections?.find(s => s.type === "gallery");
+  const heroImages = gallerySection?.data?.images || (page.product?.image ? [page.product.image] : ["https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80"]);
 
-        {/* Product Image Showcase */}
-        <div className="relative bg-neutral-100">
-          <img 
-            src={page.product?.image || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80"} 
-            alt={page.product?.name}
-            className="w-full h-80 object-cover"
-          />
-          <div className="absolute top-3 left-3 bg-yellow-500 text-black text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-lg">
-            🔥 -30% Réduction
+  // Dynamic texts from sections
+  const heroSec = page.sections?.find(s => s.type === "hero");
+  const topBannerText = heroSec?.data?.topBanner || "⚡ Offre limitée • Paiement à réception (58 Wilayas)";
+  const productTitle = heroSec?.data?.headline || page.title;
+  const ctaTopText = heroSec?.data?.ctaText || "COMMANDER MAINTENANT";
+  const ratingText = heroSec?.data?.ratingText || "(4.9/5 • 148 avis)";
+  const savingsBadgeText = heroSec?.data?.savingsBadge || `🔥 Économisez ${(originalPrice - currentPrice).toLocaleString("fr-DZ")} DZD aujourd'hui`;
+
+  const countdownSec = page.sections?.find(s => s.type === "countdown");
+  const countdownTitle = countdownSec?.data?.title || "La promotion se termine dans :";
+  const countdownHours = String(countdownSec?.data?.hours ?? 2).padStart(2, '0');
+  const countdownMinutes = String(countdownSec?.data?.minutes ?? 47).padStart(2, '0');
+  const countdownSeconds = String(countdownSec?.data?.seconds ?? 35).padStart(2, '0');
+
+  const featuresSec = page.sections?.find(s => s.type === "features");
+  const badgesList: Array<{ id?: string; text: string; icon?: string }> = (featuresSec?.data?.badges && Array.isArray(featuresSec.data.badges) && featuresSec.data.badges.length > 0)
+    ? featuresSec.data.badges
+    : [
+        { id: "b1", text: "Paiement à réception", icon: "Banknote" },
+        { id: "b2", text: "Livraison 58 Wilayas", icon: "Truck" },
+        { id: "b3", text: "Échange facile (7j)", icon: "RotateCcw" },
+        { id: "b4", text: "Garantie Qualité", icon: "ShieldCheck" }
+      ];
+
+  const detailsTitle = featuresSec?.data?.heading || "Détails du produit";
+  const detailsDesc = featuresSec?.data?.description || page.description || "Découvrez notre produit phare, conçu pour répondre à tous vos besoins. Fabriqué avec des matériaux de haute qualité pour une durabilité maximale au quotidien.";
+  const bulletsList: string[] = (featuresSec?.data?.bullets && Array.isArray(featuresSec.data.bullets) && featuresSec.data.bullets.length > 0)
+    ? featuresSec.data.bullets
+    : [
+        "Qualité supérieure et durable",
+        "Utilisation simple et pratique",
+        "Design moderne et ergonomique",
+        "Approuvé par des milliers de clients"
+      ];
+  const ctaMidText = featuresSec?.data?.ctaText || "JE VEUX MON PACK";
+
+  const reviewsSec = page.sections?.find(s => s.type === "reviews");
+  const reviewsTitle = reviewsSec?.data?.heading || "Ce que nos clients disent";
+  const reviewsList: Array<{ id?: string; name: string; wilaya?: string; rating: number; text?: string; comment?: string }> = (reviewsSec?.data?.reviews && Array.isArray(reviewsSec.data.reviews) && reviewsSec.data.reviews.length > 0)
+    ? reviewsSec.data.reviews
+    : [
+        { id: "r1", name: "Amine K.", wilaya: "Alger", rating: 5, text: "Livraison super rapide en 24h, le produit est conforme à la description. Je recommande vivement !" },
+        { id: "r2", name: "Samira B.", wilaya: "Oran", rating: 5, text: "Très satisfaite de mon achat. Le service client est au top et le fait de payer à la livraison m'a vraiment rassurée." },
+        { id: "r3", name: "Yacine M.", wilaya: "Setif", rating: 5, text: "Qualité excellente pour le prix. C'est exactement ce que je cherchais. Merci !" }
+      ];
+
+  const faqSec = page.sections?.find(s => s.type === "faq");
+  const faqTitle = faqSec?.data?.heading || "Questions fréquentes";
+  const rawFaqs = faqSec?.data?.faqs || faqSec?.data?.items;
+  const faqList: Array<{ id?: string; q: string; a: string }> = (rawFaqs && Array.isArray(rawFaqs) && rawFaqs.length > 0)
+    ? rawFaqs
+    : [
+        { q: "Comment se passe la livraison ?", a: "Nous livrons dans les 58 wilayas. Le délai est généralement de 24h à 72h selon votre région (jusqu'à 5 jours pour le Grand Sud)." },
+        { q: "Puis-je payer à la réception ?", a: "Absolument ! Vous ne payez que lorsque le livreur vous remet le colis en main propre, après vérification." },
+        { q: "Et si le produit a un défaut ?", a: "Vous bénéficiez d'une garantie d'échange de 7 jours. Contactez-nous et nous remplacerons le produit gratuitement." }
+      ];
+
+  const orderSec = page.sections?.find(s => s.type === "order_form");
+  const orderTitle = orderSec?.data?.heading || "Finaliser la commande";
+  const orderSubheading = orderSec?.data?.subheading || "Remplissez ce formulaire et payez à la réception";
+  const orderCtaText = orderSec?.data?.btnText || orderSec?.data?.ctaText || "COMMANDER MAINTENANT";
+  const orderGuaranteeText = orderSec?.data?.guaranteeText || "Paiement 100% sécurisé à la livraison";
+
+  const renderBadgeIcon = (iconName?: string) => {
+    switch (iconName) {
+      case "Truck": return <Truck className="w-7 h-7 text-emerald-600 mb-2" />;
+      case "RotateCcw": return <RotateCcw className="w-7 h-7 text-emerald-600 mb-2" />;
+      case "ShieldCheck": return <ShieldCheck className="w-7 h-7 text-emerald-600 mb-2" />;
+      case "Banknote":
+      default:
+        return <Banknote className="w-7 h-7 text-emerald-600 mb-2" />;
+    }
+  };
+  
+  return (
+    <div className="min-h-screen bg-neutral-50 font-sans pb-24 sm:pb-10 selection:bg-emerald-200">
+      {/* 1. Bandeau d'urgence (sticky top) */}
+      <div className="sticky top-0 z-50 bg-neutral-900 text-white text-[12px] md:text-[13px] font-bold tracking-wider py-2.5 px-4 text-center flex items-center justify-center gap-2 shadow-md">
+        <Clock className="w-3.5 h-3.5 text-yellow-400 animate-pulse" />
+        <span className="uppercase">{topBannerText}</span>
+      </div>
+
+      <div className="w-full max-w-lg mx-auto bg-white sm:my-8 sm:shadow-2xl sm:rounded-2xl overflow-hidden border-x sm:border border-neutral-200 relative">
+        
+        {/* 2. Hero : image produit + titre H1 ultra-bold + prix barré/réduit + CTA principal */}
+        <div className="relative bg-neutral-100 aspect-square sm:aspect-[4/3] w-full overflow-hidden group">
+          <div className="w-full h-full relative">
+            {heroImages.map((img, idx) => (
+              <img 
+                key={idx}
+                src={img} 
+                alt={page.product?.name || page.title}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${idx === currentImageIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
+              />
+            ))}
+            
+            {/* Slider Controls */}
+            {heroImages.length > 1 && (
+              <>
+                <button 
+                  onClick={(e) => { e.preventDefault(); setCurrentImageIndex((prev) => (prev === 0 ? heroImages.length - 1 : prev - 1)); }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 z-20 bg-white/80 hover:bg-white text-neutral-900 p-2 rounded-full shadow-md backdrop-blur-sm"
+                >
+                  <ChevronDown className="w-5 h-5 rotate-90" />
+                </button>
+                <button 
+                  onClick={(e) => { e.preventDefault(); setCurrentImageIndex((prev) => (prev === heroImages.length - 1 ? 0 : prev + 1)); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 z-20 bg-white/80 hover:bg-white text-neutral-900 p-2 rounded-full shadow-md backdrop-blur-sm"
+                >
+                  <ChevronDown className="w-5 h-5 -rotate-90" />
+                </button>
+                
+                <div className="absolute bottom-4 left-0 right-0 z-20 flex justify-center gap-1.5">
+                  {heroImages.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={(e) => { e.preventDefault(); setCurrentImageIndex(idx); }}
+                      className={`h-1.5 rounded-full transition-all ${idx === currentImageIndex ? 'w-6 bg-emerald-500' : 'w-1.5 bg-white/70'}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="absolute top-4 left-4 bg-red-600 text-white text-[12px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg">
+            -30% Promo
           </div>
         </div>
 
-        {/* Title and Rating */}
-        <div className="p-5 border-b border-neutral-100">
-          <h1 className="text-2xl font-black text-neutral-900 leading-tight mb-2">
-            {page.title}
+        <div className="p-5 md:p-6 border-b border-neutral-100">
+          <div className="flex items-center gap-1 mb-3 text-amber-400">
+            {[...Array(5)].map((_, i) => (
+              <Star key={i} className="w-4 h-4 fill-current" />
+            ))}
+            <span className="text-xs text-neutral-500 font-bold ml-1.5">{ratingText}</span>
+          </div>
+
+          <h1 className="text-[26px] md:text-[28px] font-bold text-neutral-900 leading-tight mb-4 tracking-tight">
+            {productTitle}
           </h1>
 
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex text-amber-400 text-sm">
-              {"★".repeat(5)}
+          <div className="flex flex-col gap-2 mb-6 bg-neutral-50 p-4 rounded-2xl border border-neutral-100">
+            <div className="flex items-baseline gap-3">
+              <span className="text-4xl font-bold text-emerald-600 tracking-tighter">
+                {currentPrice.toLocaleString("fr-DZ")} <span className="text-xl">DZD</span>
+              </span>
+              <span className="text-base line-through text-neutral-400 font-bold">
+                {originalPrice.toLocaleString("fr-DZ")} DZD
+              </span>
             </div>
-            <span className="text-xs text-neutral-500 font-semibold">(4.9/5 • 148 avis clients vérifiés)</span>
-          </div>
-
-          <div className="flex items-baseline gap-4 mb-4 bg-amber-50 p-4 rounded-2xl border border-amber-200">
-            <span className="text-3xl font-black text-amber-700">
-              {currentPrice.toLocaleString("fr-DZ")} DZD
-            </span>
-            <span className="text-base line-through text-neutral-400 font-bold">
-              {originalPrice.toLocaleString("fr-DZ")} DZD
-            </span>
+            <div className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg inline-flex w-max">
+              {savingsBadgeText}
+            </div>
           </div>
 
           <a 
             href="#checkout-form"
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-4 rounded-xl text-center text-sm shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition-transform active:scale-95"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-xl text-center text-base shadow-[0_8px_30px_rgb(16,185,129,0.3)] flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
           >
             <ShoppingCart className="w-5 h-5" />
-            COMMANDER MAINTENANT (PAIEMENT À RÉCEPTION)
+            {ctaTopText}
           </a>
         </div>
 
-        {/* Countdown */}
-        <div className="bg-neutral-900 text-white p-4 text-center">
-          <div className="text-xs font-bold text-yellow-400 mb-1.5 uppercase tracking-wider">
-            ⏳ L'offre promotionnelle expire dans :
+        {/* 3. Compte à rebours d'urgence */}
+        <div className="bg-red-50 p-5 border-b border-red-100 text-center">
+          <div className="text-xs font-bold text-red-600 mb-3 uppercase tracking-widest">
+            {countdownTitle}
           </div>
-          <div className="flex items-center justify-center gap-2 text-sm font-mono font-bold">
-            <span className="bg-neutral-800 px-3 py-1.5 rounded-lg">02 H</span>
-            <span>:</span>
-            <span className="bg-neutral-800 px-3 py-1.5 rounded-lg">47 M</span>
-            <span>:</span>
-            <span className="bg-neutral-800 px-3 py-1.5 rounded-lg">35 S</span>
-          </div>
-        </div>
-
-        {/* Guarantees */}
-        <div className="p-5 bg-neutral-50 border-b border-neutral-200">
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="flex items-center gap-2.5 bg-white p-3 rounded-xl border border-neutral-200">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span className="font-bold text-neutral-800">Garantie 100% Satisfait</span>
+          <div className="flex items-center justify-center gap-3 font-mono">
+            <div className="flex flex-col items-center">
+              <span className="bg-white text-red-600 border-2 border-red-200 text-2xl font-bold px-4 py-2 rounded-xl shadow-sm w-16 text-center">{countdownHours}</span>
+              <span className="text-[10px] text-red-500 font-bold mt-1.5 uppercase">Heures</span>
             </div>
-            <div className="flex items-center gap-2.5 bg-white p-3 rounded-xl border border-neutral-200">
-              <Truck className="w-5 h-5 text-blue-600 shrink-0" />
-              <span className="font-bold text-neutral-800">Livraison 58 Wilayas</span>
+            <span className="text-red-300 font-bold text-2xl mb-5">:</span>
+            <div className="flex flex-col items-center">
+              <span className="bg-white text-red-600 border-2 border-red-200 text-2xl font-bold px-4 py-2 rounded-xl shadow-sm w-16 text-center">{countdownMinutes}</span>
+              <span className="text-[10px] text-red-500 font-bold mt-1.5 uppercase">Minutes</span>
             </div>
-            <div className="flex items-center gap-2.5 bg-white p-3 rounded-xl border border-neutral-200">
-              <Banknote className="w-5 h-5 text-amber-600 shrink-0" />
-              <span className="font-bold text-neutral-800">Paiement à la réception</span>
-            </div>
-            <div className="flex items-center gap-2.5 bg-white p-3 rounded-xl border border-neutral-200">
-              <RotateCcw className="w-5 h-5 text-purple-600 shrink-0" />
-              <span className="font-bold text-neutral-800">Échange sous 7 jours</span>
+            <span className="text-red-300 font-bold text-2xl mb-5">:</span>
+            <div className="flex flex-col items-center">
+              <span className="bg-white text-red-600 border-2 border-red-200 text-2xl font-bold px-4 py-2 rounded-xl shadow-sm w-16 text-center">{countdownSeconds}</span>
+              <span className="text-[10px] text-red-500 font-bold mt-1.5 uppercase">Secs</span>
             </div>
           </div>
         </div>
 
-        {/* Bundles */}
-        <div className="p-5 border-b border-neutral-200 space-y-3">
-          <div className="text-xs font-black uppercase tracking-wider text-neutral-700">
-            Choisissez votre pack promotionnel :
-          </div>
-
-          <div className="space-y-2.5">
-            <div 
-              onClick={() => setSelectedBundleId("b1")}
-              className={`p-3.5 rounded-xl border-2 cursor-pointer flex items-center justify-between transition-all ${
-                selectedBundleId === "b1" ? "border-amber-500 bg-amber-50/50 shadow-sm" : "border-neutral-200 bg-white"
-              }`}
-            >
-              <div>
-                <div className="font-bold text-sm">1 Pièce (Standard)</div>
-                <div className="text-xs text-neutral-500">Pour 1 personne</div>
+        {/* 4. Avantages clés */}
+        <div className="p-5 border-b border-neutral-100 bg-white">
+          <div className="grid grid-cols-2 gap-3">
+            {badgesList.map((badge, bIdx) => (
+              <div key={badge.id || bIdx} className="flex flex-col items-center text-center p-4 rounded-2xl bg-neutral-50 border border-neutral-100">
+                {renderBadgeIcon(badge.icon)}
+                <span className="font-bold text-xs text-neutral-900 uppercase">{badge.text}</span>
               </div>
-              <div className="font-bold text-sm text-neutral-900">{currentPrice.toLocaleString("fr-DZ")} DZD</div>
-            </div>
-
-            <div 
-              onClick={() => setSelectedBundleId("b2")}
-              className={`p-3.5 rounded-xl border-2 cursor-pointer flex items-center justify-between relative transition-all ${
-                selectedBundleId === "b2" ? "border-amber-500 bg-amber-50/50 shadow-sm" : "border-neutral-200 bg-white"
-              }`}
-            >
-              <span className="absolute -top-2.5 right-3 bg-amber-500 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded shadow">
-                ⭐ Le plus vendu (-15%)
-              </span>
-              <div>
-                <div className="font-bold text-sm">Pack de 2 Pièces</div>
-                <div className="text-xs text-emerald-600 font-bold">Économisez {Math.round(currentPrice * 0.2)} DZD</div>
-              </div>
-              <div className="font-bold text-sm text-amber-700">{Math.round(currentPrice * 1.8).toLocaleString("fr-DZ")} DZD</div>
-            </div>
-
-            <div 
-              onClick={() => setSelectedBundleId("b3")}
-              className={`p-3.5 rounded-xl border-2 cursor-pointer flex items-center justify-between relative transition-all ${
-                selectedBundleId === "b3" ? "border-amber-500 bg-amber-50/50 shadow-sm" : "border-neutral-200 bg-white"
-              }`}
-            >
-              <span className="absolute -top-2.5 right-3 bg-emerald-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded shadow">
-                🎉 LIVRAISON GRATUITE
-              </span>
-              <div>
-                <div className="font-bold text-sm">Pack Famille (3 Pièces)</div>
-                <div className="text-xs text-emerald-600 font-bold">Livraison offerte partout en Algérie</div>
-              </div>
-              <div className="font-bold text-sm text-amber-700">{Math.round(currentPrice * 2.5).toLocaleString("fr-DZ")} DZD</div>
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* Order Form */}
-        <div id="checkout-form" className="p-5 bg-neutral-50">
-          <div className="bg-white border-2 border-emerald-500 rounded-2xl p-5 shadow-xl space-y-4">
-            <div className="text-center border-b border-neutral-100 pb-3">
-              <h3 className="text-lg font-black text-neutral-900">
-                Formulaire de Commande Express
-              </h3>
-              <p className="text-xs text-neutral-500 mt-0.5">
-                Paiement à la réception du colis (Cash on Delivery)
-              </p>
-            </div>
+        {/* 5. Détails du produit + description + arguments à puces */}
+        <div className="p-5 md:p-6 border-b border-neutral-100 bg-white space-y-6">
+          <h2 className="text-[20px] md:text-[22px] font-bold text-neutral-900 tracking-tight">{detailsTitle}</h2>
+          
+          <div className="prose prose-sm text-neutral-600 leading-relaxed font-medium">
+            <p>{detailsDesc}</p>
+          </div>
 
-            {!orderSuccess ? (
-              <form onSubmit={handleCreatePublicOrder} className="space-y-3.5">
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 mb-1">
-                    Nom et Prénom <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Ex: Karim Benmessaoud"
-                    className="w-full border border-neutral-300 rounded-xl px-4 py-3 text-sm text-neutral-900 focus:outline-none focus:border-emerald-500"
-                  />
+          <div className="space-y-3 mt-6">
+            {bulletsList.map((feature, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span className="text-sm font-bold text-neutral-800">{feature}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-4">
+            <a 
+              href="#checkout-form"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-xl text-center text-base shadow-[0_8px_30px_rgb(16,185,129,0.3)] flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+            >
+              <ShoppingCart className="w-5 h-5" />
+              {ctaMidText}
+            </a>
+          </div>
+        </div>
+
+        {/* 6. Avis clients vérifiés */}
+        <div className="p-5 md:p-6 border-b border-neutral-100 bg-neutral-50">
+          <h2 className="text-[20px] md:text-[22px] font-bold text-neutral-900 tracking-tight mb-6 text-center">{reviewsTitle}</h2>
+          
+          <div className="space-y-4">
+            {reviewsList.map((review, i) => (
+              <div key={review.id || i} className="bg-white p-5 rounded-2xl border border-neutral-100 shadow-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <div className="font-bold text-neutral-900 flex items-center gap-1">
+                      {review.name}
+                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
+                    </div>
+                    <div className="text-[11px] text-neutral-400 font-medium">{review.wilaya ? `${review.wilaya} • ` : ""}Achat vérifié</div>
+                  </div>
+                  <div className="flex text-amber-400">
+                    {[...Array(review.rating || 5)].map((_, j) => <Star key={j} className="w-3.5 h-3.5 fill-current" />)}
+                  </div>
+                </div>
+                <p className="text-sm text-neutral-700 font-medium leading-relaxed">
+                  "{review.text || review.comment}"
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 7. FAQ */}
+        <div className="p-5 md:p-6 border-b border-neutral-100 bg-white">
+          <h2 className="text-[20px] md:text-[22px] font-bold text-neutral-900 tracking-tight mb-6 text-center">{faqTitle}</h2>
+          <div className="space-y-3">
+            {faqList.map((faq, i) => (
+              <details key={faq.id || i} className="group bg-neutral-50 border border-neutral-100 rounded-2xl [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer items-center justify-between gap-1.5 p-4 text-neutral-900 font-bold">
+                  {faq.q}
+                  <span className="shrink-0 rounded-full bg-white p-1.5 text-neutral-900 sm:p-3 group-open:-rotate-180 transition-transform">
+                    <ChevronDown className="w-4 h-4" />
+                  </span>
+                </summary>
+                <div className="px-4 pb-4 text-sm text-neutral-600 font-medium leading-relaxed">
+                  {faq.a}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+
+        {/* 8. Checkout Form */}
+        <div id="checkout-form" className="p-5 md:p-8 bg-neutral-100 scroll-mt-10">
+          <div className="text-center mb-6">
+            <h3 className="text-[20px] md:text-[22px] font-bold text-neutral-900 tracking-tight">
+              {orderTitle}
+            </h3>
+            <p className="text-sm text-neutral-600 mt-2 font-bold">
+              {orderSubheading}
+            </p>
+          </div>
+
+          {!orderSuccess ? (
+            <form onSubmit={handleCreatePublicOrder} className="space-y-6">
+              
+              {/* Sélecteur de pack */}
+              <div className="space-y-3 bg-white p-4 rounded-2xl border border-neutral-200 shadow-sm">
+                <label className="block text-xs font-bold text-neutral-900 uppercase tracking-widest mb-1">
+                  1. Choisissez votre pack
+                </label>
+                
+                <div 
+                  onClick={() => setSelectedBundleId("b1")}
+                  className={`p-4 rounded-xl border-2 cursor-pointer flex items-center justify-between transition-all ${
+                    selectedBundleId === "b1" ? "border-emerald-600 bg-emerald-50" : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      selectedBundleId === "b1" ? "border-emerald-600" : "border-neutral-300 bg-white"
+                    }`}>
+                      {selectedBundleId === "b1" && <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-neutral-900">Pack 1 Pièce</div>
+                    </div>
+                  </div>
+                  <div className="font-bold text-base text-neutral-900">{currentPrice.toLocaleString("fr-DZ")} DZD</div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 mb-1">
-                    Numéro de téléphone <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Ex: 0661 23 45 67"
-                    className="w-full border border-neutral-300 rounded-xl px-4 py-3 text-sm text-neutral-900 focus:outline-none focus:border-emerald-500"
-                  />
+                <div 
+                  onClick={() => setSelectedBundleId("b2")}
+                  className={`p-4 rounded-xl border-2 cursor-pointer flex items-center justify-between relative transition-all overflow-hidden ${
+                    selectedBundleId === "b2" ? "border-emerald-600 bg-emerald-50" : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
+                  }`}
+                >
+                  <div className="absolute top-0 right-0 bg-red-600 text-white text-[12px] font-bold uppercase px-2 py-1 rounded-bl-xl shadow-sm">
+                    Le plus vendu
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      selectedBundleId === "b2" ? "border-emerald-600" : "border-neutral-300 bg-white"
+                    }`}>
+                      {selectedBundleId === "b2" && <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-neutral-900">Pack 2 Pièces</div>
+                      <div className="text-[11px] text-red-600 font-bold">-15% de réduction</div>
+                    </div>
+                  </div>
+                  <div className="font-bold text-base text-emerald-700">
+                    {Math.round(currentPrice * 1.8).toLocaleString("fr-DZ")} DZD
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 mb-1">
-                    Wilaya de livraison <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={selectedWilayaCode}
-                    onChange={(e) => setSelectedWilayaCode(Number(e.target.value))}
-                    className="w-full border border-neutral-300 rounded-xl px-4 py-3 text-sm text-neutral-900 bg-white focus:outline-none focus:border-emerald-500"
-                  >
-                    {ALGERIAN_WILAYAS.map((w) => (
-                      <option key={w.code} value={w.code}>
-                        {w.name} ({w.arName})
-                      </option>
-                    ))}
-                  </select>
+                <div 
+                  onClick={() => setSelectedBundleId("b3")}
+                  className={`p-4 rounded-xl border-2 cursor-pointer flex items-center justify-between relative transition-all overflow-hidden ${
+                    selectedBundleId === "b3" ? "border-emerald-600 bg-emerald-50" : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
+                  }`}
+                >
+                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[12px] font-bold uppercase px-2 py-1 rounded-bl-xl shadow-sm">
+                    Livraison Offerte
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      selectedBundleId === "b3" ? "border-emerald-600" : "border-neutral-300 bg-white"
+                    }`}>
+                      {selectedBundleId === "b3" && <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-neutral-900">Pack Famille (3)</div>
+                      <div className="text-[11px] text-emerald-600 font-bold">Livraison 0 DZD</div>
+                    </div>
+                  </div>
+                  <div className="font-bold text-base text-emerald-700">
+                    {Math.round(currentPrice * 2.5).toLocaleString("fr-DZ")} DZD
+                  </div>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 mb-1">
-                    Mode de livraison
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
+              {/* Delivery Details */}
+              <div className="space-y-4 bg-white p-4 rounded-2xl border border-neutral-200 shadow-sm">
+                <label className="block text-xs font-bold text-neutral-900 uppercase tracking-widest mb-1">
+                  2. Coordonnées de livraison
+                </label>
+                
+                <div className="space-y-3.5">
+                  <div>
+                    <input
+                      type="text"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Nom et Prénom *"
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3.5 text-sm text-neutral-900 font-medium placeholder:text-neutral-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                    />
+                  </div>
+                  
+                  <div>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={getPhoneMaxLength(phone)}
+                      value={phone}
+                      onChange={(e) => {
+                        const cleaned = cleanAndLimitPhone(e.target.value);
+                        setPhone(cleaned);
+                        if (phoneError) setPhoneError("");
+                      }}
+                      placeholder="Numéro de téléphone (ex: 0550252565) *"
+                      className={`w-full bg-neutral-50 border rounded-xl px-4 py-3.5 text-sm text-neutral-900 font-medium placeholder:text-neutral-400 focus:outline-none focus:ring-1 transition-all ${
+                        phoneError
+                          ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                          : "border-neutral-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      }`}
+                    />
+                    {phoneError ? (
+                      <p className="mt-1.5 text-xs text-red-600 font-medium">{phoneError}</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-neutral-400">
+                        10 chiffres commençant par 05, 06 ou 07 (ou indicatif ex: 213550252565)
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="relative">
+                      <select
+                        value={selectedWilayaCode}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : "";
+                          setSelectedWilayaCode(val);
+                          setCommune("");
+                        }}
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3.5 pr-10 text-sm text-neutral-900 font-bold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">-- Choisir la Wilaya --</option>
+                        {ALGERIAN_WILAYAS.map((w) => (
+                          <option key={w.code} value={w.code}>
+                            {w.code.toString().padStart(2, '0')} - {w.name} ({w.arName})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+                    </div>
+
+                    <div className="relative">
+                      <select
+                        required
+                        disabled={!selectedWilayaCode}
+                        value={commune}
+                        onChange={(e) => setCommune(e.target.value)}
+                        className={`w-full border rounded-xl px-4 py-3.5 pr-10 text-sm font-bold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all appearance-none ${
+                          !selectedWilayaCode
+                            ? "bg-neutral-100 border-neutral-200 text-neutral-400 cursor-not-allowed"
+                            : "bg-neutral-50 border-neutral-200 text-neutral-900 cursor-pointer"
+                        }`}
+                      >
+                        <option value="">
+                          {selectedWilayaCode ? "-- Choisir la Commune --" : "-- Choisir la Wilaya d'abord --"}
+                        </option>
+                        {availableCommunes.map((c) => (
+                          <option key={c.name} value={c.name}>
+                            {c.name} ({c.arName})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className={`absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${!selectedWilayaCode ? "text-neutral-300" : "text-neutral-400"}`} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setDeliveryType("home")}
-                      className={`py-2.5 px-3 rounded-xl border text-xs font-bold text-center ${
-                        deliveryType === "home" ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-neutral-200"
+                      className={`py-3 px-2 rounded-xl border-2 text-xs font-bold text-center transition-all ${
+                        deliveryType === "home" ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
                       }`}
                     >
-                      🏠 À Domicile ({selectedBundleId === "b3" ? "0 DZD" : `${curWilaya.homeDeliveryPrice} DZD`})
+                      🏠 À Domicile
+                      <div className="text-[10px] font-bold mt-0.5 opacity-80">
+                        {selectedBundleId === "b3" ? "0 DZD" : `${curWilaya ? curWilaya.homeDeliveryPrice : 400} DZD`}
+                      </div>
                     </button>
                     <button
                       type="button"
                       onClick={() => setDeliveryType("desk")}
-                      className={`py-2.5 px-3 rounded-xl border text-xs font-bold text-center ${
-                        deliveryType === "desk" ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-neutral-200"
+                      className={`py-3 px-2 rounded-xl border-2 text-xs font-bold text-center transition-all ${
+                        deliveryType === "desk" ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
                       }`}
                     >
-                      🏢 Au Bureau ({selectedBundleId === "b3" ? "0 DZD" : `${curWilaya.deskDeliveryPrice} DZD`})
+                      🏢 Bureau (Stop Desk)
+                      <div className="text-[10px] font-bold mt-0.5 opacity-80">
+                        {selectedBundleId === "b3" ? "0 DZD" : `${curWilaya ? curWilaya.deskDeliveryPrice : 300} DZD`}
+                      </div>
                     </button>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 mb-1">
-                    Commune / Adresse exacte
-                  </label>
-                  <input
-                    type="text"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Ex: Cité des martyrs, bâtiment B"
-                    className="w-full border border-neutral-300 rounded-xl px-4 py-3 text-sm text-neutral-900 focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                {/* Calculation */}
-                <div className="bg-neutral-100 p-3.5 rounded-xl space-y-1.5 text-xs">
-                  <div className="flex justify-between text-neutral-600">
-                    <span>Produits ({quantity} pièce{quantity > 1 ? "s" : ""}) :</span>
-                    <span className="font-semibold">{itemsTotal.toLocaleString("fr-DZ")} DZD</span>
-                  </div>
-                  <div className="flex justify-between text-neutral-600">
-                    <span>Livraison ({curWilaya.name}) :</span>
-                    <span className={deliveryFee === 0 ? "text-emerald-600 font-bold" : "font-semibold"}>
-                      {deliveryFee === 0 ? "GRATUITE" : `${deliveryFee} DZD`}
-                    </span>
-                  </div>
-                  <div className="border-t border-neutral-200 pt-2 flex justify-between font-black text-base text-neutral-900">
-                    <span>Total à régler :</span>
-                    <span className="text-emerald-700 font-mono">{grandTotal.toLocaleString("fr-DZ")} DZD</span>
+                  <div>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="Adresse exacte (quartier, rue, n° de porte...)"
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3.5 text-sm text-neutral-900 font-medium placeholder:text-neutral-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                    />
                   </div>
                 </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl text-center text-base shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition-transform active:scale-95"
-                >
-                  <Check className="w-5 h-5" />
-                  CONFIRMER MA COMMANDE
-                </button>
-              </form>
-            ) : (
-              <div className="text-center py-6 space-y-4">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-10 h-10" />
-                </div>
-                <h4 className="text-xl font-black text-neutral-900">
-                  Commande Confirmée !
-                </h4>
-                <div className="bg-neutral-50 p-4 rounded-xl text-xs space-y-1 text-neutral-700">
-                  <div className="font-mono font-bold text-emerald-700 text-sm">{orderReference}</div>
-                  <div>Montant total : <strong>{grandTotal.toLocaleString("fr-DZ")} DZD</strong></div>
-                  <div>Wilaya : <strong>{curWilaya.name}</strong></div>
-                </div>
-                <p className="text-xs text-neutral-500 leading-relaxed">
-                  Notre équipe de confirmation vous appellera au <strong>{phone}</strong> sous 24h pour valider l'expédition de votre colis.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setOrderSuccess(false)}
-                  className="text-xs text-emerald-600 font-bold underline"
-                >
-                  Passer une autre commande
-                </button>
               </div>
-            )}
-          </div>
+
+              {/* Order Summary Calculation */}
+              <div className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 space-y-3 text-white shadow-xl">
+                <div className="flex justify-between text-sm font-medium text-neutral-300">
+                  <span>Produits ({quantity} pièce{quantity > 1 ? "s" : ""})</span>
+                  <span>{itemsTotal.toLocaleString("fr-DZ")} DZD</span>
+                </div>
+                <div className="flex justify-between text-sm font-medium text-neutral-300">
+                  <span>Livraison ({curWilaya.name})</span>
+                  <span className={deliveryFee === 0 ? "text-emerald-400 font-bold" : ""}>
+                    {deliveryFee === 0 ? "GRATUITE" : `${deliveryFee} DZD`}
+                  </span>
+                </div>
+                <div className="border-t border-neutral-700 pt-3 flex justify-between font-bold text-xl text-white">
+                  <span>TOTAL À PAYER</span>
+                  <span className="tracking-tight text-emerald-400">{grandTotal.toLocaleString("fr-DZ")} <span className="text-sm">DZD</span></span>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-5 rounded-xl text-center text-lg shadow-[0_8px_30px_rgb(16,185,129,0.4)] flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+              >
+                <Check className="w-6 h-6" />
+                {orderCtaText}
+              </button>
+              
+              <div className="flex items-center justify-center gap-2 text-xs text-neutral-500 font-bold uppercase tracking-widest mt-4">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                {orderGuaranteeText}
+              </div>
+            </form>
+          ) : (
+            <div className="text-center py-10 space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 bg-white p-6 rounded-2xl shadow-xl border border-emerald-100">
+              <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-2">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+              <h4 className="text-[24px] font-bold text-neutral-900 tracking-tight">
+                Félicitations !
+              </h4>
+              <p className="text-sm font-bold text-neutral-600">
+                Votre commande a été enregistrée avec succès.
+              </p>
+              
+              <div className="bg-neutral-50 p-5 rounded-2xl border border-neutral-200 text-left space-y-2 text-sm text-neutral-800 font-medium mt-6">
+                <div className="flex justify-between border-b border-neutral-200 pb-2 mb-2">
+                  <span className="text-neutral-500 font-bold">Référence</span>
+                  <strong className="text-neutral-900 font-mono text-base">{orderReference}</strong>
+                </div>
+                <div className="flex justify-between border-b border-neutral-200 pb-2 mb-2">
+                  <span className="text-neutral-500 font-bold">Total à payer</span>
+                  <strong className="text-emerald-600 font-bold text-base">{grandTotal.toLocaleString("fr-DZ")} DZD</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-500 font-bold">Destinataire</span>
+                  <strong className="text-neutral-900">{fullName}</strong>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mt-6">
+                <p className="text-xs text-amber-800 font-bold leading-relaxed">
+                  ⚠️ Un conseiller va vous contacter au <span className="font-bold text-amber-900 text-sm">{phone}</span> dans les plus brefs délais pour confirmer l'expédition. Restez joignable !
+                </p>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => setOrderSuccess(false)}
+                className="text-sm text-neutral-900 font-bold underline decoration-neutral-300 underline-offset-4 pt-6 inline-block hover:text-emerald-600 transition-colors"
+              >
+                Effectuer un autre achat
+              </button>
+            </div>
+          )}
         </div>
       </div>
+      
+      {/* Sticky Mobile Bottom Bar (Hidden on desktop or when success) */}
+      {!orderSuccess && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 p-3 shadow-[0_-10px_40px_rgb(0,0,0,0.1)] sm:hidden z-50 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-full duration-500">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Total</span>
+            <span className="font-bold text-emerald-600 text-xl leading-none">{grandTotal.toLocaleString("fr-DZ")} <span className="text-[10px] text-neutral-400">DZD</span></span>
+          </div>
+          <a 
+            href="#checkout-form"
+            className="bg-emerald-600 text-white font-bold py-3.5 px-6 rounded-xl text-sm flex items-center gap-2 active:scale-95 transition-transform shadow-[0_4px_15px_rgb(16,185,129,0.4)]"
+          >
+            COMMANDER
+          </a>
+        </div>
+      )}
     </div>
   );
 }

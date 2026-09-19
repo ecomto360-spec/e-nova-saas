@@ -15,6 +15,7 @@ import Themes from "./pages/Themes";
 import StorefrontView from "./pages/StorefrontView";
 import Products from "./pages/Products";
 import Orders from "./pages/Orders";
+import OrderDetails from "./pages/OrderDetails";
 import Customers from "./pages/Customers";
 import Reviews from "./pages/Reviews";
 import AbandonedCarts from "./pages/AbandonedCarts";
@@ -78,6 +79,7 @@ export default function App() {
                 <Route path="categories" element={<Categories />} />
                 <Route path="products" element={<Products />} />
                 <Route path="orders" element={<Orders />} />
+                <Route path="orders/:id" element={<OrderDetails />} />
                 <Route path="customers" element={<Customers />} />
                 <Route path="reviews" element={<Reviews />} />
                 <Route path="abandoned-carts" element={<AbandonedCarts />} />

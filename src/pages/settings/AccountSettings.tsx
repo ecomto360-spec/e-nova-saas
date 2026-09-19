@@ -18,6 +18,7 @@ import {
   signOut 
 } from "firebase/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../../lib/phoneUtils";
 
 export default function AccountSettings() {
   const { user } = useAuth();
@@ -281,9 +282,14 @@ export default function AccountSettings() {
   // Update Phone
   const handleUpdatePhone = async () => {
     if (!user) return;
+    const validation = validatePhoneNumber(phoneInput);
+    if (!validation.isValid) {
+      showToast(validation.error || "Numéro de téléphone invalide", "error");
+      return;
+    }
     setPhoneLoading(true);
     try {
-      const cleanPhone = phoneInput.trim();
+      const cleanPhone = cleanAndLimitPhone(phoneInput);
       const tenantRef = doc(db, "tenants", user.uid);
       await updateDoc(tenantRef, { phone: cleanPhone });
       setPhone(cleanPhone);
@@ -900,13 +906,14 @@ export default function AccountSettings() {
                   <span className="absolute left-3 top-2.5 text-xs text-neutral-500 font-mono font-medium">🇩🇿 +213</span>
                   <input
                     type="tel"
+                    maxLength={getPhoneMaxLength(phoneInput)}
                     value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="05 50 12 34 56"
+                    onChange={(e) => setPhoneInput(cleanAndLimitPhone(e.target.value))}
+                    placeholder="0550252565"
                     className="w-full bg-[#1e1e24] border border-neutral-700 rounded-lg pl-20 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 font-mono"
                   />
                 </div>
-                <p className="text-[11px] text-neutral-500">Ex: 0555123456, 0661123456 ou 0770123456</p>
+                <p className="text-[11px] text-neutral-500">10 chiffres commençant par 05, 06 ou 07 (ou avec indicatif ex: 213550252565)</p>
               </div>
             </div>
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { useLanguage } from "../contexts/LanguageContext";
 import { useState, useMemo } from "react";
 import { 
   Link as LinkIcon, 
@@ -38,6 +39,7 @@ const CARRIERS = [
 }));
 
 export default function ShippingCarriers() {
+  const { t, dir } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [linkedCarriers, setLinkedCarriers] = useState<Set<string>>(new Set());
   

@@ -125,15 +125,18 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
       enabled: true,
       title: "En-tête & Bannière Principale",
       data: {
+        topBanner: "⚡ OFFRE LIMITÉE • PAIEMENT À RÉCEPTION (58 WILAYAS)",
         badge: "🔥 Offre Spéciale Limitée - Stock Restant Réduit",
-        headline: `Découvrez ${product.name}`,
+        headline: product.name,
         subheadline: product.description || "Commandez aujourd'hui et profitez de notre réduction exclusive et de la livraison express partout en Algérie !",
         price: product.price,
         originalPrice: product.originalPrice || Math.round(product.price * 1.4),
         rating: 4.9,
+        ratingText: "(4.9/5 • 148 avis)",
         reviewsCount: 148,
+        savingsBadge: "🔥 Économisez aujourd'hui",
         image: product.image,
-        ctaText: "COMMANDER MAINTENANT - PAIEMENT À LA LIVRAISON",
+        ctaText: "COMMANDER MAINTENANT",
         guaranteeText: "✅ Garantie 100% Satisfait ou Échangé • 🚚 Livraison 58 Wilayas"
       }
     },
@@ -143,7 +146,7 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
       enabled: true,
       title: "Compte à Rebours d'Urgence",
       data: {
-        title: "⚡ Dépêchez-vous ! L'offre promotionnelle expire dans :",
+        title: "LA PROMOTION SE TERMINE DANS :",
         hours: 2,
         minutes: 47,
         seconds: 35,
@@ -154,31 +157,23 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
       id: "sec-features",
       type: "features",
       enabled: true,
-      title: "Avantages Clés & Points Forts",
+      title: "Détails & Arguments du Produit",
       data: {
-        heading: "Pourquoi choisir ce produit ?",
-        items: [
-          {
-            icon: "ShieldCheck",
-            title: "Qualité Supérieure Certifiée",
-            desc: "Fabriqué avec des matériaux haut de gamme testés pour durer dans le temps."
-          },
-          {
-            icon: "Truck",
-            title: "Livraison Rapide 58 Wilayas",
-            desc: "Recevez votre colis à domicile ou au bureau en 24h à 48h partout en Algérie."
-          },
-          {
-            icon: "Banknote",
-            title: "Paiement à la Livraison (COD)",
-            desc: "Ne payez rien à l'avance. Inspectez votre colis avant de régler le livreur."
-          },
-          {
-            icon: "RotateCcw",
-            title: "Échange Facile & Rapide",
-            desc: "Service après-vente réactif en cas de souci de taille ou de conformité."
-          }
-        ]
+        heading: "Détails du produit",
+        description: product.description || "Achetez authentique avec paiement à la livraison partout en Algérie. Service client 7j/7 et garantie satisfait ou remboursé.",
+        badges: [
+          { id: "b1", text: "PAIEMENT À RÉCEPTION", icon: "Banknote" },
+          { id: "b2", text: "LIVRAISON 58 WILAYAS", icon: "Truck" },
+          { id: "b3", text: "ÉCHANGE FACILE (7J)", icon: "RotateCcw" },
+          { id: "b4", text: "GARANTIE QUALITÉ", icon: "ShieldCheck" }
+        ],
+        bullets: [
+          "Qualité supérieure et durable",
+          "Utilisation simple et pratique",
+          "Design moderne et ergonomique",
+          "Approuvé par des milliers de clients"
+        ],
+        ctaText: "JE VEUX MON PACK"
       }
     },
     {
@@ -206,7 +201,7 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
         bundles: [
           {
             id: "b1",
-            name: "1 Pièce (Découverte)",
+            name: "Pack 1 Pièce",
             quantity: 1,
             price: product.price,
             badge: "Standard",
@@ -214,19 +209,21 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
           },
           {
             id: "b2",
-            name: "Pack de 2 Pièces",
+            name: "Pack 2 Pièces",
             quantity: 2,
             price: Math.round(product.price * 1.8),
-            badge: "⭐ Le plus populaire (-15%)",
+            badge: "LE PLUS VENDU",
+            discountNote: "-15% de réduction",
             isPopular: true,
             shippingNote: "Frais de port réduits"
           },
           {
             id: "b3",
-            name: "Pack Famille (3 Pièces)",
+            name: "Pack Famille (3)",
             quantity: 3,
             price: Math.round(product.price * 2.5),
-            badge: "🔥 Super Économie (-25%)",
+            badge: "LIVRAISON OFFERTE",
+            discountNote: "Livraison 0 DZD",
             shippingNote: "🎉 Livraison GRATUITE !"
           }
         ]
@@ -236,30 +233,32 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
       id: "sec-reviews",
       type: "reviews",
       enabled: true,
-      title: "Avis Clients Vérifiés",
+      title: "Avis & Témoignages Clients",
       data: {
-        heading: "Ce que disent nos clients en Algérie",
-        averageRating: 4.9,
+        heading: "Ce que nos clients disent",
         reviews: [
           {
-            name: "Karim B. (Alger)",
+            id: "r1",
+            name: "Amine K.",
+            wilaya: "Alger",
             rating: 5,
-            date: "Il y a 2 jours",
-            comment: "Franchement la qualité est au top, exactement comme sur les photos. Le livreur est venu en 24h à Kouba. Je recommande à 100% !",
+            comment: "Livraison super rapide en 24h, le produit est conforme à la description. Je recommande vivement !",
             verified: true
           },
           {
-            name: "Sarah M. (Oran)",
+            id: "r2",
+            name: "Samira B.",
+            wilaya: "Oran",
             rating: 5,
-            date: "Il y a 4 jours",
-            comment: "Service client très courtois et produit impeccable. J'ai commandé le pack de 2, très satisfaite du rapport qualité/prix.",
+            comment: "Très satisfaite de mon achat. Le service client est au top et le fait de payer à la livraison m'a vraiment rassurée.",
             verified: true
           },
           {
-            name: "Amine T. (Constantine)",
+            id: "r3",
+            name: "Yacine M.",
+            wilaya: "Sétif",
             rating: 5,
-            date: "La semaine dernière",
-            comment: "Paiement à la livraison sans aucun souci. Produit conforme et bien emballé.",
+            comment: "Qualité excellente pour le prix. C'est exactement ce que je cherchais. Merci !",
             verified: true
           }
         ]
@@ -269,25 +268,24 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
       id: "sec-faq",
       type: "faq",
       enabled: true,
-      title: "Foire Aux Questions (FAQ)",
+      title: "Questions Fréquentes (FAQ)",
       data: {
-        heading: "Questions Fréquentes",
+        heading: "Questions fréquentes",
         faqs: [
           {
-            q: "Combien de temps prend la livraison ?",
-            a: "La livraison prend généralement 24h pour Alger et ses environs, et 48h à 72h pour les autres wilayas d'Algérie."
+            id: "f1",
+            q: "Comment se passe la livraison ?",
+            a: "Nous livrons dans les 58 wilayas. Le délai est généralement de 24h à 72h selon votre région (jusqu'à 5 jours pour le Grand Sud)."
           },
           {
-            q: "Comment s'effectue le paiement ?",
-            a: "Le paiement se fait en espèces directement au livreur au moment de la réception de votre commande."
+            id: "f2",
+            q: "Puis-je payer à la réception ?",
+            a: "Absolument ! Vous ne payez que lorsque le livreur vous remet le colis en main propre, après vérification."
           },
           {
-            q: "Puis-je vérifier le colis avant de payer ?",
-            a: "Oui, vous avez le droit de vérifier le colis en présence du livreur avant de procéder au règlement."
-          },
-          {
-            q: "Que faire en cas de problème ou de mauvaise taille ?",
-            a: "Notre service client est disponible 7j/7 pour effectuer un échange sans frais supplémentaires dans un délai de 7 jours."
+            id: "f3",
+            q: "Et si le produit a un défaut ?",
+            a: "Vous bénéficiez d'une garantie d'échange de 7 jours. Contactez-nous et nous remplacerons le produit gratuitement."
           }
         ]
       }
@@ -296,13 +294,14 @@ export const getDefaultSectionsForProduct = (product: LandingProduct): LandingSe
       id: "sec-order_form",
       type: "order_form",
       enabled: true,
-      title: "Formulaire de Commande Express COD",
+      title: "Formulaire de Commande",
       data: {
-        heading: "Remplissez vos informations pour commander",
-        subheading: "Paiement à la réception du colis",
-        btnText: "CONFIRMER MA COMMANDE",
-        successTitle: "Merci ! Votre commande a été enregistrée avec succès.",
-        successMsg: "Notre équipe vous appellera dans les plus brefs délais pour confirmer l'expédition de votre colis."
+        heading: "Finaliser la commande",
+        subheading: "Remplissez ce formulaire et payez à la réception",
+        btnText: "COMMANDER MAINTENANT",
+        guaranteeText: "PAIEMENT 100% SÉCURISÉ À LA LIVRAISON",
+        successTitle: "Félicitations !",
+        successMsg: "Votre commande a été enregistrée avec succès."
       }
     }
   ];
