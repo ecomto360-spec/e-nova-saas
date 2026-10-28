@@ -1,0 +1,5 @@
+                           {customerPhoneError ? (
+                             <p className="text-xs text-red-600 font-medium text-right -mt-2 mb-2">{customerPhoneError}</p>
+                           ) : (
+                             <p className="text-[11px] text-gray-400 text-right -mt-2 mb-2">10 أرقام تبدأ بـ 05 أو 06 أو 07 (أو مع الرمز 213 مثال: 213550252565)</p>
+                           )}

@@ -1,6 +1,6 @@
 import { db } from "./src/lib/firebase-backend.js";
 import { collection, query, where, getDocs, setDoc, doc } from "firebase/firestore";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
 async function seedAdmin() {
