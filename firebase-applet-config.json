@@ -3,7 +3,7 @@
   "appId": "1:795929637617:web:a29219d699b5708c04af50",
   "apiKey": "AIzaSyAPba-JHcnm3oJhfOK49UIliaif4d346Is",
   "authDomain": "e-nova-119f6.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-enovasaas-3595c32b-1313-46b6-ac00-5ae12a9740ed",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "e-nova-119f6.firebasestorage.app",
   "messagingSenderId": "795929637617",
   "measurementId": "",
