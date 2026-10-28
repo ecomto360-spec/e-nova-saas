@@ -2,20 +2,19 @@ import { initializeApp } from 'firebase/app';
 import { initializeFirestore } from 'firebase/firestore';
 
 // Configuration Firebase intégrée en dur (copie conforme de firebase-applet-config.json).
-// Obligatoire pour le serverless Vercel : dans la fonction api/[...path].ts, le bundle
+// Obligatoire pour le serverless Vercel : dans la fonction api/, le bundle
 // n'a pas accès au fichier JSON via process.cwd(). Le fichier firebase-applet-config.json
-// reste utilisé côté client (src/lib/firebase.ts). Penser à synchroniser les deux si besoin.
+// reste utilisé côté client (src/lib/firebase.ts). Penser à synchroniser les deux.
+// Projet : e-nova-119f6 (nouveau projet Firebase, l'ancien gen-lang-client étant suspendu).
 const firebaseConfig = {
-  projectId: "gen-lang-client-0686340569",
-  appId: "1:949317596065:web:3218c506c00bbfaddb11e0",
-  apiKey: "AIzaSyD0VgLiJIrghBO3_yPu92q4mnAg0JTsbco",
-  authDomain: "gen-lang-client-0686340569.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-enova-f2d71f7e-58e8-4083-985b-40a7a193ad0c",
-  storageBucket: "gen-lang-client-0686340569.firebasestorage.app",
-  messagingSenderId: "949317596069",
-  measurementId: "",
-  oAuthClientId: "949317596069-mdoonfovjad5v0p83536l5neujif1lnm.apps.googleusercontent.com",
-  recaptchaSiteKey: "",
+  projectId: "e-nova-119f6",
+  appId: "1:795929637617:web:02d543cbd8b4dcea04af50",
+  apiKey: "AIzaSyAPba-JHcnm3oJhfOK49UIliaif4d346Is",
+  authDomain: "e-nova-119f6.firebaseapp.com",
+  firestoreDatabaseId: "(default)",
+  storageBucket: "e-nova-119f6.firebasestorage.app",
+  messagingSenderId: "795929637617",
+  measurementId: "G-P72KWQ5N5E",
 };
 
 const app = initializeApp(firebaseConfig);
