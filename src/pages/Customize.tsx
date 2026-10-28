@@ -133,7 +133,7 @@ export default function Customize() {
           setConfig(prev => ({ ...prev, ...data.config }));
         }
       } catch (err) {
-        console.error("Failed to load config:", err);
+        console.warn("Notice loading config:", err);
       }
     };
     loadConfig();
@@ -736,6 +736,7 @@ export default function Customize() {
                 theme={currentTheme}
                 config={{ ...config, isActivated: true }}
                 currentView={previewView}
+                tenantId={auth.currentUser?.uid || tenantData?.id}
                 onSectionSelect={(sectionId) => {
                   if (sectionId === 'header') { setActiveMenu('header'); }
                   if (sectionId === 'hero_banner') { setActiveMenu('hero'); }

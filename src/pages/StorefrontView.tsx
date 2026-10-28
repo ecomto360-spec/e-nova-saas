@@ -9,6 +9,7 @@ import { ThemeStorePreview } from "../components/storefront/ThemeStorePreview";
 import { StoreCustomizerConfig, defaultStoreConfig } from "../components/admin/StoreCustomizerConfig";
 import { isTenantExpired } from "../lib/checkExpiration";
 import { StoreUnavailable } from "../components/storefront/StoreUnavailable";
+import { deduplicateProducts } from "../lib/orderUtils";
 
 export default function StorefrontView() {
   const { storeSlug } = useParams<{ storeSlug: string }>();
@@ -17,9 +18,29 @@ export default function StorefrontView() {
   const queryParams = new URLSearchParams(location.search);
   const initialProductId = location.state?.productId || queryParams.get('productId');
   const [activeTheme, setActiveTheme] = useState<StoreTheme>(STORE_THEMES[0]);
-  const [storeName, setStoreName] = useState<string>("أزياء الموضة");
-  const [loading, setLoading] = useState(true);
-  const [actualProducts, setActualProducts] = useState<any[]>([]);
+  const [storeName, setStoreName] = useState<string>(() => {
+    return localStorage.getItem("dzbuild_store_name") || "أزياء الموضة";
+  });
+  const [loading, setLoading] = useState(false);
+  const [actualProducts, setActualProducts] = useState<any[]>(() => {
+    try {
+      const cachedProds = localStorage.getItem("dzbuild_products");
+      if (cachedProds) {
+        const parsed = JSON.parse(cachedProds);
+        if (Array.isArray(parsed) && parsed.length > 0) return deduplicateProducts(parsed);
+      }
+      const tenantData = localStorage.getItem("dzbuild_tenant_data");
+      if (tenantData) {
+        const parsedT = JSON.parse(tenantData);
+        if (parsedT.products && Array.isArray(parsedT.products) && parsedT.products.length > 0) {
+          return deduplicateProducts(parsedT.products);
+        }
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
   const [actualCategories, setActualCategories] = useState<any[]>([]);
   const [storeConfig, setStoreConfig] = useState<StoreCustomizerConfig | undefined>(undefined);
   const [isExpired, setIsExpired] = useState(false);
@@ -31,86 +52,152 @@ export default function StorefrontView() {
     const loadStoreSettings = async (uid?: string) => {
       let targetUserId = uid;
       
-      // If a storeSlug is provided in the URL, fetch the tenant by storeUrl (slug)
-            if (storeSlug) {
-        try {
-          const tenantQuery = query(collection(db, "tenants"), where("storeUrl", "==", storeSlug));
-          const tenantSnap = await getDocs(tenantQuery);
-          if (!tenantSnap.empty) {
-            targetUserId = tenantSnap.docs[0].id;
-            const data = tenantSnap.docs[0].data();
-            if (isTenantExpired(data)) {
-               setIsExpired(true);
-            }
-            if (data.storeName) setStoreName(data.storeName);
-            if (data.activeTheme) {
-              const found = STORE_THEMES.find(t => t.id === data.activeTheme);
-              if (found) setActiveTheme(found);
-            }
-          }
-        } catch (err) {
-          console.error("Error fetching tenant by slug:", err);
-        }
-      }
-
-      if (targetUserId) {
-        try {
-          // ALWAYS fetch tenant doc to check expiration
-          const tRef = doc(db, "tenants", targetUserId);
-          setTenantId(targetUserId);
-          const tSnap = await getDoc(tRef);
-          if (tSnap.exists()) {
-             const data = tSnap.data();
-             if (isTenantExpired(data)) {
+      const fetchRemoteStorefront = async () => {
+        // If a storeSlug is provided in the URL, fetch the tenant by storeUrl (slug)
+        if (storeSlug) {
+          try {
+            const tenantQuery = query(collection(db, "tenants"), where("storeUrl", "==", storeSlug));
+            const tenantSnap = await getDocs(tenantQuery);
+            if (!tenantSnap.empty) {
+              targetUserId = tenantSnap.docs[0].id;
+              const data = tenantSnap.docs[0].data();
+              if (isTenantExpired(data)) {
                  setIsExpired(true);
-             }
-             if (data.storeName) setStoreName(data.storeName);
-             if (data.activeTheme) {
-                 const found = STORE_THEMES.find(t => t.id === data.activeTheme);
-                 if (found) setActiveTheme(found);
-             }
-          }
-
-          // Fetch Custom Store Config
-          const confRef = doc(db, "store_config", targetUserId);
-          const confSnap = await getDoc(confRef);
-          if (confSnap.exists()) {
-            const confData = confSnap.data();
-            if (confData.activeThemeId) {
-              const found = STORE_THEMES.find(t => t.id === confData.activeThemeId);
-              if (found) setActiveTheme(found);
+              }
+              if (data.storeName) setStoreName(data.storeName);
+              if (data.activeTheme) {
+                const found = STORE_THEMES.find(t => t.id === data.activeTheme);
+                if (found) setActiveTheme(found);
+              }
             }
-            if (confData.config) {
-              setStoreConfig(confData.config);
-            }
+          } catch (err) {
+            // Offline fallback
           }
-
-          // Fetch products
-          const productsQuery = query(collection(db, "products"), where("userId", "==", targetUserId));
-          const productsSnap = await getDocs(productsQuery);
-          const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setActualProducts(productsData);
-
-          // Fetch categories
-          const categoriesQuery = query(collection(db, "categories"), where("userId", "==", targetUserId), where("status", "==", "active"));
-          const categoriesSnap = await getDocs(categoriesQuery);
-          const categoriesData = categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setActualCategories(categoriesData);
-        } catch (err) {
-          console.error("Error fetching storefront data:", err);
         }
-      }
+
+        if (targetUserId) {
+          try {
+            const tRef = doc(db, "tenants", targetUserId);
+            setTenantId(targetUserId);
+            const tSnap = await getDoc(tRef);
+            if (tSnap.exists()) {
+               const data = tSnap.data();
+               if (isTenantExpired(data)) {
+                   setIsExpired(true);
+               }
+               if (data.storeName) setStoreName(data.storeName);
+               if (data.activeTheme) {
+                   const found = STORE_THEMES.find(t => t.id === data.activeTheme);
+                   if (found) setActiveTheme(found);
+               }
+            }
+
+            // Fetch Custom Store Config
+            const confRef = doc(db, "store_config", targetUserId);
+            const confSnap = await getDoc(confRef);
+            if (confSnap.exists()) {
+              const confData = confSnap.data();
+              if (confData.activeThemeId) {
+                const found = STORE_THEMES.find(t => t.id === confData.activeThemeId);
+                if (found) setActiveTheme(found);
+              }
+              if (confData.config) {
+                setStoreConfig(confData.config);
+              }
+            }
+
+            // Fetch products
+            let productsMap = new Map<string, any>();
+
+            // 1. Seed from localStorage dzbuild_products & dzbuild_tenant_data
+            try {
+              const cachedProds = localStorage.getItem("dzbuild_products");
+              if (cachedProds) {
+                const parsed = JSON.parse(cachedProds);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach((p: any) => { if (p && p.id) productsMap.set(String(p.id), p); });
+                }
+              }
+              const tenantSaved = localStorage.getItem("dzbuild_tenant_data");
+              if (tenantSaved) {
+                const parsedT = JSON.parse(tenantSaved);
+                if (parsedT.products && Array.isArray(parsedT.products)) {
+                  parsedT.products.forEach((p: any) => { if (p && p.id && !productsMap.has(String(p.id))) productsMap.set(String(p.id), p); });
+                }
+              }
+            } catch {}
+
+            // 2. Fetch from Firestore products collection
+            try {
+              const productsQuery = query(collection(db, "products"), where("userId", "==", targetUserId));
+              const productsSnap = await getDocs(productsQuery);
+              productsSnap.docs.forEach(doc => {
+                productsMap.set(String(doc.id), { id: doc.id, ...doc.data() });
+              });
+            } catch (pErr) {
+              // Offline fallback
+            }
+
+            // 3. Merge with tenant document products array
+            if (tSnap.exists()) {
+              const tData = tSnap.data();
+              if (tData.products && Array.isArray(tData.products) && tData.products.length > 0) {
+                tData.products.forEach((tp: any) => {
+                  if (tp && tp.id) {
+                    productsMap.set(String(tp.id), tp);
+                  }
+                });
+              }
+            }
+
+            if (productsMap.size > 0) {
+              const clean = deduplicateProducts(Array.from(productsMap.values()));
+              setActualProducts(clean);
+            }
+
+            // Fetch categories
+            try {
+              const categoriesQuery = query(collection(db, "categories"), where("userId", "==", targetUserId), where("status", "==", "active"));
+              const categoriesSnap = await getDocs(categoriesQuery);
+              const categoriesData = categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+              if (categoriesData.length > 0) setActualCategories(categoriesData);
+            } catch {}
+          } catch (err) {
+            // Offline fallback
+          }
+        }
+      };
+
+      const timeoutPromise = new Promise(res => setTimeout(res, 800));
+      await Promise.race([fetchRemoteStorefront(), timeoutPromise]);
       setLoading(false);
     };
 
+    const handleRealtimeUpdate = () => {
+      try {
+        const savedProds = localStorage.getItem("dzbuild_products");
+        if (savedProds) {
+          const parsed = JSON.parse(savedProds);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setActualProducts(deduplicateProducts(parsed));
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener("products_updated", handleRealtimeUpdate);
+    window.addEventListener("storage", handleRealtimeUpdate);
+
     if (storeSlug) {
       loadStoreSettings();
+    } else if (auth.currentUser) {
+      loadStoreSettings(auth.currentUser.uid);
     } else {
       unsubscribeAuth = onAuthStateChanged(auth, (user) => {
         if (user) {
           loadStoreSettings(user.uid);
         } else {
-          setLoading(false);
+          loadStoreSettings();
         }
       });
     }

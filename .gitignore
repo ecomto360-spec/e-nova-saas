@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+.aistudio/
+address_block.txt
+email_block.txt
+phone_hint.txt
+changes.json

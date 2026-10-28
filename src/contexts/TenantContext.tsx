@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../hooks/useAuth";
 
@@ -9,6 +9,7 @@ interface TenantData {
   subscriptionActive?: boolean;
   planExpiresAt?: string;
   plan?: string;
+  isTestAccount?: boolean;
   [key: string]: any;
 }
 
@@ -23,42 +24,129 @@ interface TenantContextType {
 const TenantContext = createContext<TenantContextType>({
   tenantData: null,
   isTrialExpired: false,
-  remainingTrialDays: 3,
+  remainingTrialDays: 365,
   showBanner: false,
   bannerMessage: "",
 });
 
 export const TenantProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
-  const [tenantData, setTenantData] = useState<TenantData | null>(null);
+  const [tenantData, setTenantData] = useState<TenantData | null>(() => {
+    try {
+      const saved = localStorage.getItem("dzbuild_tenant_data");
+      if (saved) return JSON.parse(saved);
+      const storeName = localStorage.getItem("dzbuild_store_name");
+      if (storeName) {
+        return {
+          storeName,
+          status: 'active',
+          plan: 'pro',
+          trialStartDate: new Date().toISOString()
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
-    let isMounted = true;
-    if (user) {
-      const fetchTenant = async () => {
-        try {
-          const docRef = doc(db, "tenants", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists() && isMounted) {
-            setTenantData(docSnap.data() as TenantData);
-          }
-        } catch (error) {
-          console.error("Error fetching tenant", error);
-        }
-      };
-      fetchTenant();
-    } else {
+    if (!user) {
       setTenantData(null);
+      return;
     }
-    return () => { isMounted = false; };
+
+    const docRef = doc(db, "tenants", user.uid);
+
+    // Auto-provision 365 days for test account nabsterzero@gmail.com
+    if (user.email === "nabsterzero@gmail.com") {
+      const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      const testData: TenantData = {
+        email: "nabsterzero@gmail.com",
+        plan: "pro",
+        planExpiresAt: oneYearFromNow,
+        subscriptionActive: true,
+        status: "active",
+        isTestAccount: true,
+        storeName: tenantData?.storeName || "Enova - Boutique Test",
+        updatedAt: new Date().toISOString()
+      };
+      setDoc(docRef, testData, { merge: true }).catch(() => {});
+    }
+
+    // Listen to real-time updates with graceful error fallback
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = onSnapshot(
+        docRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as TenantData;
+            
+            // If it's nabsterzero, guarantee 365 days expiration
+            if (user.email === "nabsterzero@gmail.com" || data.email === "nabsterzero@gmail.com") {
+              if (!data.planExpiresAt || new Date(data.planExpiresAt).getTime() < Date.now() + 300 * 24 * 60 * 60 * 1000) {
+                data.planExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+                data.plan = "pro";
+                data.subscriptionActive = true;
+                data.isTestAccount = true;
+              }
+            }
+
+            setTenantData(data);
+            try {
+              localStorage.setItem("dzbuild_tenant_data", JSON.stringify(data));
+            } catch {}
+          } else if (user.email === "nabsterzero@gmail.com") {
+            const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+            const initialTest: TenantData = {
+              email: "nabsterzero@gmail.com",
+              plan: "pro",
+              planExpiresAt: oneYearFromNow,
+              subscriptionActive: true,
+              status: "active",
+              isTestAccount: true,
+              storeName: "Enova - Boutique Test"
+            };
+            setTenantData(initialTest);
+            setDoc(docRef, initialTest, { merge: true }).catch(() => {});
+          }
+        },
+        (error) => {
+          // Offline or transient connection drop fallback
+          const cached = localStorage.getItem("dzbuild_tenant_data");
+          if (cached) {
+            try {
+              setTenantData(JSON.parse(cached));
+            } catch {}
+          }
+        }
+      );
+    } catch (err) {
+      const cached = localStorage.getItem("dzbuild_tenant_data");
+      if (cached) {
+        try {
+          setTenantData(JSON.parse(cached));
+        } catch {}
+      }
+    }
+
+    return () => unsubscribe();
   }, [user]);
 
   let isTrialExpired = false;
-  let remainingTrialDays = 3;
+  let remainingTrialDays = 365;
   let showBanner = false;
   let bannerMessage: React.ReactNode = "";
 
-  if (tenantData) {
+  const isVipTestAccount = user?.email === "nabsterzero@gmail.com" || tenantData?.email === "nabsterzero@gmail.com" || tenantData?.isTestAccount;
+
+  if (isVipTestAccount) {
+    isTrialExpired = false;
+    remainingTrialDays = 365;
+    showBanner = false;
+    bannerMessage = "";
+  } else if (tenantData) {
     const now = new Date();
     
     // Si l'utilisateur a un abonnement actif/existant avec une date d'expiration

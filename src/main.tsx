@@ -20,17 +20,19 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
 }
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import App from './App';
+import App from './App.tsx';
 import './index.css';
 
-// Handle benign auth popup closures gracefully
+// Handle benign auth popup closures and extension rejections gracefully
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
     if (
       reason?.code === 'auth/popup-closed-by-user' ||
       reason?.code === 'auth/cancelled-popup-request' ||
-      (typeof reason?.message === 'string' && reason.message.includes('auth/popup-closed-by-user'))
+      (typeof reason?.message === 'string' && reason.message.includes('auth/popup-closed-by-user')) ||
+      (typeof reason?.message === 'string' && reason.message.includes('getter')) ||
+      (typeof reason?.stack === 'string' && reason.stack.includes('chrome-extension://'))
     ) {
       event.preventDefault();
     }

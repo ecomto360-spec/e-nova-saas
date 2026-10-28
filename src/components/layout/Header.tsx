@@ -12,6 +12,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../../lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { getOrderDeduplicationKey } from "../../lib/orderUtils";
+import { formatOrderDateTime, formatTime, formatDate } from "../../lib/date";
 
 interface NotificationItem {
   id: string;
@@ -33,56 +35,7 @@ interface NotificationItem {
 }
 
 function parseOrderDateTime(data: any): { dateStr: string; timeStr: string; timestamp: number } {
-  let d: Date | null = null;
-  const pad = (n: number) => String(n).padStart(2, "0");
-
-  if (data.createdAt?.toDate) {
-    d = data.createdAt.toDate();
-  } else if (data.createdAt && typeof data.createdAt === "string") {
-    const parsed = new Date(data.createdAt);
-    if (!isNaN(parsed.getTime())) d = parsed;
-  } else if (typeof data.createdAt === "number") {
-    d = new Date(data.createdAt);
-  } else if (data.date) {
-    const raw = String(data.date).trim();
-    if (raw.includes(" ")) {
-      const [datePart, timePart] = raw.split(" ");
-      if (datePart && (datePart.includes("/") || datePart.includes("-"))) {
-        const segs = datePart.split(/[/ -]/).map(Number);
-        let [hh, mm] = [12, 0];
-        if (timePart && timePart.includes(":")) {
-          const tParts = timePart.split(":").map(Number);
-          hh = tParts[0] || 0;
-          mm = tParts[1] || 0;
-        }
-        if (segs[0] > 1000) {
-          // YYYY/MM/DD
-          d = new Date(segs[0], (segs[1] || 1) - 1, segs[2] || 1, hh, mm);
-        } else {
-          // DD/MM/YYYY
-          d = new Date(segs[2] || 2026, (segs[1] || 1) - 1, segs[0] || 1, hh, mm);
-        }
-      }
-    } else {
-      const parsed = new Date(raw);
-      if (!isNaN(parsed.getTime())) d = parsed;
-    }
-  }
-
-  if (!d || isNaN(d.getTime())) {
-    const now = new Date();
-    return {
-      dateStr: `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())}`,
-      timeStr: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-      timestamp: Date.now()
-    };
-  }
-
-  return {
-    dateStr: `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`,
-    timeStr: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-    timestamp: d.getTime()
-  };
+  return formatOrderDateTime(data);
 }
 
 function formatTimeAgo(timestamp: number): string {
@@ -210,69 +163,6 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
         });
       }
 
-      // If no orders found yet in Firestore, provide recent demo orders with exact times
-      if (list.length === 0) {
-        const demoOrders: NotificationItem[] = [
-          {
-            id: "demo_1005",
-            orderId: "1005",
-            type: "order",
-            title: "Nouvelle commande #1005",
-            orderNumber: "1005",
-            client: "Amine Benali",
-            phone: "0555 12 34 56",
-            total: "4 500 DA",
-            location: "Bab El Oued, Alger",
-            orderTime: "10:30",
-            orderDate: "Aujourd'hui",
-            timeAgo: "Il y a 2h",
-            timestamp: Date.now() - 7200000,
-            link: "/dashboard/orders",
-            status: "En attente",
-            message: "Amine Benali • 4 500 DA • Bab El Oued, Alger"
-          },
-          {
-            id: "demo_1004",
-            orderId: "1004",
-            type: "order",
-            title: "Nouvelle commande #1004",
-            orderNumber: "1004",
-            client: "Sarah Mansouri",
-            phone: "0770 98 76 54",
-            total: "12 000 DA",
-            location: "Bir El Djir, Oran",
-            orderTime: "14:15",
-            orderDate: "Hier",
-            timeAgo: "Hier",
-            timestamp: Date.now() - 86400000,
-            link: "/dashboard/orders",
-            status: "Confirmée",
-            message: "Sarah Mansouri • 12 000 DA • Bir El Djir, Oran"
-          },
-          {
-            id: "demo_1003",
-            orderId: "1003",
-            type: "order",
-            title: "Nouvelle commande #1003",
-            orderNumber: "1003",
-            client: "Karim Slimani",
-            phone: "0661 23 45 67",
-            total: "8 900 DA",
-            location: "El Khroub, Constantine",
-            orderTime: "09:45",
-            orderDate: "Hier",
-            timeAgo: "Hier",
-            timestamp: Date.now() - 95000000,
-            link: "/dashboard/orders",
-            status: "Livrée",
-            message: "Karim Slimani • 8 900 DA • El Khroub, Constantine"
-          }
-        ];
-        demoOrders.forEach(d => ordersMap.set(d.id, d));
-        setNotifications(demoOrders);
-        return;
-      }
-
       // Sort newest first
       list.sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(list);
@@ -286,7 +176,7 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
       const phone = data.phone || data.customerPhone || "";
       const total = data.total ? `${Number(data.total).toLocaleString()} DA` : "";
       const location = [data.commune, data.wilaya].filter(Boolean).join(", ");
-      const key = data.reference || data.orderNumber || (data.id ? `doc_${data.id}` : `evt_${Date.now()}`);
+      const key = getOrderDeduplicationKey(data, data.id);
       const notifId = `order_${key}`;
 
       // Remove demo items if real orders are arriving
@@ -475,10 +365,9 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const handleTestAlert = () => {
     playOrderChime();
     const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
     const num = Math.floor(1000 + Math.random() * 9000);
-    const testTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const testDate = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())}`;
+    const testTime = formatTime(now, true);
+    const testDate = formatDate(now);
 
     const testItem: NotificationItem = {
       id: `test_${Date.now()}`,

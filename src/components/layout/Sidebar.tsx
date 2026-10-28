@@ -31,44 +31,26 @@ import {
   Globe,
   Code,
   Paintbrush,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Copy
 } from "lucide-react";
 
 export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const { isTrialExpired } = useTenant();
-  const [storeName, setStoreName] = useState(localStorage.getItem("dzbuild_store_name") || "Boutique DZ");
+  const { tenantData, isTrialExpired } = useTenant();
+  const [storeName, setStoreName] = useState(() => {
+    return tenantData?.storeName || localStorage.getItem("dzbuild_store_name") || "Boutique Enova";
+  });
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const fetchTenantData = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        try {
-          const docRef = doc(db, "tenants", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists() && docSnap.data().storeName) {
-            const name = docSnap.data().storeName;
-            setStoreName(name);
-            localStorage.setItem("dzbuild_store_name", name); // Sync local storage
-          }
-        } catch (error) {
-          console.error("Error fetching tenant data:", error);
-        }
-      }
-    };
-    
-    // Fetch immediately
-    fetchTenantData();
-
-    // Listen to auth state changes to re-fetch if user changes
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) fetchTenantData();
-    });
-
-    return () => unsubscribe();
-  }, []);
+    if (tenantData?.storeName) {
+      setStoreName(tenantData.storeName);
+      localStorage.setItem("dzbuild_store_name", tenantData.storeName);
+    }
+  }, [tenantData?.storeName]);
   
   const fullNavigation = [
     { name: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard },
@@ -151,6 +133,40 @@ export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
           <img src="/logo.png" alt="E nova" className="h-8 sm:h-10 w-auto max-w-[180px] object-contain shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<div class="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500 text-black"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></div>'); }} />
         </div>
         <span className="text-sm font-semibold tracking-wider text-gray-900 truncate w-full dark:text-white">{storeName}</span>
+        
+        <div className="w-full mt-1 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 truncate min-w-0">
+            <Store className="w-4 h-4 text-yellow-500 shrink-0" />
+            <span className="text-xs text-gray-700 dark:text-neutral-300 truncate">
+              {tenantData?.storeUrl ? `${window.location.host}/store/${tenantData.storeUrl}` : "URL non configurée"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {tenantData?.storeUrl && (
+              <a
+                href={`/store/${tenantData.storeUrl}`}
+                target="_blank"
+                rel="noreferrer"
+                title="Voir la boutique"
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-600 dark:text-yellow-400 transition-colors"
+              >
+                <Globe className="w-3.5 h-3.5" />
+              </a>
+            )}
+            <button
+              onClick={() => {
+                const url = tenantData?.storeUrl ? `${window.location.origin}/store/${tenantData.storeUrl}` : window.location.origin;
+                navigator.clipboard.writeText(url);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              title={copied ? "Copié !" : "Copier le lien"}
+              className="w-7 h-7 flex items-center justify-center rounded-lg bg-yellow-500 text-black hover:bg-yellow-400 transition-colors shadow-sm relative"
+            >
+              {copied ? <span className="text-[10px] font-bold">✓</span> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
       </div>
 
       <nav className="flex-1 space-y-1">

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { StoreTheme } from "../../data/themesData";
 import { ThemeStorePreview } from "./ThemeStorePreview";
+import { auth } from "../../lib/firebase";
 
 interface ThemePreviewModalProps {
   theme: StoreTheme;
@@ -181,7 +182,7 @@ export function ThemePreviewModal({
 
           {/* Actual Storefront Component */}
           <div className="w-full bg-[#fafafa]">
-            <ThemeStorePreview theme={theme} />
+            <ThemeStorePreview theme={theme} tenantId={auth.currentUser?.uid} />
           </div>
         </div>
       </div>

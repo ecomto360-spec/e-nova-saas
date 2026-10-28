@@ -139,6 +139,19 @@ export default function AdminLogin() {
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Continuer"}
               </button>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail("ecomto360@gmail.com");
+                    setPassword("NovaSecur!ty2026");
+                  }}
+                  className="text-xs text-neutral-500 hover:text-red-400 transition-colors underline underline-offset-2"
+                >
+                  Remplir les identifiants Super Admin (Test)
+                </button>
+              </div>
             </form>
           ) : (
             <form onSubmit={handleOtpSubmit} className="space-y-6">

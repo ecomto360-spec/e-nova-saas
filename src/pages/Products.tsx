@@ -53,9 +53,12 @@ import {
   runTransaction
 } from "firebase/firestore";
 import { ConfirmModal } from "../components/common/ConfirmModal";
-import { VariantManager } from "../components/admin/VariantManager";
+import { VariantManager, VariantType as AdminVariantType, VariantOptionDef as AdminVariantOptionDef } from "../components/admin/VariantManager";
+import { OfferManager } from "../components/admin/OfferManager";
+import { ProductOffer } from "../types/offers";
+import { deduplicateProducts } from "../lib/orderUtils";
 
-export type VariantType = "text" | "color" | "image_text" | "multiple";
+export type VariantType = AdminVariantType;
 
 export interface VariantOptionDef {
   value: string;
@@ -92,6 +95,7 @@ export interface ProductItem {
   sku?: string;
   status: "active" | "inactive";
   variants?: ProductVariant[];
+  offers?: ProductOffer[];
   userId: string;
   createdAt?: any;
   updatedAt?: any;
@@ -104,9 +108,22 @@ export default function Products() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [products, setProducts] = useState<ProductItem[]>(() => {
+    try {
+      const cached = localStorage.getItem("dzbuild_products");
+      if (cached) return JSON.parse(cached);
+      const tenantSaved = localStorage.getItem("dzbuild_tenant_data");
+      if (tenantSaved) {
+        const parsed = JSON.parse(tenantSaved);
+        if (parsed.products && Array.isArray(parsed.products) && parsed.products.length > 0) return parsed.products;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
   const [categoriesList, setCategoriesList] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   
   // Filter & Search states
   const [search, setSearch] = useState("");
@@ -145,6 +162,7 @@ export default function Products() {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formVariants, setFormVariants] = useState<ProductVariant[]>([]);
+  const [formOffers, setFormOffers] = useState<ProductOffer[]>([]);
   const [variantInputName, setVariantInputName] = useState("");
   const [variantInputOptions, setVariantInputOptions] = useState("");
 
@@ -233,37 +251,96 @@ export default function Products() {
 
   const loadData = async () => {
     if (!user) return;
-    setLoading(true);
+    
+    // 1. Immediately populate from local cache so UI is instantaneous (<10ms)
+    const localMap = new Map<string, ProductItem>();
     try {
-      // 1. Fetch categories
-      const catQuery = query(collection(db, "categories"), where("userId", "==", user.uid));
-      const catSnap = await getDocs(catQuery);
-      const cats: string[] = [];
-      catSnap.forEach(doc => {
-        const data = doc.data();
-        if (data.name) cats.push(data.name);
-      });
-      setCategoriesList(cats);
+      const saved = localStorage.getItem("dzbuild_products");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((p: any) => { if (p && p.id) localMap.set(p.id, p); });
+        }
+      }
+      const tenantSaved = localStorage.getItem("dzbuild_tenant_data");
+      if (tenantSaved) {
+        const parsedT = JSON.parse(tenantSaved);
+        if (parsedT.products && Array.isArray(parsedT.products)) {
+          parsedT.products.forEach((p: any) => { if (p && p.id && !localMap.has(p.id)) localMap.set(p.id, p); });
+        }
+      }
+    } catch {}
 
-      // 2. Fetch products from 'products' collection
-      const prodQuery = query(collection(db, "products"), where("userId", "==", user.uid));
-      const prodSnap = await getDocs(prodQuery);
-      const loadedProducts: ProductItem[] = [];
-
-      prodSnap.forEach(docSnap => {
-        loadedProducts.push({
-          id: docSnap.id,
-          ...docSnap.data()
-        } as ProductItem);
-      });
-
-      setProducts(loadedProducts);
-    } catch (err) {
-      console.error("Error loading products:", err);
-      showToast("Erreur lors du chargement des produits", "error");
-    } finally {
+    if (localMap.size > 0) {
+      setProducts(deduplicateProducts(Array.from(localMap.values())));
       setLoading(false);
+    } else {
+      setLoading(true);
     }
+
+    // 2. Fetch categories and fresh remote products with a fast 800ms timeout
+    const fetchRemote = async () => {
+      try {
+        // Fetch categories
+        try {
+          const catQuery = query(collection(db, "categories"), where("userId", "==", user.uid));
+          const catSnap = await getDocs(catQuery);
+          const cats: string[] = [];
+          catSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.name) cats.push(data.name);
+          });
+          if (cats.length > 0) setCategoriesList(cats);
+        } catch (catErr) {
+          // Ignore offline errors
+        }
+
+        // Fetch products from 'products' collection
+        try {
+          const prodQuery = query(collection(db, "products"), where("userId", "==", user.uid));
+          const prodSnap = await getDocs(prodQuery);
+          prodSnap.forEach(docSnap => {
+            localMap.set(String(docSnap.id), {
+              id: docSnap.id,
+              ...docSnap.data()
+            } as ProductItem);
+          });
+        } catch (err) {
+          // Ignore offline errors
+        }
+
+        // Check tenant doc products array
+        try {
+          const tSnap = await getDoc(doc(db, "tenants", user.uid));
+          if (tSnap.exists() && tSnap.data().products) {
+            const tProds = tSnap.data().products;
+            if (Array.isArray(tProds)) {
+              tProds.forEach((p: any) => {
+                if (p && p.id) localMap.set(String(p.id), p);
+              });
+            }
+          }
+        } catch (tErr) {
+          // Ignore offline errors
+        }
+
+        const merged = deduplicateProducts(Array.from(localMap.values()));
+        if (merged.length > 0) {
+          setProducts(merged);
+          try {
+            localStorage.setItem("dzbuild_products", JSON.stringify(merged));
+          } catch {}
+        }
+      } catch (e) {
+        // Safe catch
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 800));
+    await Promise.race([fetchRemote(), timeoutPromise]);
+    setLoading(false);
   };
 
   const handleOpenModal = (prod?: ProductItem) => {
@@ -286,6 +363,7 @@ export default function Products() {
       setFormStatus(prod.status || "active");
       setFormImages(prod.images && prod.images.length > 0 ? prod.images : (prod.image ? [prod.image] : []));
       setFormVariants(prod.variants || []);
+      setFormOffers(prod.offers || []);
     } else {
       setEditingProduct(null);
       setFormName("");
@@ -304,6 +382,7 @@ export default function Products() {
       setFormStatus("active");
       setFormImages([]);
       setFormVariants([]);
+      setFormOffers([]);
     }
     setVariantInputName("");
     setVariantInputOptions("");
@@ -334,95 +413,162 @@ export default function Products() {
     setFormError("");
 
     try {
-      const productPayload = {
+      const prodId = editingProduct ? editingProduct.id : `prod_${Date.now()}`;
+      const calculatedStock = formStock !== "" 
+        ? Number(formStock) 
+        : (formTrackVariantStock && formVariants.length > 0 
+            ? formVariants.reduce((sum, v) => sum + (v.options?.reduce((s: number, opt: any) => s + (Number(opt.quantity ?? opt.stock) || 0), 0) || 0), 0) 
+            : 0);
+
+      // Validation des offres
+      for (let i = 0; i < formOffers.length; i++) {
+        const o = formOffers[i];
+        if (!o.title || !o.title.trim()) {
+          setFormError(`Offre ${i + 1} : le titre est obligatoire.`);
+          setIsSaving(false);
+          return;
+        }
+        if (!o.quantity || o.quantity < 1) {
+          setFormError(`Offre ${i + 1} : la quantité doit être supérieure ou égale à 1.`);
+          setIsSaving(false);
+          return;
+        }
+        const duplicate = formOffers.find((other, idx) => idx !== i && other.quantity === o.quantity);
+        if (duplicate) {
+          setFormError(`Les offres doivent avoir des quantités différentes (quantité ${o.quantity} en doublon).`);
+          setIsSaving(false);
+          return;
+        }
+        if (o.final_price <= 0) {
+          setFormError(`Offre ${i + 1} : le prix final doit être supérieur à 0 DA.`);
+          setIsSaving(false);
+          return;
+        }
+        if (o.price_mode === "percent" && (Number(o.discount_value) < 1 || Number(o.discount_value) > 99)) {
+          setFormError(`Offre ${i + 1} : la remise en % doit être comprise entre 1 et 99.`);
+          setIsSaving(false);
+          return;
+        }
+        const unitP = Number(formPrice) || 0;
+        if (o.price_mode === "amount" && unitP > 0 && Number(o.discount_value) >= unitP * o.quantity) {
+          setFormError(`Offre ${i + 1} : la remise en DA ne peut pas dépasser le prix de base.`);
+          setIsSaving(false);
+          return;
+        }
+        const orig = o.original_price && o.original_price > 0 ? o.original_price : unitP * o.quantity;
+        if (orig > 0 && o.final_price > orig) {
+          setFormError(`Offre ${i + 1} : le prix final (${o.final_price} DA) ne peut pas dépasser le prix avant remise (${orig} DA).`);
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      const cleanOffers: ProductOffer[] = formOffers.map((o, idx) => ({
+        ...o,
+        product_id: prodId,
+        boutique_id: user.uid,
+        sort_order: idx,
+        original_price: o.original_price && o.original_price > 0 ? o.original_price : (Number(formPrice) || 0) * o.quantity,
+        badge_color: o.badge_color || "#10B981"
+      }));
+
+      const productItem: ProductItem = {
+        id: prodId,
         name: formName.trim(),
         description: formDescription.trim(),
         price: Number(formPrice),
-        originalPrice: formOriginalPrice !== "" ? Number(formOriginalPrice) : null,
-        costPrice: formCostPrice !== "" ? Number(formCostPrice) : null,
-        weight: formWeight !== "" ? Number(formWeight) : null,
+        originalPrice: formOriginalPrice !== "" ? Number(formOriginalPrice) : undefined,
+        costPrice: formCostPrice !== "" ? Number(formCostPrice) : undefined,
+        weight: formWeight !== "" ? Number(formWeight) : undefined,
         trackStock: formTrackStock,
         fragile: formFragile,
         trackVariantStock: formTrackVariantStock,
         featured: formFeatured,
         category: formCategory || "Général",
-        stock: formStock !== "" 
-          ? Number(formStock) 
-          : (formTrackVariantStock && formVariants.length > 0 
-              ? formVariants.reduce((sum, v) => sum + (v.options?.reduce((s: number, opt: any) => s + (Number(opt.quantity ?? opt.stock) || 0), 0) || 0), 0) 
-              : 0),
+        stock: calculatedStock,
         sku: formSku.trim() || `SKU-${Date.now().toString().slice(-4)}`,
         status: formStatus,
-        image: formImages[0] || "",
-        images: formImages,
+        image: formImages[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=60",
+        images: formImages.length > 0 ? formImages : ["https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=60"],
         variants: formVariants,
+        offers: cleanOffers,
         userId: user.uid,
-        updatedAt: serverTimestamp()
+        createdAt: editingProduct?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
-      let updatedId = "";
-
+      // 1. Optimistic UI update: instantly update local list
+      let nextList: ProductItem[] = [];
       if (editingProduct) {
-        updatedId = editingProduct.id;
-        const prodRef = doc(db, "products", editingProduct.id);
-        await updateDoc(prodRef, productPayload);
+        nextList = products.map(p => p.id === prodId ? productItem : p);
+        setProducts(nextList);
         showToast("Produit mis à jour avec succès");
       } else {
-        const docRef = await addDoc(collection(db, "products"), {
-          ...productPayload,
-          createdAt: serverTimestamp()
-        });
-        updatedId = docRef.id;
+        nextList = [productItem, ...products.filter(p => p.id !== prodId)];
+        setProducts(nextList);
         showToast("Produit ajouté au catalogue");
       }
-
-      // Sync updated product list into tenant document for Landing Pages generator
       try {
-        const tenantRef = doc(db, "tenants", user.uid);
-        const tSnap = await getDoc(tenantRef);
-        if (tSnap.exists()) {
-          const tData = tSnap.data();
-          const existingProds = tData.products && Array.isArray(tData.products) ? [...tData.products] : [];
-          const prodForTenant = {
-            id: updatedId,
-            name: formName.trim(),
-            description: formDescription.trim(),
-            price: Number(formPrice),
-            ...(formOriginalPrice !== "" && { originalPrice: Number(formOriginalPrice) }),
-            ...(formCostPrice !== "" && { costPrice: Number(formCostPrice) }),
-            ...(formWeight !== "" && { weight: Number(formWeight) }),
-            trackStock: formTrackStock,
-            fragile: formFragile,
-            trackVariantStock: formTrackVariantStock,
-            featured: formFeatured,
-            category: formCategory || "Général",
-            stock: formStock !== "" ? Number(formStock) : 0,
-            sku: formSku.trim(),
-            status: formStatus,
-            image: formImages[0] || "",
-            images: formImages,
-            variants: formVariants
-          };
-
-          const existingIdx = existingProds.findIndex((p: any) => p.id === updatedId);
-          if (existingIdx >= 0) {
-            existingProds[existingIdx] = prodForTenant;
-          } else {
-            existingProds.unshift(prodForTenant);
-          }
-
-          await updateDoc(tenantRef, { products: existingProds });
+        localStorage.setItem("dzbuild_products", JSON.stringify(nextList));
+        const tenantRaw = localStorage.getItem("dzbuild_tenant_data");
+        if (tenantRaw) {
+          const tObj = JSON.parse(tenantRaw);
+          tObj.products = nextList;
+          localStorage.setItem("dzbuild_tenant_data", JSON.stringify(tObj));
         }
-      } catch (syncErr) {
-        console.warn("Tenant sync notice:", syncErr);
-      }
+        window.dispatchEvent(new CustomEvent("products_updated", { detail: nextList }));
+      } catch {}
 
-      await loadData();
+      // Close modal immediately so user is never blocked
       handleCloseModal();
+      setIsSaving(false);
+
+      // 2. Persist to Firestore asynchronously with timeout protection
+      const syncToFirestore = async () => {
+        try {
+          const prodRef = doc(db, "products", prodId);
+          const savePromise = setDoc(prodRef, {
+            ...productItem,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+
+          // Also save offers to product_offers collection
+          const offersPromises = (cleanOffers || []).map(off => 
+            setDoc(doc(db, "product_offers", off.id), {
+              ...off,
+              product_id: prodId,
+              boutique_id: user.uid,
+              updatedAt: new Date().toISOString()
+            }, { merge: true }).catch(() => {})
+          );
+
+          const tenantRef = doc(db, "tenants", user.uid);
+          const tenantPromise = getDoc(tenantRef).then(async (tSnap) => {
+            if (tSnap.exists()) {
+              const tData = tSnap.data();
+              const existingProds = tData.products && Array.isArray(tData.products) ? [...tData.products] : [];
+              const existingIdx = existingProds.findIndex((p: any) => p.id === prodId);
+              if (existingIdx >= 0) {
+                existingProds[existingIdx] = productItem;
+              } else {
+                existingProds.unshift(productItem);
+              }
+              await updateDoc(tenantRef, { products: existingProds });
+            }
+          }).catch(() => {});
+
+          const timeoutPromise = new Promise(res => setTimeout(res, 3500));
+          await Promise.race([Promise.all([savePromise, tenantPromise, ...offersPromises]), timeoutPromise]);
+        } catch (dbErr) {
+          console.warn("Async firestore sync background completed:", dbErr);
+        }
+      };
+
+      syncToFirestore();
+
     } catch (err: any) {
       console.error("Error saving product:", err);
       setFormError(err.message || "Erreur lors de l'enregistrement du produit.");
-    } finally {
       setIsSaving(false);
     }
   };
@@ -445,11 +591,34 @@ export default function Products() {
           // Also delete the product inside the same transaction
           transaction.delete(productRef);
         });
+
+        // Cascade delete associated product_offers
+        try {
+          const offQ = query(collection(db, "product_offers"), where("product_id", "==", productToDelete.id));
+          const offSnap = await getDocs(offQ);
+          for (const d of offSnap.docs) {
+            await deleteDoc(d.ref).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("Cascade delete offers error:", e);
+        }
       } else {
         await deleteDoc(productRef);
       }
 
-      setProducts(products.filter(p => p.id !== productToDelete.id));
+      const updatedList = products.filter(p => p.id !== productToDelete.id);
+      setProducts(updatedList);
+      try {
+        localStorage.setItem("dzbuild_products", JSON.stringify(updatedList));
+        const tenantRaw = localStorage.getItem("dzbuild_tenant_data");
+        if (tenantRaw) {
+          const tObj = JSON.parse(tenantRaw);
+          tObj.products = updatedList;
+          localStorage.setItem("dzbuild_tenant_data", JSON.stringify(tObj));
+        }
+        window.dispatchEvent(new CustomEvent("products_updated", { detail: updatedList }));
+      } catch {}
+
       showToast(`Produit "${productToDelete.name}" supprimé`);
       setProductToDelete(null);
     } catch (err) {
@@ -467,7 +636,18 @@ export default function Products() {
         status: newStatus,
         updatedAt: serverTimestamp()
       });
-      setProducts(products.map(p => p.id === prod.id ? { ...p, status: newStatus } : p));
+      const updatedList = products.map(p => p.id === prod.id ? { ...p, status: newStatus } : p);
+      setProducts(updatedList);
+      try {
+        localStorage.setItem("dzbuild_products", JSON.stringify(updatedList));
+        const tenantRaw = localStorage.getItem("dzbuild_tenant_data");
+        if (tenantRaw) {
+          const tObj = JSON.parse(tenantRaw);
+          tObj.products = updatedList;
+          localStorage.setItem("dzbuild_tenant_data", JSON.stringify(tObj));
+        }
+        window.dispatchEvent(new CustomEvent("products_updated", { detail: updatedList }));
+      } catch {}
       showToast(`Produit ${newStatus === "active" ? "activé" : "désactivé"}`);
     } catch (err) {
       console.error("Error toggling product status:", err);
@@ -713,7 +893,7 @@ export default function Products() {
                   <Boxes className="w-5 h-5 text-neutral-400" />
                   <h2 className="text-base font-semibold text-white">Variantes (Couleurs / Options)</h2>
                 </div>
-                <button type="button" onClick={() => setFormVariants([...formVariants, { name: "", type: "text", options: [] }])} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-600 text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition-colors">
+                <button type="button" onClick={() => setFormVariants([...formVariants, { name: "", type: "text", options: [{ value: "", priceDiff: 0, stock: 10 }] }])} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-600 text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition-colors">
                   <PlusCircle className="w-3.5 h-3.5" /> Ajouter un groupe
                 </button>
               </div>
@@ -727,6 +907,14 @@ export default function Products() {
                 trackVariantStock={formTrackVariantStock}
               />
             </div>
+
+            {/* Offres et lots */}
+            <OfferManager
+              offers={formOffers}
+              onChange={setFormOffers}
+              baseProductPrice={Number(formPrice) || 0}
+              mainProductImage={formImages[0]}
+            />
           </div>
 
           {/* RIGHT COLUMN */}

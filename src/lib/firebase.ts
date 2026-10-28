@@ -11,7 +11,13 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Initialize Cloud Firestore with forced long polling for iframe/sandbox reliability
-export const db = initializeFirestore(app, {}, firebaseConfig.firestoreDatabaseId);
+export const db = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)")
+  ? initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    }, firebaseConfig.firestoreDatabaseId)
+  : initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    });
 
 export const storage = getStorage(app);
 

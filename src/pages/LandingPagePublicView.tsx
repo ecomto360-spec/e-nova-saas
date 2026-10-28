@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo, FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { db } from "../lib/firebase";
-import { collection, getDocs, doc, addDoc } from "firebase/firestore";
+import { collection, getDocs, doc, addDoc, setDoc } from "firebase/firestore";
 import { LandingPage, AlgerianWilaya } from "../types/landing";
 import { SAMPLE_PRODUCTS, ALGERIAN_WILAYAS, getDefaultSectionsForProduct } from "../data/landingData";
 import { getCommunesForWilaya } from "../data/algerianCommunes";
 import { StoreUnavailable } from "../components/storefront/StoreUnavailable";
-import { Clock, ShieldCheck, Truck, Banknote, RotateCcw, ShoppingCart, Check, CheckCircle2, Star, ChevronDown, MapPin, Map } from "lucide-react";
+import { Clock, ShieldCheck, Truck, Banknote, RotateCcw, ShoppingCart, Check, CheckCircle2, Star, ChevronDown, MapPin, Map, Mail, MessageSquare, Bell } from "lucide-react";
 import { isTenantExpired } from "../lib/checkExpiration";
 import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../lib/phoneUtils";
 import { isPhoneBlacklisted } from "../lib/blacklist";
+import { sendOrderNotifications, triggerWhatsAppNotification } from "../lib/notifyService";
+import { saveAbandonedCart, markAbandonedCartAsRecovered } from "../lib/abandonedCartService";
 
 interface Props { previewData?: LandingPage; onOrderPlaced?: (order: any) => void; }
 
@@ -31,6 +33,9 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [phoneError, setPhoneError] = useState("");
+  const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [whatsAppUrl, setWhatsAppUrl] = useState("");
   const [address, setAddress] = useState("");
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderReference, setOrderReference] = useState("");
@@ -158,6 +163,67 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
   const deliveryFee = selectedBundleId === "b3" ? 0 : (!curWilaya ? 400 : (deliveryType === "home" ? curWilaya.homeDeliveryPrice : curWilaya.deskDeliveryPrice));
   const grandTotal = itemsTotal + deliveryFee;
 
+  // Auto-detect and save abandoned cart when visitor fills form but does not click Commander
+  useEffect(() => {
+    if (orderSuccess || !page) return;
+    const cleanPhone = phone.replace(/\D/g, "");
+    const trimmedName = fullName.trim();
+    const trimmedEmail = email.trim();
+    const hasData = cleanPhone.length > 0 || trimmedName.length > 0 || trimmedEmail.length > 0 || !!selectedWilayaCode;
+    if (hasData) {
+      const timer = setTimeout(() => {
+        const effectiveTenantId = tenantId || "default_tenant";
+        const gallerySection = page.sections?.find(s => s.type === "gallery");
+        const heroImages = gallerySection?.data?.images || (page.product?.image ? [page.product.image] : []);
+        const orderImg = page.product?.image || (heroImages && heroImages.length > 0 ? heroImages[0] : "");
+
+        const cartId = cleanPhone.length >= 4 
+          ? `cart_${effectiveTenantId}_${cleanPhone}` 
+          : (trimmedEmail ? `cart_${effectiveTenantId}_${trimmedEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `cart_${effectiveTenantId}_${trimmedName.replace(/\s+/g, '_')}`);
+
+        saveAbandonedCart({
+          id: cartId,
+          tenantId: effectiveTenantId,
+          userId: effectiveTenantId,
+          client: trimmedName || phone.trim() || "Client potentiel",
+          phone: phone.trim(),
+          email: trimmedEmail.toLowerCase(),
+          wilaya: curWilaya ? `${curWilaya.code < 10 ? `0${curWilaya.code}` : curWilaya.code} - ${curWilaya.name}` : "",
+          commune: commune.trim(),
+          address: address.trim(),
+          itemsSummary: `${quantity}x ${page.product?.name || page.title}`,
+          items: [{
+            id: page.productId || page.product?.id || "landing-product",
+            name: page.product?.name || page.title,
+            price: itemsTotal / (quantity || 1),
+            quantity: quantity,
+            image: orderImg
+          }],
+          total: grandTotal,
+          status: "abandoned",
+          recovered: false,
+          source: `landing_page_${page.slug || page.title || "lead"}`
+        }).catch(err => console.warn("Landing page abandoned cart save error:", err));
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    phone, 
+    fullName, 
+    email, 
+    selectedWilayaCode, 
+    curWilaya, 
+    commune, 
+    address, 
+    quantity, 
+    grandTotal, 
+    itemsTotal, 
+    page, 
+    tenantId, 
+    orderSuccess
+  ]);
+
   const handleCreatePublicOrder = async (e: FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) {
@@ -172,6 +238,12 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
     }
     setPhoneError("");
 
+    if (!email.trim() || !email.includes("@")) {
+      setEmailError("Veuillez saisir une adresse email valide pour recevoir la confirmation et le suivi");
+      return;
+    }
+    setEmailError("");
+
     if (!selectedWilayaCode) {
       alert("Veuillez sélectionner votre Wilaya");
       return;
@@ -185,8 +257,46 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
     const refNumber = `CMD-${Date.now().toString().slice(-6)}`;
     setOrderReference(refNumber);
 
+    // Build WhatsApp confirmation message URL & dispatch notifications
+    let builtWaUrl = "";
+    try {
+      const cleanPhone = phone.replace(/\D/g, "");
+      const phoneFormatted = cleanPhone.startsWith("0") ? `213${cleanPhone.slice(1)}` : cleanPhone;
+      const msg = encodeURIComponent(
+        `👋 Bonjour ${fullName},\n` +
+        `Votre commande *${refNumber}* a été enregistrée avec succès !\n\n` +
+        `📦 Produit: ${quantity}x ${page.product?.name || page.title}\n` +
+        `💰 Total: ${grandTotal.toLocaleString("fr-DZ")} DZD (Paiement à la livraison)\n` +
+        `📍 Adresse: ${curWilaya ? curWilaya.name : "Algérie"} - ${commune} (${address.trim() || "Livraison"})\n` +
+        `📬 Notification envoyée également par email à: ${email}\n\n` +
+        `Merci pour votre confiance !`
+      );
+      builtWaUrl = `https://api.whatsapp.com/send?phone=${phoneFormatted}&text=${msg}`;
+      setWhatsAppUrl(builtWaUrl);
+
+      // Send real-time Email & WhatsApp notification to backend
+      sendOrderNotifications({
+        reference: refNumber,
+        client: fullName,
+        phone,
+        email: email.trim().toLowerCase(),
+        wilaya: curWilaya ? curWilaya.name : "Algérie",
+        commune: commune || "",
+        address: address.trim() || commune,
+        itemsSummary: `${quantity}x ${page.product?.name || page.title}`,
+        total: grandTotal,
+        shippingCost: deliveryFee,
+        storeName: page.title || "Landing Page Store",
+        merchantEmail: "nabsterzero@gmail.com"
+      }).catch(e => console.warn("Backend notification failed:", e));
+
+      // Auto trigger WhatsApp
+      triggerWhatsAppNotification(builtWaUrl);
+    } catch {}
+
     if (isPreview && onOrderPlaced) {
-      onOrderPlaced({ fullName, phone, total: grandTotal, bundle: selectedBundleId, refNumber, wilaya: curWilaya ? curWilaya.name : "", commune, address, deliveryType, quantity, productName: page.product?.name || page.title, itemsTotal, deliveryFee });
+      onOrderPlaced({ fullName, phone, email, total: grandTotal, bundle: selectedBundleId, refNumber, wilaya: curWilaya ? curWilaya.name : "", commune, address, deliveryType, quantity, productName: page.product?.name || page.title, itemsTotal, deliveryFee });
+      markAbandonedCartAsRecovered(phone, refNumber, tenantId || "default_tenant");
       setOrderSuccess(true);
       return;
     }
@@ -199,9 +309,7 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
           return;
         }
 
-        const now = new Date();
-        const pad = (n: number) => String(n).padStart(2, "0");
-        const formattedDate = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        const nowIso = new Date().toISOString();
 
         const gallerySection = page.sections?.find(s => s.type === "gallery");
         const heroImages = gallerySection?.data?.images || (page.product?.image ? [page.product.image] : ["https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80"]);
@@ -213,6 +321,8 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
           client: fullName,
           customerPhone: phone,
           phone,
+          email: email.trim().toLowerCase(),
+          customerEmail: email.trim().toLowerCase(),
           wilaya: curWilaya ? curWilaya.name : "",
           commune: commune || "",
           address: address.trim() || commune,
@@ -225,7 +335,7 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
           total: grandTotal,
           status: "En attente",
           source: `Landing Page: ${page.title}`,
-          date: formattedDate,
+          date: nowIso,
           userId: tenantId,
           image: orderImg,
           productImage: orderImg,
@@ -236,17 +346,53 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
             quantity: quantity,
             image: orderImg
           }],
-          createdAt: new Date()
+          createdAt: nowIso
         };
 
-        await addDoc(collection(db, "tenants", tenantId, "orders"), orderData);
-        await addDoc(collection(db, "orders"), orderData);
+        const canonicalId = `ORD-${Date.now()}-${Math.random().toString(16).substring(2, 8).toUpperCase()}`;
+        const canonicalOrderData = {
+          ...orderData,
+          id: canonicalId,
+          reference: refNumber || canonicalId,
+          orderNumber: refNumber,
+        };
+
+        await setDoc(doc(db, "tenants", tenantId, "orders", canonicalId), canonicalOrderData);
+        await setDoc(doc(db, "orders", canonicalId), canonicalOrderData);
+
+        // Notify store owner automatically via server-side Nodemailer & WhatsApp
+        sendOrderNotifications({
+          reference: refNumber || canonicalId,
+          orderNumber: refNumber,
+          orderId: canonicalId,
+          client: fullName,
+          phone,
+          email: email.trim().toLowerCase(),
+          wilaya: curWilaya ? curWilaya.name : "",
+          commune: commune || "",
+          address: address.trim() || commune,
+          itemsSummary: `${quantity}x ${page.product?.name || page.title}`,
+          total: grandTotal,
+          shippingCost: deliveryFee,
+          storeName: page.title || "Boutique Enova",
+          tenantId: tenantId,
+          items: orderData.items,
+        }).catch(err => console.warn("[NOTIFY] Landing page order notification dispatch:", err));
+
+        // Save order to local storage for instant real-time sync
+        try {
+          const existingLocal = localStorage.getItem("dzbuild_local_orders");
+          const list = existingLocal ? JSON.parse(existingLocal) : [];
+          list.unshift({ ...orderData, id: refNumber, createdAt: nowIso, date: nowIso });
+          localStorage.setItem("dzbuild_local_orders", JSON.stringify(list));
+        } catch {}
 
         // Real-time alert for Header notification bell and audio chime
         try {
           const alertPayload = {
             ...orderData,
-            createdAt: Date.now()
+            createdAt: nowIso,
+            date: nowIso
           };
           window.dispatchEvent(new CustomEvent("order_created", { detail: alertPayload }));
           localStorage.setItem("last_order_alert", JSON.stringify(alertPayload));
@@ -260,6 +406,7 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
     } catch (err) {
       console.warn("Could not write order into Firestore", err);
     }
+    markAbandonedCartAsRecovered(phone, refNumber, tenantId || "default_tenant");
     setOrderSuccess(true);
   };
 
@@ -660,7 +807,7 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
                         setPhone(cleaned);
                         if (phoneError) setPhoneError("");
                       }}
-                      placeholder="Numéro de téléphone (ex: 0550252565) *"
+                      placeholder="Numéro de téléphone / WhatsApp (ex: 0550252565) *"
                       className={`w-full bg-neutral-50 border rounded-xl px-4 py-3.5 text-sm text-neutral-900 font-medium placeholder:text-neutral-400 focus:outline-none focus:ring-1 transition-all ${
                         phoneError
                           ? "border-red-500 focus:border-red-500 focus:ring-red-500"
@@ -671,7 +818,32 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
                       <p className="mt-1.5 text-xs text-red-600 font-medium">{phoneError}</p>
                     ) : (
                       <p className="mt-1 text-[11px] text-neutral-400">
-                        10 chiffres commençant par 05, 06 ou 07 (ou indicatif ex: 213550252565)
+                        10 chiffres (ou indicatif +213) pour recevoir vos notifications WhatsApp et appels
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (emailError) setEmailError("");
+                      }}
+                      placeholder="Adresse email (ex: client@gmail.com) *"
+                      className={`w-full bg-neutral-50 border rounded-xl px-4 py-3.5 text-sm text-neutral-900 font-medium placeholder:text-neutral-400 focus:outline-none focus:ring-1 transition-all ${
+                        emailError
+                          ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                          : "border-neutral-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      }`}
+                    />
+                    {emailError ? (
+                      <p className="mt-1.5 text-xs text-red-600 font-medium">{emailError}</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-neutral-400">
+                        Pour recevoir la facture et le suivi par email
                       </p>
                     )}
                   </div>
@@ -819,7 +991,29 @@ export default function LandingPagePublicView({ previewData, onOrderPlaced }: Pr
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mt-6">
+              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-left space-y-2 mt-6">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
+                  <Bell className="w-4 h-4 text-emerald-600" />
+                  <span>Notifications envoyées instantanément</span>
+                </div>
+                <p className="text-xs text-emerald-700 leading-relaxed">
+                  📬 Facture et détails envoyés à : <strong>{email}</strong><br />
+                  📱 Notification SMS / WhatsApp préparée pour le : <strong>{phone}</strong>
+                </p>
+              </div>
+
+              {whatsAppUrl && (
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-white py-3.5 px-4 rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 mt-4"
+                >
+                  <MessageSquare className="w-4 h-4" /> Recevoir / Confirmer sur WhatsApp
+                </a>
+              )}
+
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mt-4">
                 <p className="text-xs text-amber-800 font-bold leading-relaxed">
                   ⚠️ Un conseiller va vous contacter au <span className="font-bold text-amber-900 text-sm">{phone}</span> dans les plus brefs délais pour confirmer l'expédition. Restez joignable !
                 </p>

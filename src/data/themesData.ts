@@ -27,8 +27,10 @@ export interface StoreDemoProduct {
   }[];
   variants?: {
     name: string;
+    type?: string;
     options: any[];
   }[];
+  offers?: any[];
 }
 
 export interface StoreDemoCategory {

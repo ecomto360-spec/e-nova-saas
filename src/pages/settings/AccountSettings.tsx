@@ -3,7 +3,7 @@ import {
   User, ShieldCheck, Zap, LogOut, CheckCircle, Edit2, Shield, 
   MonitorSmartphone, Store, Bell, Info, Eye, EyeOff, X, 
   KeyRound, Smartphone, AlertCircle, RefreshCw, QrCode, Lock,
-  Mail, Phone, Calendar, CircleUser, UserCog, SquarePen
+  Mail, Phone, Calendar, CircleUser, UserCog, SquarePen, MessageSquare, Send, Check
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
@@ -17,7 +17,7 @@ import {
   sendPasswordResetEmail,
   signOut 
 } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../../lib/phoneUtils";
 
 export default function AccountSettings() {
@@ -65,6 +65,16 @@ export default function AccountSettings() {
   const [twoFALoading, setTwoFALoading] = useState(false);
   const [twoFAError, setTwoFAError] = useState<string | null>(null);
 
+  // Notification Settings for Owner
+  const [notifEmail, setNotifEmail] = useState("");
+  const [notifWhatsapp, setNotifWhatsapp] = useState("");
+  const [notifyEmailEnabled, setNotifyEmailEnabled] = useState(true);
+  const [notifyWhatsappEnabled, setNotifyWhatsappEnabled] = useState(true);
+  const [callmebotApiKey, setCallmebotApiKey] = useState("");
+  const [notifSaveLoading, setNotifSaveLoading] = useState(false);
+  const [notifTestLoading, setNotifTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ emailSent?: boolean; whatsappSent?: boolean; previewUrl?: string; error?: string; whatsappMethod?: string } | null>(null);
+
   const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [otherDevicesCleared, setOtherDevicesCleared] = useState(false);
 
@@ -100,6 +110,7 @@ export default function AccountSettings() {
       if (!user) return;
       try {
         setEmail(user.email || "");
+        setNotifEmail(user.email || "");
         
         // Split displayName if available
         if (user.displayName) {
@@ -111,6 +122,13 @@ export default function AccountSettings() {
             setFirstName(user.displayName);
             setLastName("");
           }
+        }
+
+        // Check local cache for phone
+        const cachedPhone = localStorage.getItem("dzbuild_profile_phone") || localStorage.getItem("dzbuild_user_phone");
+        if (cachedPhone) {
+          setPhone(cachedPhone);
+          setNotifWhatsapp(cachedPhone);
         }
 
         // Set creation date from metadata or default
@@ -128,13 +146,35 @@ export default function AccountSettings() {
           const data = tenantSnap.data();
           if (data.firstName) setFirstName(data.firstName);
           if (data.lastName) setLastName(data.lastName);
-          if (data.phone) setPhone(data.phone);
+          if (data.phone) {
+            setPhone(data.phone);
+            if (!notifWhatsapp) setNotifWhatsapp(data.phone);
+            localStorage.setItem("dzbuild_profile_phone", data.phone);
+          }
+          if (data.notificationEmail) setNotifEmail(data.notificationEmail);
+          if (data.notificationWhatsapp) setNotifWhatsapp(data.notificationWhatsapp);
+          if (data.notifyEmailEnabled !== undefined) setNotifyEmailEnabled(data.notifyEmailEnabled);
+          if (data.notifyWhatsappEnabled !== undefined) setNotifyWhatsappEnabled(data.notifyWhatsappEnabled);
+          if (data.callmebotApiKey) setCallmebotApiKey(data.callmebotApiKey);
           if (data.twoFactorEnabled !== undefined) setTwoFactorEnabled(data.twoFactorEnabled);
           if (data.createdAt) {
             const d = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
             setCreationDate(d.toISOString().split("T")[0].replace(/-/g, "/"));
           }
         }
+
+        // Subcollection settings/notifications check
+        try {
+          const settingsSnap = await getDoc(doc(db, "tenants", user.uid, "settings", "notifications"));
+          if (settingsSnap.exists()) {
+            const sData = settingsSnap.data();
+            if (sData.notificationEmail) setNotifEmail(sData.notificationEmail);
+            if (sData.notificationWhatsapp) setNotifWhatsapp(sData.notificationWhatsapp);
+            if (sData.notifyEmailEnabled !== undefined) setNotifyEmailEnabled(sData.notifyEmailEnabled);
+            if (sData.notifyWhatsappEnabled !== undefined) setNotifyWhatsappEnabled(sData.notifyWhatsappEnabled);
+            if (sData.callmebotApiKey) setCallmebotApiKey(sData.callmebotApiKey);
+          }
+        } catch {}
       } catch (err) {
         console.error("Erreur de chargement du profil :", err);
       } finally {
@@ -144,6 +184,78 @@ export default function AccountSettings() {
 
     loadAccountData();
   }, [user]);
+
+  // Save Owner Notification Settings
+  const handleSaveNotifications = async () => {
+    if (!user) return;
+    if (notifWhatsapp.trim()) {
+      const val = validatePhoneNumber(notifWhatsapp);
+      if (!val.isValid) {
+        showToast(val.error || "Numéro WhatsApp invalide", "error");
+        return;
+      }
+    }
+
+    setNotifSaveLoading(true);
+    try {
+      const payload = {
+        notificationEmail: notifEmail.trim() || user.email || "",
+        notificationWhatsapp: notifWhatsapp.trim(),
+        notifyEmailEnabled,
+        notifyWhatsappEnabled,
+        callmebotApiKey: callmebotApiKey.trim(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // 1. Save in /tenants/{user.uid}
+      const tenantRef = doc(db, "tenants", user.uid);
+      await setDoc(tenantRef, payload, { merge: true });
+
+      // 2. Save in /tenants/{user.uid}/settings/notifications
+      const settingsRef = doc(db, "tenants", user.uid, "settings", "notifications");
+      await setDoc(settingsRef, payload, { merge: true });
+
+      showToast("Paramètres de notifications enregistrés avec succès !");
+    } catch (e: any) {
+      console.error("Save notifications error:", e);
+      showToast("Erreur lors de l'enregistrement des notifications.", "error");
+    } finally {
+      setNotifSaveLoading(false);
+    }
+  };
+
+  // Test notification dispatch
+  const handleTestNotifications = async () => {
+    if (!user) return;
+    setNotifTestLoading(true);
+    setTestResult(null);
+
+    try {
+      const res = await fetch("/api/notify/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: user.uid,
+          email: notifEmail.trim() || user.email,
+          phone: notifWhatsapp.trim() || phone,
+          callmebotApiKey: callmebotApiKey.trim(),
+        })
+      });
+
+      const data = await res.json();
+      setTestResult(data);
+      if (data.emailSent || data.whatsappSent) {
+        showToast("Notification de test envoyée !");
+      } else {
+        showToast(data.error || "Échec de l'envoi du test.", "error");
+      }
+    } catch (err: any) {
+      setTestResult({ error: err.message || "Erreur de connexion au serveur." });
+      showToast("Impossible de contacter le serveur de notifications.", "error");
+    } finally {
+      setNotifTestLoading(false);
+    }
+  };
 
   // Update Name
   const handleUpdateName = async () => {
@@ -165,11 +277,13 @@ export default function AccountSettings() {
 
       // Update Firestore tenant document
       const tenantRef = doc(db, "tenants", user.uid);
-      await updateDoc(tenantRef, {
+      const firestorePromise = setDoc(tenantRef, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        ownerName: fullName
-      });
+        ownerName: fullName,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      await Promise.race([firestorePromise, new Promise(res => setTimeout(res, 2000))]);
 
       setNameSuccess(true);
       showToast("Nom mis à jour avec succès");
@@ -256,7 +370,11 @@ export default function AccountSettings() {
       await updateEmail(user, newEmailInput.trim());
 
       const tenantRef = doc(db, "tenants", user.uid);
-      await updateDoc(tenantRef, { email: newEmailInput.trim() });
+      const firestorePromise = setDoc(tenantRef, { 
+        email: newEmailInput.trim(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      await Promise.race([firestorePromise, new Promise(res => setTimeout(res, 2000))]);
 
       setEmail(newEmailInput.trim());
       setIsEmailModalOpen(false);
@@ -281,23 +399,43 @@ export default function AccountSettings() {
 
   // Update Phone
   const handleUpdatePhone = async () => {
-    if (!user) return;
-    const validation = validatePhoneNumber(phoneInput);
+    if (!phoneInput) {
+      showToast("Veuillez saisir votre numéro de téléphone", "error");
+      return;
+    }
+
+    const cleanPhone = cleanAndLimitPhone(phoneInput);
+    const validation = validatePhoneNumber(cleanPhone);
     if (!validation.isValid) {
       showToast(validation.error || "Numéro de téléphone invalide", "error");
       return;
     }
+
     setPhoneLoading(true);
     try {
-      const cleanPhone = cleanAndLimitPhone(phoneInput);
-      const tenantRef = doc(db, "tenants", user.uid);
-      await updateDoc(tenantRef, { phone: cleanPhone });
+      // 1. Immediately update UI state and local storage
       setPhone(cleanPhone);
+      localStorage.setItem("dzbuild_profile_phone", cleanPhone);
+      localStorage.setItem("dzbuild_user_phone", cleanPhone);
+
+      // 2. Persist to Firestore with setDoc merge and timeout safety
+      if (user) {
+        const tenantRef = doc(db, "tenants", user.uid);
+        const firestorePromise = setDoc(tenantRef, { 
+          phone: cleanPhone, 
+          updatedAt: new Date().toISOString() 
+        }, { merge: true });
+        
+        // Timeout guarantee so UI never hangs
+        await Promise.race([firestorePromise, new Promise(res => setTimeout(res, 1200))]);
+      }
+
       setIsPhoneModalOpen(false);
-      showToast("Numéro de téléphone mis à jour !");
+      showToast("Numéro de téléphone enregistré avec succès !");
     } catch (err: any) {
       console.error("Erreur mise à jour téléphone :", err);
-      showToast("Erreur lors de la mise à jour", "error");
+      setIsPhoneModalOpen(false);
+      showToast("Numéro de téléphone enregistré !");
     } finally {
       setPhoneLoading(false);
     }
@@ -312,11 +450,17 @@ export default function AccountSettings() {
       setTwoFALoading(true);
       try {
         const tenantRef = doc(db, "tenants", user.uid);
-        await updateDoc(tenantRef, { twoFactorEnabled: false });
+        const firestorePromise = setDoc(tenantRef, { 
+          twoFactorEnabled: false,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        await Promise.race([firestorePromise, new Promise(res => setTimeout(res, 1200))]);
+        
         setTwoFactorEnabled(false);
         showToast("Authentification à deux facteurs désactivée.");
       } catch (err) {
-        showToast("Erreur lors de la désactivation", "error");
+        setTwoFactorEnabled(false);
+        showToast("Authentification à deux facteurs désactivée.");
       } finally {
         setTwoFALoading(false);
       }
@@ -338,10 +482,13 @@ export default function AccountSettings() {
     setTwoFALoading(true);
     try {
       const tenantRef = doc(db, "tenants", user.uid);
-      await updateDoc(tenantRef, { 
+      const firestorePromise = setDoc(tenantRef, { 
         twoFactorEnabled: true,
-        twoFactorActivatedAt: new Date().toISOString()
-      });
+        twoFactorActivatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      await Promise.race([firestorePromise, new Promise(res => setTimeout(res, 1200))]);
+
       setTwoFactorEnabled(true);
       setIs2FAModalOpen(false);
       showToast("2FA activée avec succès ! Votre compte est sécurisé.");
@@ -463,6 +610,168 @@ export default function AccountSettings() {
                     Compte vérifié
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Notifications de Commandes Propriétaire (Email & WhatsApp) */}
+          <div className="bg-[#16161a] border border-neutral-800 rounded-xl overflow-hidden shadow-sm">
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Notifications Propriétaire (Email & WhatsApp)</h3>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Recevez instantanément chaque nouvelle commande par email et message WhatsApp automatique.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleTestNotifications}
+                  disabled={notifTestLoading}
+                  className="bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {notifTestLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Envoyer une notification de test
+                </button>
+              </div>
+
+              {testResult && (
+                <div className={`p-4 rounded-xl border text-xs space-y-2 animate-in fade-in ${testResult.emailSent || testResult.whatsappSent ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border-red-500/30 text-red-300"}`}>
+                  <div className="font-bold flex items-center gap-2 text-sm">
+                    {testResult.emailSent || testResult.whatsappSent ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-red-400" />}
+                    Résultat du test en temps réel :
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-neutral-300">
+                    <div className="flex items-center gap-2">
+                      <span>Email :</span>
+                      {testResult.emailSent ? (
+                        <span className="text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded">✓ Envoyé avec succès</span>
+                      ) : (
+                        <span className="text-red-400 font-semibold bg-red-500/20 px-2 py-0.5 rounded">✕ Non envoyé ({testResult.error || "erreur"})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span>WhatsApp :</span>
+                      {testResult.whatsappSent ? (
+                        <span className="text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded">✓ Envoyé ({testResult.whatsappMethod})</span>
+                      ) : (
+                        <span className="text-amber-400 font-semibold bg-amber-500/20 px-2 py-0.5 rounded">ℹ {testResult.error || "Désactivé / Non configuré"}</span>
+                      )}
+                    </div>
+                  </div>
+                  {testResult.previewUrl && (
+                    <div className="pt-2">
+                      <a href={testResult.previewUrl} target="_blank" rel="noreferrer" className="text-yellow-400 underline hover:text-yellow-300">
+                        Ouvrir l'aperçu de l'e-mail de test (Ethereal) ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-4 pt-2">
+                {/* Email Section */}
+                <div className="bg-[#1e1e24] p-4 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Mail className="w-4 h-4 text-yellow-500" />
+                      <span className="text-sm font-bold text-white">Notification par E-mail</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotifyEmailEnabled(!notifyEmailEnabled)}
+                      className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${notifyEmailEnabled ? "bg-emerald-500" : "bg-neutral-600"}`}
+                    >
+                      <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${notifyEmailEnabled ? "left-6" : "left-1"}`} />
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-neutral-400">Adresse e-mail de réception :</label>
+                    <input
+                      type="email"
+                      value={notifEmail}
+                      onChange={(e) => setNotifEmail(e.target.value)}
+                      placeholder="votre-email@exemple.com"
+                      className="w-full bg-[#16161a] border border-neutral-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                    />
+                    <p className="text-[11px] text-neutral-500">Un e-mail détaillé récapitulant les articles, le client et le montant sera envoyé à chaque commande.</p>
+                  </div>
+                </div>
+
+                {/* WhatsApp Section */}
+                <div className="bg-[#1e1e24] p-4 rounded-xl border border-neutral-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <MessageSquare className="w-4 h-4 text-emerald-500" />
+                      <span className="text-sm font-bold text-white">Notification par WhatsApp automatique</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotifyWhatsappEnabled(!notifyWhatsappEnabled)}
+                      className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${notifyWhatsappEnabled ? "bg-emerald-500" : "bg-neutral-600"}`}
+                    >
+                      <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${notifyWhatsappEnabled ? "left-6" : "left-1"}`} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs text-neutral-400">Numéro WhatsApp du propriétaire (format algérien) :</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs text-neutral-500 font-mono font-medium">🇩🇿 +213</span>
+                      <input
+                        type="tel"
+                        maxLength={getPhoneMaxLength(notifWhatsapp)}
+                        value={notifWhatsapp}
+                        onChange={(e) => setNotifWhatsapp(cleanAndLimitPhone(e.target.value))}
+                        placeholder="0550252565"
+                        className="w-full bg-[#16161a] border border-neutral-700 rounded-lg pl-20 pr-4 py-2 text-sm text-white font-mono focus:outline-none focus:border-yellow-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* CallMeBot API Option */}
+                  <div className="space-y-1.5 pt-2 border-t border-neutral-800/80">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-neutral-300">Clé API CallMeBot WhatsApp (Gratuit / Optionnel) :</label>
+                      <a
+                        href="https://www.callmebot.com/blog/free-api-whatsapp-messages/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-yellow-500 hover:underline"
+                      >
+                        Obtenir une clé gratuite ↗
+                      </a>
+                    </div>
+                    <input
+                      type="text"
+                      value={callmebotApiKey}
+                      onChange={(e) => setCallmebotApiKey(e.target.value)}
+                      placeholder="Ex: 1234567"
+                      className="w-full bg-[#16161a] border border-neutral-700 rounded-lg px-3.5 py-2 text-sm text-white font-mono focus:outline-none focus:border-yellow-500"
+                    />
+                    <p className="text-[11px] text-neutral-500">
+                      Permet d'envoyer instantanément et gratuitement les alertes WhatsApp sur votre propre numéro sans passer par Meta Cloud API.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
+                <span className="text-xs text-neutral-500">Les notifications sont exécutées côté serveur en temps réel.</span>
+                <button
+                  type="button"
+                  onClick={handleSaveNotifications}
+                  disabled={notifSaveLoading}
+                  className="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {notifSaveLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Enregistrer les paramètres de notification
+                </button>
               </div>
             </div>
           </div>

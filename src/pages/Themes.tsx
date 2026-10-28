@@ -118,7 +118,7 @@ export default function Themes() {
             }
           }
         } catch (error) {
-          console.error("Error fetching active theme:", error);
+          console.warn("Notice fetching active theme:", error);
         }
       }
     };

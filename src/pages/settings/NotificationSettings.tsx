@@ -1,25 +1,341 @@
-import { useState } from "react";
-import { Bell, Mail, Send, MessageSquare, AlertTriangle, MonitorSmartphone, PlayCircle, ExternalLink } from "lucide-react";
+import { useState, useEffect } from "react";
+import { 
+  Bell, Mail, Send, MessageSquare, AlertTriangle, 
+  MonitorSmartphone, PlayCircle, ExternalLink, CheckCircle, 
+  RefreshCw, AlertCircle 
+} from "lucide-react";
+import { useAuth } from "../../hooks/useAuth";
+import { db } from "../../lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../../lib/phoneUtils";
 
 export default function NotificationSettings() {
-  const [browserNotifications, setBrowserNotifications] = useState(false);
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [newOrderEmail, setNewOrderEmail] = useState(true);
-  const [orderStatusEmail, setOrderStatusEmail] = useState(false);
+  const { user } = useAuth();
+  const [browserNotifications, setBrowserNotifications] = useState(true);
+  
+  // Real tenant notification settings
+  const [notifEmail, setNotifEmail] = useState("");
+  const [notifWhatsapp, setNotifWhatsapp] = useState("");
+  const [notifyEmailEnabled, setNotifyEmailEnabled] = useState(true);
+  const [notifyWhatsappEnabled, setNotifyWhatsappEnabled] = useState(true);
+  const [callmebotApiKey, setCallmebotApiKey] = useState("");
+  
+  const [newOrderAlert, setNewOrderAlert] = useState(true);
+  const [orderStatusAlert, setOrderStatusAlert] = useState(false);
   const [telegramNotifications, setTelegramNotifications] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    setToastMsg({ text, type });
+    setTimeout(() => setToastMsg(null), 4000);
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    setNotifEmail(user.email || "");
+
+    const loadSettings = async () => {
+      try {
+        const tenantSnap = await getDoc(doc(db, "tenants", user.uid));
+        if (tenantSnap.exists()) {
+          const data = tenantSnap.data();
+          if (data.notificationEmail) setNotifEmail(data.notificationEmail);
+          if (data.notificationWhatsapp) setNotifWhatsapp(data.notificationWhatsapp);
+          else if (data.phone) setNotifWhatsapp(data.phone);
+          if (data.notifyEmailEnabled !== undefined) setNotifyEmailEnabled(data.notifyEmailEnabled);
+          if (data.notifyWhatsappEnabled !== undefined) setNotifyWhatsappEnabled(data.notifyWhatsappEnabled);
+          if (data.callmebotApiKey) setCallmebotApiKey(data.callmebotApiKey);
+        }
+
+        const settingsSnap = await getDoc(doc(db, "tenants", user.uid, "settings", "notifications"));
+        if (settingsSnap.exists()) {
+          const sData = settingsSnap.data();
+          if (sData.notificationEmail) setNotifEmail(sData.notificationEmail);
+          if (sData.notificationWhatsapp) setNotifWhatsapp(sData.notificationWhatsapp);
+          if (sData.notifyEmailEnabled !== undefined) setNotifyEmailEnabled(sData.notifyEmailEnabled);
+          if (sData.notifyWhatsappEnabled !== undefined) setNotifyWhatsappEnabled(sData.notifyWhatsappEnabled);
+          if (sData.callmebotApiKey) setCallmebotApiKey(sData.callmebotApiKey);
+        }
+      } catch (err) {
+        console.warn("Could not load notification settings:", err);
+      }
+    };
+
+    loadSettings();
+  }, [user]);
+
+  const handleSaveSettings = async () => {
+    if (!user) return;
+
+    if (notifWhatsapp.trim()) {
+      const val = validatePhoneNumber(notifWhatsapp);
+      if (!val.isValid) {
+        showToast(val.error || "Numéro WhatsApp invalide", "error");
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        notificationEmail: notifEmail.trim() || user.email || "",
+        notificationWhatsapp: notifWhatsapp.trim(),
+        notifyEmailEnabled,
+        notifyWhatsappEnabled,
+        callmebotApiKey: callmebotApiKey.trim(),
+        newOrderAlert,
+        orderStatusAlert,
+        browserNotifications,
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, "tenants", user.uid), payload, { merge: true });
+      await setDoc(doc(db, "tenants", user.uid, "settings", "notifications"), payload, { merge: true });
+
+      showToast("Paramètres des notifications enregistrés avec succès !");
+    } catch (e: any) {
+      console.error("Save notification error:", e);
+      showToast("Erreur lors de l'enregistrement.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTestNotifications = async () => {
+    if (!user) return;
+    setTesting(true);
+    setTestResult(null);
+
+    try {
+      const res = await fetch("/api/notify/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: user.uid,
+          email: notifEmail.trim() || user.email,
+          phone: notifWhatsapp.trim(),
+          callmebotApiKey: callmebotApiKey.trim(),
+        })
+      });
+
+      const data = await res.json();
+      setTestResult(data);
+      if (data.emailSent || data.whatsappSent) {
+        showToast("Notification de test envoyée avec succès !");
+      } else {
+        showToast(data.error || "Échec de l'envoi du test.", "error");
+      }
+    } catch (err: any) {
+      setTestResult({ error: err.message || "Erreur de connexion au serveur." });
+      showToast("Impossible de contacter le serveur de notifications.", "error");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <Bell className="w-8 h-8 text-yellow-500" />
-          <h1 className="text-2xl font-bold text-white">Paramètres des notifications</h1>
+      <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <Bell className="w-8 h-8 text-yellow-500" />
+            <h1 className="text-2xl font-bold text-white">Paramètres des notifications</h1>
+          </div>
+          <p className="text-neutral-400">
+            Configurez les canaux d'alertes instantanées pour chaque nouvelle commande : E-mail, WhatsApp automatique et Navigateur.
+          </p>
         </div>
-        <p className="text-neutral-400">Contrôlez les canaux de notifications de commandes : e-mail, Telegram et Discord</p>
+
+        <button
+          onClick={handleTestNotifications}
+          disabled={testing}
+          className="bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+        >
+          {testing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          Envoyer une notification de test
+        </button>
       </div>
+
+      {toastMsg && (
+        <div className={`p-4 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in ${
+          toastMsg.type === "success" 
+            ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400" 
+            : "bg-red-500/10 border border-red-500/30 text-red-400"
+        }`}>
+          {toastMsg.type === "success" ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+          {toastMsg.text}
+        </div>
+      )}
+
+      {testResult && (
+        <div className={`p-4 rounded-xl border text-xs space-y-2 animate-in fade-in ${testResult.emailSent || testResult.whatsappSent ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border-red-500/30 text-red-300"}`}>
+          <div className="font-bold flex items-center gap-2 text-sm">
+            {testResult.emailSent || testResult.whatsappSent ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-red-400" />}
+            Résultat du test de notification en temps réel :
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-neutral-300">
+            <div className="flex items-center gap-2">
+              <span>Email :</span>
+              {testResult.emailSent ? (
+                <span className="text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded">✓ Envoyé avec succès</span>
+              ) : (
+                <span className="text-red-400 font-semibold bg-red-500/20 px-2 py-0.5 rounded">✕ Non envoyé ({testResult.emailError || "erreur"})</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span>WhatsApp :</span>
+              {testResult.whatsappSent ? (
+                <span className="text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded">✓ Envoyé ({testResult.whatsappMethod})</span>
+              ) : (
+                <span className="text-amber-400 font-semibold bg-amber-500/20 px-2 py-0.5 rounded">ℹ {testResult.whatsappError || "Désactivé / Non configuré"}</span>
+              )}
+            </div>
+          </div>
+          {testResult.previewUrl && (
+            <div className="pt-2">
+              <a href={testResult.previewUrl} target="_blank" rel="noreferrer" className="text-yellow-400 underline hover:text-yellow-300">
+                Ouvrir l'aperçu de l'e-mail de test (Ethereal) ↗
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left Column */}
+        <div className="space-y-6">
+          
+          {/* Email Notifications */}
+          <div className="bg-[#16161a] border border-neutral-800 rounded-xl p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <Mail className="w-5 h-5 text-yellow-500" />
+              <div>
+                <h2 className="text-base font-medium text-white">Notifications par E-mail</h2>
+                <p className="text-xs text-neutral-400 mt-1">Réception d'un récapitulatif complet des commandes par e-mail en temps réel.</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-white">Activer les alertes e-mail</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">Envoi automatique à chaque commande passée</div>
+                </div>
+                <button 
+                  onClick={() => setNotifyEmailEnabled(!notifyEmailEnabled)}
+                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${notifyEmailEnabled ? "bg-emerald-500" : "bg-neutral-600"}`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${notifyEmailEnabled ? "left-6" : "left-1"}`} />
+                </button>
+              </div>
+
+              <div className="space-y-1.5 pt-2">
+                <label className="text-xs font-medium text-neutral-300">Adresse e-mail de réception :</label>
+                <input
+                  type="email"
+                  value={notifEmail}
+                  onChange={(e) => setNotifEmail(e.target.value)}
+                  placeholder="votre-email@exemple.com"
+                  className="w-full bg-[#1e1e24] border border-neutral-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between border-t border-neutral-800/50 pt-4">
+                <div>
+                  <div className="text-sm font-medium text-white">Nouvelle commande</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">Notification instantanée dès validation du panier</div>
+                </div>
+                <button 
+                  onClick={() => setNewOrderAlert(!newOrderAlert)}
+                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${newOrderAlert ? "bg-emerald-500" : "bg-neutral-600"}`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${newOrderAlert ? "left-6" : "left-1"}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* WhatsApp Automatic Notifications */}
+          <div className="bg-[#16161a] border border-neutral-800 rounded-xl p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <MessageSquare className="w-5 h-5 text-emerald-500" />
+              <div>
+                <h2 className="text-base font-medium text-white">Notifications WhatsApp Automatiques</h2>
+                <p className="text-xs text-neutral-400 mt-1">Envoi automatique sans clic via Meta WhatsApp Cloud API ou CallMeBot.</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-white">Activer les alertes WhatsApp</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">Envoi d'un message direct sur votre téléphone à chaque commande</div>
+                </div>
+                <button 
+                  onClick={() => setNotifyWhatsappEnabled(!notifyWhatsappEnabled)}
+                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${notifyWhatsappEnabled ? "bg-emerald-500" : "bg-neutral-600"}`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${notifyWhatsappEnabled ? "left-6" : "left-1"}`} />
+                </button>
+              </div>
+
+              <div className="space-y-1.5 pt-2">
+                <label className="text-xs font-medium text-neutral-300">Numéro WhatsApp du destinataire :</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-neutral-500 font-mono font-medium">🇩🇿 +213</span>
+                  <input
+                    type="tel"
+                    maxLength={getPhoneMaxLength(notifWhatsapp)}
+                    value={notifWhatsapp}
+                    onChange={(e) => setNotifWhatsapp(cleanAndLimitPhone(e.target.value))}
+                    placeholder="0550252565"
+                    className="w-full bg-[#1e1e24] border border-neutral-700 rounded-lg pl-20 pr-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-yellow-500"
+                  />
+                </div>
+              </div>
+
+              {/* CallMeBot Free API Integration */}
+              <div className="bg-[#1e1e24] p-4 rounded-xl border border-neutral-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-neutral-300">Option gratuite : Clé API CallMeBot WhatsApp</label>
+                  <a
+                    href="https://www.callmebot.com/blog/free-api-whatsapp-messages/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-yellow-500 hover:underline flex items-center gap-1"
+                  >
+                    Obtenir une clé gratuite <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+                <input
+                  type="text"
+                  value={callmebotApiKey}
+                  onChange={(e) => setCallmebotApiKey(e.target.value)}
+                  placeholder="Ex: 1234567"
+                  className="w-full bg-[#16161a] border border-neutral-700 rounded-lg px-3.5 py-2 text-sm text-white font-mono focus:outline-none focus:border-yellow-500"
+                />
+                <p className="text-[11px] text-neutral-500 leading-relaxed">
+                  CallMeBot vous permet de recevoir des messages WhatsApp automatisés gratuits directement depuis le serveur en liant votre numéro.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleSaveSettings}
+            disabled={saving}
+            className="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            Enregistrer les paramètres
+          </button>
+        </div>
+
+        {/* Right Column */}
         <div className="space-y-6">
           
           {/* Browser Notifications */}
@@ -27,15 +343,15 @@ export default function NotificationSettings() {
             <div className="flex items-center gap-3">
               <MonitorSmartphone className="w-5 h-5 text-emerald-500" />
               <div>
-                <h2 className="text-base font-medium text-white">Notifications navigateur & application</h2>
-                <p className="text-xs text-neutral-400 mt-1">Alerte instantanée sur votre appareil dès qu'une commande arrive — même tableau de bord fermé.</p>
+                <h2 className="text-base font-medium text-white">Notifications navigateur & son de cloche</h2>
+                <p className="text-xs text-neutral-400 mt-1">Alerte sonore et visuelle instantanée dans le tableau de bord.</p>
               </div>
             </div>
 
             <div className="flex items-center justify-between border-t border-neutral-800/50 pt-4">
               <div>
                 <div className="text-sm font-medium text-white">Notifications du navigateur</div>
-                <div className="text-xs text-neutral-500 mt-0.5">Alertes instantanées sur ce navigateur à chaque nouvelle commande.</div>
+                <div className="text-xs text-neutral-500 mt-0.5">Alertes instantanées avec son de carillon à chaque commande.</div>
               </div>
               <button 
                 onClick={() => setBrowserNotifications(!browserNotifications)}
@@ -44,81 +360,13 @@ export default function NotificationSettings() {
                 <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${browserNotifications ? "left-6" : "left-1"}`} />
               </button>
             </div>
-
-            <div className="bg-[#2a1d13] border border-orange-900/50 rounded-lg p-4 flex gap-3">
-              <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-orange-500/80 leading-relaxed">
-                Les notifications sont bloquées pour ce site dans le navigateur. Cliquez sur l'icône de cadenas à côté de l'adresse, autorisez les notifications puis rechargez la page.
-              </p>
-            </div>
-          </div>
-
-          {/* Email Notifications */}
-          <div className="bg-[#16161a] border border-neutral-800 rounded-xl p-6 space-y-6">
-            <div className="flex items-center gap-3">
-              <Mail className="w-5 h-5 text-yellow-500" />
-              <div>
-                <h2 className="text-base font-medium text-white">Notifications e-mail et application</h2>
-                <p className="text-xs text-neutral-400 mt-1">Activer ou désactiver toutes les notifications par e-mail, application et navigateur</p>
-              </div>
-            </div>
-
-            <div className="bg-[#1e1e24] border border-neutral-700/50 rounded-lg p-4 flex gap-3">
-              <Mail className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
-              <div>
-                <div className="text-xs text-neutral-400 mb-1">Les notifications seront envoyées à :</div>
-                <div className="text-sm font-medium text-white mb-2">grfilaha@gmail.com</div>
-                <a href="#" className="text-[10px] text-neutral-500 hover:text-neutral-400 underline">Pour changer cet e-mail, modifiez l'e-mail de votre compte dans les paramètres du compte</a>
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-white">Activer les notifications e-mail et application</div>
-                  <div className="text-xs text-neutral-500 mt-0.5">Activer ou désactiver toutes les notifications par e-mail, application et navigateur</div>
-                </div>
-                <button 
-                  onClick={() => setEmailNotifications(!emailNotifications)}
-                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${emailNotifications ? "bg-emerald-500" : "bg-neutral-600"}`}
-                >
-                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${emailNotifications ? "left-6" : "left-1"}`} />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-neutral-800/50 pt-4">
-                <div>
-                  <div className="text-sm font-medium text-white">Nouvelle commande</div>
-                  <div className="text-xs text-neutral-500 mt-0.5">Notification lors de la réception d'une nouvelle commande</div>
-                </div>
-                <button 
-                  onClick={() => setNewOrderEmail(!newOrderEmail)}
-                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${newOrderEmail ? "bg-emerald-500" : "bg-neutral-600"}`}
-                >
-                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${newOrderEmail ? "left-6" : "left-1"}`} />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-neutral-800/50 pt-4">
-                <div>
-                  <div className="text-sm font-medium text-white">Mise à jour du statut de commande</div>
-                  <div className="text-xs text-neutral-500 mt-0.5">Notification lors du changement de statut d'une commande</div>
-                </div>
-                <button 
-                  onClick={() => setOrderStatusEmail(!orderStatusEmail)}
-                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${orderStatusEmail ? "bg-emerald-500" : "bg-neutral-600"}`}
-                >
-                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${orderStatusEmail ? "left-6" : "left-1"}`} />
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* Video Section */}
           <div className="bg-[#16161a] border border-neutral-800 rounded-xl overflow-hidden">
             <div className="p-4 border-b border-neutral-800 flex items-center gap-3">
               <PlayCircle className="w-5 h-5 text-red-500" />
-              <h2 className="text-base font-medium text-white">Regardez : Meilleure façon d'activer les notifications</h2>
+              <h2 className="text-base font-medium text-white">Tutoriel : Configuration des alertes temps réel</h2>
             </div>
             <div className="aspect-video bg-neutral-900 relative group cursor-pointer">
               <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60 flex items-center justify-center">
@@ -137,14 +385,6 @@ export default function NotificationSettings() {
             </div>
           </div>
 
-          <button className="bg-yellow-500 text-black px-6 py-2.5 rounded-lg font-medium text-sm hover:bg-yellow-400 transition-colors">
-            Enregistrer les paramètres
-          </button>
-        </div>
-
-        {/* Right Column */}
-        <div className="space-y-6">
-          
           {/* Telegram Notifications */}
           <div className="bg-[#16161a] border border-neutral-800 rounded-xl p-6 space-y-6">
             <div className="flex items-center gap-3">
@@ -153,14 +393,14 @@ export default function NotificationSettings() {
               </div>
               <div>
                 <h2 className="text-base font-medium text-white">Notifications Telegram</h2>
-                <p className="text-xs text-neutral-400 mt-0.5">Recevez des notifications instantanées sur Telegram</p>
+                <p className="text-xs text-neutral-400 mt-0.5">Recevez des alertes instantanées sur Telegram</p>
               </div>
             </div>
 
             <div className="flex items-center justify-between border-t border-neutral-800/50 pt-4">
               <div>
                 <div className="text-sm font-medium text-white">Activer les notifications Telegram</div>
-                <div className="text-xs text-neutral-500 mt-0.5">Recevez des notifications instantanées sur Telegram</div>
+                <div className="text-xs text-neutral-500 mt-0.5">Bot @dzbuildbot</div>
               </div>
               <button 
                 onClick={() => setTelegramNotifications(!telegramNotifications)}
@@ -169,78 +409,6 @@ export default function NotificationSettings() {
                 <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-all ${telegramNotifications ? "left-6" : "left-1"}`} />
               </button>
             </div>
-
-            <div className="pt-2">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-white">Comptes liés</h3>
-                <span className="bg-[#1e1e24] text-neutral-400 text-xs px-2 py-1 rounded border border-neutral-700/50 flex items-center gap-1">
-                  <span className="w-3 h-3 text-neutral-500">👥</span> Comptes utilisés <span className="text-white ml-1 font-medium">0 / 2</span>
-                </span>
-              </div>
-              <p className="text-sm text-neutral-500 mb-6">Aucun compte lié pour le moment</p>
-
-              <div className="bg-[#1e1e24] border border-blue-900/30 rounded-xl p-5">
-                <h4 className="text-sm font-medium text-blue-400 flex items-center gap-2 mb-4">
-                  <Send className="w-4 h-4" /> Connecter un compte Telegram
-                </h4>
-                
-                <ol className="space-y-4 mb-6 relative">
-                  <div className="absolute left-[11px] top-2 bottom-2 w-px bg-neutral-800 z-0" />
-                  <li className="flex items-start gap-3 relative z-10">
-                    <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold shrink-0">1</div>
-                    <p className="text-sm text-neutral-300 mt-0.5">Cliquez sur le bouton "Connecter Telegram" ci-dessous</p>
-                  </li>
-                  <li className="flex items-start gap-3 relative z-10">
-                    <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold shrink-0">2</div>
-                    <p className="text-sm text-neutral-300 mt-0.5">Vous serez redirigé vers le bot <span className="font-medium text-blue-400">@dzbuildbot</span></p>
-                  </li>
-                  <li className="flex items-start gap-3 relative z-10">
-                    <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold shrink-0">3</div>
-                    <p className="text-sm text-neutral-300 mt-0.5">Appuyez sur "Start" pour activer la connexion</p>
-                  </li>
-                </ol>
-
-                <button className="w-full bg-[#0088cc] hover:bg-[#007ab8] text-white py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2">
-                  <Send className="w-4 h-4 -ml-0.5 mt-0.5" /> Connecter Telegram
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Discord Notifications */}
-          <div className="bg-[#16161a] border border-neutral-800 rounded-xl p-6 space-y-6">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 bg-[#5865F2] rounded-full flex items-center justify-center shrink-0">
-                <MessageSquare className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-medium text-white">Notifications Discord</h2>
-                <p className="text-xs text-neutral-400 mt-0.5">Recevez les notifications de commandes dans le serveur Discord de votre boutique ou en messages privés.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="bg-[#1e1e24] border border-neutral-800 rounded-lg p-4 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[#5865F2]/20 text-[#5865F2] flex items-center justify-center shrink-0 font-medium">#</div>
-                <div>
-                  <div className="text-sm font-medium text-white">Canal du serveur</div>
-                  <div className="text-xs text-neutral-500">Non lié</div>
-                </div>
-              </div>
-              <div className="bg-[#1e1e24] border border-neutral-800 rounded-lg p-4 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[#5865F2]/20 text-[#5865F2] flex items-center justify-center shrink-0 font-medium">
-                  <MessageSquare className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-white">Messages privés</div>
-                  <div className="text-xs text-neutral-500">Non lié</div>
-                </div>
-              </div>
-            </div>
-
-            <button className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2">
-              <MessageSquare className="w-4 h-4" /> Lier Discord
-            </button>
           </div>
         </div>
       </div>

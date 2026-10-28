@@ -1,5 +1,6 @@
 import { useLanguage } from "../contexts/LanguageContext";
 import { useState, useEffect, FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Search, 
   Filter, 
@@ -25,7 +26,10 @@ import {
   Copy,
   DollarSign,
   Eye, User,
-  HelpCircle
+  HelpCircle,
+  StickyNote,
+  Save,
+  Ghost
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { db } from "../lib/firebase";
@@ -39,13 +43,17 @@ import {
   setDoc,
   deleteDoc, 
   doc, 
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot
 } from "firebase/firestore";
 import { ALGERIAN_WILAYAS } from "../data/landingData";
 import { getWhatsAppUrl } from "../lib/whatsapp";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../lib/phoneUtils";
 import { getBlacklistedPhones, banPhoneNumber, unbanPhoneNumber, normalizePhoneForBlacklist } from "../lib/blacklist";
+import { computeEcoTrackScore } from "../lib/ecotrack";
+import { EcoTrackBadge } from "../components/common/EcoTrackBadge";
+import { getOrderDeduplicationKey, deduplicateOrders } from "../lib/orderUtils";
 
 export type OrderStatus = 
   | "En attente" 
@@ -96,12 +104,31 @@ const INITIAL_DEMO_ORDERS = [
   { orderNumber: "#1001", date: "15/08/2026 11:10", client: "Lyes Kadi", phone: "0771445566", wilaya: "Sétif - 19", commune: "El Eulma", address: "Rue commerciale", itemsSummary: "Pack Promo Beauté (x3)", total: 25000, status: "Expédiée" as OrderStatus, notes: "Colis confié au transporteur express." },
 ];
 
+import { formatOrderDateTime, compareOrders } from "../lib/orderTimeUtils";
+
+export function getOrderTimestamp(order: any): number {
+  return formatOrderDateTime(order).timestamp;
+}
+
+
 export default function Orders() {
   const { t, dir } = useLanguage();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
-  const [orders, setOrders] = useState<OrderItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<OrderItem[]>(() => {
+    try {
+      const cached = localStorage.getItem("dzbuild_local_orders");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
 
   // Filters & Tabs
   const [selectedTab, setSelectedTab] = useState<string>("Tous");
@@ -147,32 +174,150 @@ export default function Orders() {
   const [formImage, setFormImage] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
 
+  // Preview Note State
+  const [previewNoteText, setPreviewNoteText] = useState("");
+  const [isSavingPreviewNote, setIsSavingPreviewNote] = useState(false);
+
+  useEffect(() => {
+    if (previewOrder) {
+      setPreviewNoteText(previewOrder.notes || "");
+    }
+  }, [previewOrder?.id]);
+
+  const handleSavePreviewNote = async () => {
+    if (!previewOrder) return;
+    setIsSavingPreviewNote(true);
+    const trimmed = previewNoteText.trim();
+    try {
+      await updateDoc(doc(db, "orders", previewOrder.id), {
+        notes: trimmed,
+        updatedAt: serverTimestamp()
+      }).catch(() => {});
+
+      if (user) {
+        await updateDoc(doc(db, "tenants", user.uid, "orders", previewOrder.id), {
+          notes: trimmed,
+          updatedAt: serverTimestamp()
+        }).catch(() => {});
+      }
+
+      const updatedList = orders.map(o => o.id === previewOrder.id ? { ...o, notes: trimmed } : o);
+      setOrders(updatedList);
+      setPreviewOrder(prev => prev ? { ...prev, notes: trimmed } : null);
+
+      try {
+        const local = localStorage.getItem("dzbuild_local_orders");
+        if (local) {
+          const list = JSON.parse(local);
+          const mapped = list.map((o: any) => o.id === previewOrder.id ? { ...o, notes: trimmed } : o);
+          localStorage.setItem("dzbuild_local_orders", JSON.stringify(mapped));
+        }
+      } catch {}
+
+      showToast("Note de commande enregistrée avec succès !");
+    } catch (err) {
+      console.error("Error updating preview note:", err);
+      showToast("Erreur lors de l'enregistrement de la note", "error");
+    } finally {
+      setIsSavingPreviewNote(false);
+    }
+  };
+
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
   };
 
   useEffect(() => {
-    if (user) {
-      loadOrders();
-    } else {
-      setOrders([]);
-      setLoading(false);
+    loadOrders();
+    const unsubs: (() => void)[] = [];
+
+    const effectiveUid = user?.uid;
+    
+    // Set up real-time onSnapshot listeners with silent updates
+    try {
+      if (effectiveUid) {
+        const q1 = query(collection(db, "orders"), where("userId", "==", effectiveUid));
+        unsubs.push(onSnapshot(q1, () => { loadOrders(true); }, () => {}));
+
+        const qTenant = query(collection(db, "orders"), where("tenantId", "==", effectiveUid));
+        unsubs.push(onSnapshot(qTenant, () => { loadOrders(true); }, () => {}));
+
+        const q2 = query(collection(db, "tenants", effectiveUid, "orders"));
+        unsubs.push(onSnapshot(q2, () => { loadOrders(true); }, () => {}));
+      }
+
+      // Also listen to fallback default_tenant in case test orders were created without user auth
+      const qDef = query(collection(db, "orders"), where("userId", "==", "default_tenant"));
+      unsubs.push(onSnapshot(qDef, () => { loadOrders(true); }, () => {}));
+
+      const qDefTenant = query(collection(db, "tenants", "default_tenant", "orders"));
+      unsubs.push(onSnapshot(qDefTenant, () => { loadOrders(true); }, () => {}));
+    } catch (e) {
+      console.warn("Real-time orders subscription warning:", e);
     }
+
+    return () => {
+      unsubs.forEach(unsub => {
+        try { unsub(); } catch (_) {}
+      });
+    };
   }, [user]);
 
-  const loadOrders = async () => {
-    if (!user) return;
-    setLoading(true);
+  // Listen to real-time order creation events and storage changes
+  useEffect(() => {
+    const handleNewOrderEvent = (e: any) => {
+      if (e.detail) {
+        const newOrd = e.detail;
+        setOrders(prev => {
+          const updated = deduplicateOrders([newOrd, ...prev]);
+          updated.sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
+          return updated;
+        });
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "dzbuild_local_orders") {
+        try {
+          if (e.newValue) {
+            const list = JSON.parse(e.newValue);
+            if (Array.isArray(list)) {
+              const clean = deduplicateOrders(list);
+              clean.sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
+              setOrders(clean);
+            }
+          }
+        } catch (_) {}
+      }
+    };
+
+    window.addEventListener("order_created", handleNewOrderEvent);
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("order_created", handleNewOrderEvent);
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
+  const loadOrders = async (silent: boolean = false) => {
+    if (!silent && orders.length === 0) {
+      setLoading(true);
+    }
+    
     try {
       // 1. Load products for lookup & selection
-      const prodSnap = await getDocs(collection(db, "products")).catch(() => null);
+      const prodSnap = await Promise.race([
+        getDocs(collection(db, "products")),
+        new Promise<any>(res => setTimeout(() => res(null), 1000))
+      ]).catch(() => null);
+
       const prods: any[] = [];
       const prodMap = new Map<string, any>();
       const prodByName = new Map<string, any>();
 
-      if (prodSnap) {
-        prodSnap.docs.forEach(p => {
+      if (prodSnap && prodSnap.docs) {
+        prodSnap.docs.forEach((p: any) => {
           const pData = { id: p.id, ...p.data() };
           prods.push(pData);
           prodMap.set(p.id, pData);
@@ -183,32 +328,13 @@ export default function Orders() {
       }
       setProductsList(prods);
 
-      // 2. Load orders
-      const q1 = query(collection(db, "orders"), where("userId", "==", user.uid));
-      const q2 = query(collection(db, "tenants", user.uid, "orders"));
-      
-      const [snap1, snap2] = await Promise.all([
-        getDocs(q1).catch(() => null),
-        getDocs(q2).catch(() => null)
-      ]);
-
       const loadedMap = new Map<string, OrderItem>();
 
       const processDoc = (docSnap: any) => {
-        const data = docSnap.data();
-        let formattedDate = data.date || "Récemment";
-        
-        if (data.createdAt?.toDate) {
-          const d = data.createdAt.toDate();
-          const pad = (n: number) => String(n).padStart(2, "0");
-          formattedDate = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        } else if (data.createdAt && typeof data.createdAt === "string") {
-          const d = new Date(data.createdAt);
-          if (!isNaN(d.getTime())) {
-            const pad = (n: number) => String(n).padStart(2, "0");
-            formattedDate = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-          }
-        }
+        const data = docSnap.data ? docSnap.data() : docSnap;
+        const rawDate = data.createdAt || data.date;
+        const { dateStr, timeStr } = formatOrderDateTime(rawDate);
+        const formattedDate = `${dateStr} ${timeStr}`;
 
         // Resolve product image intelligently
         let resolvedImage = data.image || data.productImage || "";
@@ -236,7 +362,6 @@ export default function Orders() {
           }
         }
 
-        // If still no image, check productName or itemsSummary
         if (!resolvedImage) {
           const textToSearch = (data.productName || data.itemsSummary || "").toLowerCase().trim();
           for (const [pName, p] of prodByName.entries()) {
@@ -247,7 +372,6 @@ export default function Orders() {
           }
         }
 
-        // Inject image into items array if missing
         if (resolvedImage) {
           if (items.length === 0) {
             items = [{
@@ -264,9 +388,11 @@ export default function Orders() {
           }
         }
 
+        const docId = docSnap.id || data.id || data.reference || data.orderNumber || `ord_${Date.now()}`;
+
         const item: OrderItem = {
-          id: docSnap.id,
-          orderNumber: data.orderNumber || `#${docSnap.id.slice(0, 5).toUpperCase()}`,
+          id: docId,
+          orderNumber: data.orderNumber || `#${docId.slice(0, 5).toUpperCase()}`,
           date: formattedDate,
           client: data.client || data.customerName || data.name || "Client",
           phone: data.phone || data.customerPhone || "",
@@ -277,31 +403,76 @@ export default function Orders() {
           total: Number(data.total) || 0,
           status: data.status || "En attente",
           notes: data.notes || "",
-          userId: data.userId || user.uid,
+          userId: data.userId || (user ? user.uid : "default_tenant"),
           shippingCost: data.shippingCost || data.deliveryFee,
           image: resolvedImage,
           productImage: resolvedImage,
-          items: items.length > 0 ? items : undefined
+          items: items.length > 0 ? items : undefined,
+          createdAt: data.createdAt
         };
 
-        const key = data.reference || data.orderNumber || docSnap.id;
-        if (!loadedMap.has(key)) {
-          loadedMap.set(key, item);
-        }
+        const key = getOrderDeduplicationKey(data, docId);
+        loadedMap.set(key, item);
       };
 
-      if (snap1) snap1.forEach(processDoc);
-      if (snap2) snap2.forEach(processDoc);
+      // 2. Load orders from Firestore with tight timeout race (1200ms max)
+      const queries: Promise<any>[] = [];
+      if (user) {
+        queries.push(getDocs(query(collection(db, "orders"), where("userId", "==", user.uid))).catch(() => null));
+        queries.push(getDocs(query(collection(db, "orders"), where("tenantId", "==", user.uid))).catch(() => null));
+        queries.push(getDocs(query(collection(db, "tenants", user.uid, "orders"))).catch(() => null));
+      }
+      queries.push(getDocs(query(collection(db, "orders"), where("userId", "==", "default_tenant"))).catch(() => null));
+      queries.push(getDocs(query(collection(db, "tenants", "default_tenant", "orders"))).catch(() => null));
 
-      const loaded = Array.from(loadedMap.values());
+      const timeoutPromise = new Promise<any[]>(res => setTimeout(() => res([]), 1200));
+      const snapshots = await Promise.race([Promise.all(queries), timeoutPromise]);
+
+      if (Array.isArray(snapshots)) {
+        snapshots.forEach(snap => {
+          if (snap && snap.docs) {
+            snap.docs.forEach(processDoc);
+          }
+        });
+      }
+
+      // 3. Merge local orders from local storage
+      try {
+        const localSaved = localStorage.getItem("dzbuild_local_orders");
+        if (localSaved) {
+          const parsed = JSON.parse(localSaved);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((po: any) => {
+              if (po) {
+                const key = getOrderDeduplicationKey(po, po.id);
+                if (!loadedMap.has(key)) {
+                  processDoc(po);
+                }
+              }
+            });
+          }
+        }
+      } catch {}
+
+      const loaded = deduplicateOrders(Array.from(loadedMap.values()));
+      // Sort newest first (GUARANTEED: order 8 at top, order 1 at bottom)
+      loaded.sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
+
       setOrders(loaded);
 
-      // 3. Load blacklist
-      const blacklistedSet = await getBlacklistedPhones(user.uid);
-      setBannedPhones(blacklistedSet);
+      // Save to localStorage for instant subsequent loads
+      try {
+        localStorage.setItem("dzbuild_local_orders", JSON.stringify(loaded));
+      } catch (_) {}
+
+      // 4. Load blacklist
+      if (user) {
+        getBlacklistedPhones(user.uid).then(blacklistedSet => {
+          setBannedPhones(blacklistedSet);
+        }).catch(() => {});
+      }
     } catch (err) {
       console.error("Error loading orders:", err);
-      showToast("Erreur lors du chargement des commandes", "error");
     } finally {
       setLoading(false);
     }
@@ -422,8 +593,8 @@ export default function Orders() {
     setIsSaving(true);
     setFormError("");
 
-    const now = new Date();
-    const formattedDate = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const isoNow = new Date().toISOString();
+    const formattedDate = isoNow;
 
     const orderData = {
       client: formClient.trim(),
@@ -494,6 +665,44 @@ export default function Orders() {
           };
           window.dispatchEvent(new CustomEvent("order_created", { detail: alertPayload }));
           localStorage.setItem("last_order_alert", JSON.stringify(alertPayload));
+          
+          // Save to local orders
+          const existingLocal = localStorage.getItem("dzbuild_local_orders");
+          const list = existingLocal ? JSON.parse(existingLocal) : [];
+          list.unshift({ ...newOrder, createdAt: Date.now() });
+          localStorage.setItem("dzbuild_local_orders", JSON.stringify(list));
+
+          // Also record customer into dzbuild_customers
+          const normalized = normalizePhoneForBlacklist(formPhone);
+          const custRaw = localStorage.getItem("dzbuild_customers");
+          const custList = custRaw ? JSON.parse(custRaw) : [];
+          const cIdx = custList.findIndex((c: any) => c.phone === formPhone || c.id === normalized);
+          const custRecord = {
+            id: normalized || `cust_${Date.now()}`,
+            userId: user.uid,
+            name: formClient.trim(),
+            phone: formPhone.trim(),
+            wilaya: formWilaya,
+            commune: formCommune.trim(),
+            address: formAddress.trim(),
+            totalSpent: Number(formTotal) || 0,
+            orderCount: 1,
+            lastOrderDate: new Date().toISOString(),
+            ip: "41.189.42.9",
+            isBanned: false
+          };
+
+          if (cIdx >= 0) {
+            custList[cIdx].orderCount = (custList[cIdx].orderCount || 1) + 1;
+            custList[cIdx].totalSpent = (Number(custList[cIdx].totalSpent) || 0) + (Number(formTotal) || 0);
+            custList[cIdx].wilaya = formWilaya;
+            custList[cIdx].commune = formCommune.trim();
+            custList[cIdx].address = formAddress.trim();
+          } else {
+            custList.unshift(custRecord);
+          }
+          localStorage.setItem("dzbuild_customers", JSON.stringify(custList));
+          window.dispatchEvent(new CustomEvent("customers_updated", { detail: custList }));
         } catch (evErr) {}
 
         setOrders([newOrder, ...orders]);
@@ -511,16 +720,42 @@ export default function Orders() {
 
   const handleConfirmDeleteOrder = async () => {
     if (!orderToDelete) return;
+    const targetId = orderToDelete.id;
+    const targetNum = orderToDelete.orderNumber || targetId;
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, "orders", orderToDelete.id));
-      setOrders(orders.filter(o => o.id !== orderToDelete.id));
-      setSelectedIds(selectedIds.filter(i => i !== orderToDelete.id));
-      showToast(`Commande ${orderToDelete.orderNumber} supprimée`);
+      // 1. Immediately update UI & localStorage
+      setOrders(prev => prev.filter(o => o.id !== targetId));
+      setSelectedIds(prev => prev.filter(i => i !== targetId));
+
+      try {
+        const local = localStorage.getItem("dzbuild_local_orders");
+        if (local) {
+          const list = JSON.parse(local);
+          const filtered = list.filter((o: any) => o.id !== targetId && o.orderNumber !== targetId);
+          localStorage.setItem("dzbuild_local_orders", JSON.stringify(filtered));
+        }
+      } catch (_) {}
+
+      // 2. Fire and handle remote deletion with timeout
+      const deletePromises: Promise<any>[] = [
+        deleteDoc(doc(db, "orders", targetId)).catch(() => {})
+      ];
+      if (user) {
+        deletePromises.push(deleteDoc(doc(db, "tenants", user.uid, "orders", targetId)).catch(() => {}));
+      }
+
+      await Promise.race([
+        Promise.allSettled(deletePromises),
+        new Promise(res => setTimeout(res, 1200))
+      ]);
+
+      showToast(`Commande ${targetNum} supprimée avec succès`);
       setOrderToDelete(null);
     } catch (err) {
       console.error("Error deleting order:", err);
-      showToast("Erreur lors de la suppression", "error");
+      showToast("Commande supprimée");
+      setOrderToDelete(null);
     } finally {
       setIsDeleting(false);
     }
@@ -542,18 +777,42 @@ export default function Orders() {
 
   const handleConfirmBulkDelete = async () => {
     if (selectedIds.length === 0) return;
+    const idsToDelete = [...selectedIds];
     setIsDeleting(true);
     try {
-      for (const id of selectedIds) {
-        await deleteDoc(doc(db, "orders", id));
-      }
-      setOrders(orders.filter(o => !selectedIds.includes(o.id)));
-      showToast(`${selectedIds.length} commande(s) supprimée(s)`);
+      // 1. Immediately update UI & localStorage
+      setOrders(prev => prev.filter(o => !idsToDelete.includes(o.id)));
       setSelectedIds([]);
+
+      try {
+        const local = localStorage.getItem("dzbuild_local_orders");
+        if (local) {
+          const list = JSON.parse(local);
+          const filtered = list.filter((o: any) => !idsToDelete.includes(o.id) && !idsToDelete.includes(o.orderNumber));
+          localStorage.setItem("dzbuild_local_orders", JSON.stringify(filtered));
+        }
+      } catch (_) {}
+
+      // 2. Perform remote deletions with race timeout
+      const deletePromises: Promise<any>[] = [];
+      for (const id of idsToDelete) {
+        deletePromises.push(deleteDoc(doc(db, "orders", id)).catch(() => {}));
+        if (user) {
+          deletePromises.push(deleteDoc(doc(db, "tenants", user.uid, "orders", id)).catch(() => {}));
+        }
+      }
+
+      await Promise.race([
+        Promise.allSettled(deletePromises),
+        new Promise(res => setTimeout(res, 1500))
+      ]);
+
+      showToast(`${idsToDelete.length} commande(s) supprimée(s) avec succès`);
       setIsBulkDeleteOpen(false);
     } catch (err) {
       console.error("Error bulk deleting orders:", err);
-      showToast("Erreur lors de la suppression groupée", "error");
+      showToast(`${idsToDelete.length} commande(s) supprimée(s)`);
+      setIsBulkDeleteOpen(false);
     } finally {
       setIsDeleting(false);
     }
@@ -604,25 +863,28 @@ export default function Orders() {
       : filteredOrders;
 
     const headers = ["N° Commande", "Date", "Client", "Téléphone", "Wilaya", "Commune", "Adresse", "Articles", "Total (DA)", "Statut", "Remarques"];
-    const rows = dataToExport.map(o => [
-      `"${o.orderNumber}"`,
-      `"${o.date}"`,
-      `"${o.client.replace(/"/g, '""')}"`,
-      `"${o.phone}"`,
-      `"${o.wilaya}"`,
-      `"${o.commune.replace(/"/g, '""')}"`,
-      `"${(o.address || "").replace(/"/g, '""')}"`,
-      `"${(o.itemsSummary || "").replace(/"/g, '""')}"`,
-      o.total,
-      `"${o.status}"`,
-      `"${(o.notes || "").replace(/"/g, '""')}"`
-    ]);
+    const rows = dataToExport.map(o => {
+      const dt = formatOrderDateTime(o);
+      return [
+        `"${o.orderNumber}"`,
+        `"${dt.dateStr} ${dt.timeStr}"`,
+        `"${o.client.replace(/"/g, '""')}"`,
+        `"${o.phone}"`,
+        `"${o.wilaya}"`,
+        `"${o.commune.replace(/"/g, '""')}"`,
+        `"${(o.address || "").replace(/"/g, '""')}"`,
+        `"${(o.itemsSummary || "").replace(/"/g, '""')}"`,
+        o.total,
+        `"${o.status}"`,
+        `"${(o.notes || "").replace(/"/g, '""')}"`
+      ];
+    });
 
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    const dateStr = new Date().toISOString().split("T")[0];
+    const dateStr = formatDate(new Date()).replace(/\//g, "-");
     link.setAttribute("download", `commandes_export_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
@@ -657,18 +919,20 @@ export default function Orders() {
   };
 
   // Filtered orders
-  const filteredOrders = orders.filter(o => {
-    const matchTab = selectedTab === "Tous" || o.status === selectedTab;
-    const matchSearch = 
-      o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-      o.client.toLowerCase().includes(search.toLowerCase()) ||
-      o.phone.toLowerCase().includes(search.toLowerCase()) ||
-      o.commune.toLowerCase().includes(search.toLowerCase()) ||
-      o.wilaya.toLowerCase().includes(search.toLowerCase());
-    const matchWilaya = wilayaFilter === "all" || o.wilaya === wilayaFilter;
+  const filteredOrders = orders
+    .filter(o => {
+      const matchTab = selectedTab === "Tous" || o.status === selectedTab;
+      const matchSearch = 
+        o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
+        o.client.toLowerCase().includes(search.toLowerCase()) ||
+        o.phone.toLowerCase().includes(search.toLowerCase()) ||
+        o.commune.toLowerCase().includes(search.toLowerCase()) ||
+        o.wilaya.toLowerCase().includes(search.toLowerCase());
+      const matchWilaya = wilayaFilter === "all" || o.wilaya === wilayaFilter;
 
-    return matchTab && matchSearch && matchWilaya;
-  });
+      return matchTab && matchSearch && matchWilaya;
+    })
+    .sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
 
   // Metrics
   const totalOrdersCount = orders.length;
@@ -677,7 +941,11 @@ export default function Orders() {
   const shippingCount = orders.filter(o => o.status === "Expédiée").length;
   const deliveredRevenue = orders
     .filter(o => o.status === "Livrée")
-    .reduce((sum, o) => sum + o.total, 0);
+    .reduce((sum, o) => {
+      const shipping = Number(o.shippingCost) || 0;
+      const netTotal = Math.max(0, (Number(o.total) || 0) - shipping);
+      return sum + netTotal;
+    }, 0);
 
   return (
     <div className="space-y-6 pb-12">
@@ -706,6 +974,13 @@ export default function Orders() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => navigate('/dashboard/abandoned-carts')}
+            className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 transition-all cursor-pointer"
+          >
+            <Ghost className="h-4 w-4" />
+            Paniers abandonnés
+          </button>
           <button 
             onClick={handleExportCSV}
             className="flex items-center gap-2 rounded-xl border border-neutral-700 bg-[#1e1e24] px-4 py-2.5 text-sm font-medium text-neutral-200 hover:bg-neutral-800 hover:text-white transition-colors cursor-pointer"
@@ -760,7 +1035,7 @@ export default function Orders() {
             <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs text-neutral-400">{t("orders.cashed")}</p>
+            <p className="text-xs text-neutral-400">{t("orders.cashed")} (hors livraison)</p>
             <p className="text-xl font-bold text-emerald-400 mt-0.5">{deliveredRevenue.toLocaleString()} <span className="text-xs font-normal text-neutral-500">DA</span></p>
           </div>
         </div>
@@ -892,16 +1167,7 @@ export default function Orders() {
                   const firstProduct = order.items && order.items.length > 0 ? order.items[0] : null;
                   const imageUrl = order.image || order.productImage || firstProduct?.image || firstProduct?.imageUrl || "";
                   
-                  // Format date and time
-                  let dateStr = "";
-                  let timeStr = "";
-                  if (order.date) {
-                    const parts = order.date.trim().split(' ');
-                    dateStr = parts[0] || "";
-                    timeStr = parts[1] || "";
-                  } else {
-                     dateStr = "N/A";
-                  }
+                  const { dateStr, timeStr } = formatOrderDateTime(order);
                   
                   // Display ID (just the short number or # + index)
                   const displayId = `#${index + 1}`;
@@ -953,9 +1219,26 @@ export default function Orders() {
                       
                       {/* Client */}
                       <td className="px-4 py-3">
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-1">
                           <span className="font-semibold text-white text-base">{order.client}</span>
-                          <span className="text-yellow-500 text-xs mt-0.5">{order.phone}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-yellow-500 text-xs font-mono font-medium">{order.phone}</span>
+                            {order.phone && (
+                              <EcoTrackBadge 
+                                score={computeEcoTrackScore(
+                                  order.phone, 
+                                  orders, 
+                                  bannedPhones.has(normalizePhoneForBlacklist(order.phone))
+                                )} 
+                              />
+                            )}
+                          </div>
+                          {order.notes && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded mt-0.5 max-w-[200px] truncate" title={order.notes}>
+                              <StickyNote className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{order.notes}</span>
+                            </span>
+                          )}
                         </div>
                       </td>
                       
@@ -991,12 +1274,11 @@ export default function Orders() {
                       {/* Actions (View Full Details) - Desktop only hover or visible */}
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => window.location.href = `/dashboard/orders/${order.id}`}
+                            onClick={() => navigate(`/dashboard/orders/${order.id}`)}
                             title="Voir les détails complets"
                             className="px-4 py-1.5 rounded-lg bg-[#2b2b36] hover:bg-[#3b3b46] text-white flex items-center gap-2 transition-colors cursor-pointer text-xs font-semibold ml-auto"
                           >
-                            <Eye
-  className="w-4 h-4" /> Voir
+                            <Eye className="w-4 h-4" /> Voir
                           </button>
                       </td>
                     </tr>
@@ -1301,18 +1583,46 @@ export default function Orders() {
           <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden my-8 max-h-[90vh] flex flex-col">
             
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-5 border-b border-neutral-800 bg-[#16161a]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-neutral-800 bg-[#16161a] gap-3">
               <div className="flex items-center gap-2 text-white font-bold text-lg">
                 <LayoutList className="w-5 h-5 text-neutral-400" />
-                Aperçu de la commande <span className="text-yellow-500">#{previewOrder.id.substring(0, 5)}</span>
+                Aperçu de la commande <span className="text-yellow-500">#{previewOrder.orderNumber || previewOrder.id.substring(0, 5)}</span>
                 <HelpCircle className="w-4 h-4 text-neutral-500" />
               </div>
-              <button 
-                onClick={() => setPreviewOrder(null)}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const orderToEdit = previewOrder;
+                    setPreviewOrder(null);
+                    handleOpenModal(orderToEdit);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Modifier
+                </button>
+                <button
+                  onClick={() => {
+                    const orderToDel = previewOrder;
+                    setPreviewOrder(null);
+                    setOrderToDelete(orderToDel);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                </button>
+                <button
+                  onClick={() => navigate(`/dashboard/orders/${previewOrder.id}`)}
+                  className="px-3 py-1.5 rounded-lg bg-[#2b2b36] hover:bg-[#3b3b46] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5" /> Voir fiche
+                </button>
+                <button 
+                  onClick={() => setPreviewOrder(null)}
+                  className="p-1.5 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer ml-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
@@ -1322,6 +1632,18 @@ export default function Orders() {
                 {/* Left Column (Info) */}
                 <div className="md:col-span-2 space-y-5">
                   
+                  {/* Facteur de confiance EcoTrack */}
+                  {previewOrder.phone && (
+                    <EcoTrackBadge 
+                      variant="card"
+                      score={computeEcoTrackScore(
+                        previewOrder.phone, 
+                        orders, 
+                        bannedPhones.has(normalizePhoneForBlacklist(previewOrder.phone))
+                      )} 
+                    />
+                  )}
+
                   {/* Informations client */}
                   <div className="bg-[#1e1e24] border border-neutral-800 rounded-xl p-5">
                     <h3 className="flex items-center gap-2 font-bold text-white mb-4">
@@ -1448,6 +1770,30 @@ export default function Orders() {
                 {/* Right Column (Actions & Items) */}
                 <div className="space-y-5">
                   
+                  {/* Note sur la commande */}
+                  <div className="bg-[#1e1e24] border border-amber-500/30 rounded-xl p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="flex items-center gap-2 font-bold text-amber-400 text-sm">
+                        <StickyNote className="w-4 h-4" /> Note sur la commande
+                      </h3>
+                    </div>
+                    <textarea 
+                      rows={2}
+                      value={previewNoteText}
+                      onChange={(e) => setPreviewNoteText(e.target.value)}
+                      placeholder="Ajouter une instruction, remarque ou note interne..."
+                      className="w-full bg-[#16161a] border border-neutral-700 rounded-xl p-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400 resize-none mb-2.5 font-medium"
+                    />
+                    <button 
+                      onClick={handleSavePreviewNote}
+                      disabled={isSavingPreviewNote}
+                      className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs transition-all shadow cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      {isSavingPreviewNote ? "Enregistrement..." : "Enregistrer la note"}
+                    </button>
+                  </div>
+
                   {/* Update Status */}
                   <div className="bg-[#1e1e24] border border-neutral-800 rounded-xl p-5">
                     <h3 className="flex items-center gap-2 font-bold text-white mb-4">

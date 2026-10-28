@@ -2103,8 +2103,11 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
                     if (user) {
                       try {
                         const img = orderData.image || orderData.productImage || selectedPageForEdit?.product?.image || "";
-                        await addDoc(collection(db, "tenants", user.uid, "orders"), {
-                          orderNumber: orderData.refNumber,
+                        const simRef = orderData.refNumber || `SIM-${Date.now()}`;
+                        await setDoc(doc(db, "tenants", user.uid, "orders", simRef), {
+                          id: simRef,
+                          reference: simRef,
+                          orderNumber: orderData.refNumber || simRef,
                           customerName: orderData.fullName,
                           customerPhone: orderData.phone,
                           wilaya: orderData.wilaya,
@@ -2429,8 +2432,11 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
                   if (user) {
                       try {
                         const img = orderData.image || orderData.productImage || previewPage?.product?.image || "";
-                        await addDoc(collection(db, "tenants", user.uid, "orders"), {
-                          orderNumber: orderData.refNumber,
+                        const simRef = orderData.refNumber || `SIM-${Date.now()}`;
+                        await setDoc(doc(db, "tenants", user.uid, "orders", simRef), {
+                          id: simRef,
+                          reference: simRef,
+                          orderNumber: orderData.refNumber || simRef,
                           customerName: orderData.fullName,
                           customerPhone: orderData.phone,
                           wilaya: orderData.wilaya,

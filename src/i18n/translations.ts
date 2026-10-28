@@ -31,8 +31,8 @@ export const translations = {
       "french": "Français"
     },
     "referral": {
-      "title": "Programme de parrainage officiel DZBuild",
-      "subtitle": "Gagnez des commissions en invitant de nouveaux utilisateurs sur DZBuild",
+      "title": "Programme de parrainage officiel Enova",
+      "subtitle": "Gagnez des commissions en invitant de nouveaux utilisateurs sur Enova",
       "program": "Programme de parrainage",
       "availableBalance": "Solde disponible",
       "minimumWithdrawal": "Retrait minimum: 5,000 DZD",
@@ -72,7 +72,7 @@ export const translations = {
       "step1Title": "Partagez votre lien",
       "step1Desc": "Copiez votre lien d'inscription et partagez-le avec vos amis.",
       "step2Title": "Votre ami s'inscrit",
-      "step2Desc": "Quand quelqu'un s'inscrit via votre lien sur DZBuild, il est lié à votre compte.",
+      "step2Desc": "Quand quelqu'un s'inscrit via votre lien sur Enova, il est lié à votre compte.",
       "step3Title": "Votre ami s'abonne",
       "step3Desc": "Quand votre ami paie un abonnement, vous recevez une commission jusqu'à 30%.",
       "step4Title": "Retirez vos gains",
@@ -296,8 +296,8 @@ export const translations = {
       "french": "Français"
     },
     "referral": {
-      "title": "برنامج إحالة DZBuild الرسمي",
-      "subtitle": "اربح عمولة عند دعوة مستخدمين جدد إلى DZBuild",
+      "title": "برنامج إحالة Enova الرسمي",
+      "subtitle": "اربح عمولة عند دعوة مستخدمين جدد إلى Enova",
       "program": "برنامج الإحالة",
       "availableBalance": "الرصيد المتاح",
       "minimumWithdrawal": "الحد الأدنى للسحب: 5,000 DZD",
@@ -337,7 +337,7 @@ export const translations = {
       "step1Title": "شارك رابطك",
       "step1Desc": "انسخ رابط التسجيل الخاص بك وشاركه مع أصدقائك.",
       "step2Title": "يسجل صديقك",
-      "step2Desc": "عندما يسجل شخص ما عبر رابطك في DZBuild، يتم ربطه بحسابك.",
+      "step2Desc": "عندما يسجل شخص ما عبر رابطك في Enova، يتم ربطه بحسابك.",
       "step3Title": "يشترك صديقك",
       "step3Desc": "عندما يدفع صديقك اشتراكًا، تتلقى عمولة تصل إلى 30%.",
       "step4Title": "اسحب أرباحك",

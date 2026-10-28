@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, Package } from "lucide-react";
 import { auth, db } from "../../lib/firebase";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 export default function CreateStore() {
   const navigate = useNavigate();
@@ -12,6 +12,46 @@ export default function CreateStore() {
   const [productType, setProductType] = useState<"physical" | "digital">("physical");
   const [language, setLanguage] = useState<"ar" | "fr">("fr");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+
+  const [error, setError] = useState("");
+
+  // Check if store already exists for the logged in user
+  useEffect(() => {
+    let isMounted = true;
+    const checkExisting = async () => {
+      const user = auth.currentUser;
+      const localStore = localStorage.getItem("dzbuild_store_name");
+      
+      if (localStore) {
+        navigate("/dashboard");
+        return;
+      }
+
+      if (user) {
+        try {
+          const docRef = doc(db, "tenants", user.uid);
+          const snap = await getDoc(docRef);
+          if (snap.exists() && isMounted) {
+            const data = snap.data();
+            if (data.storeName) {
+              localStorage.setItem("dzbuild_store_name", data.storeName);
+              localStorage.setItem("dzbuild_tenant_data", JSON.stringify(data));
+              navigate("/dashboard");
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn("Existing store check notice:", e);
+        }
+      }
+
+      if (isMounted) setCheckingExisting(false);
+    };
+
+    checkExisting();
+    return () => { isMounted = false; };
+  }, [navigate]);
 
   // Auto-generate URL slug from store name
   useEffect(() => {
@@ -31,30 +71,43 @@ export default function CreateStore() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!storeName.trim()) return;
+    
     setIsSubmitting(true);
+    setError("");
     
     try {
       const user = auth.currentUser;
+      const tenantPayload = {
+        storeName: storeName.trim(),
+        storeUrl: storeUrl || storeName.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+        productType,
+        language,
+        ownerEmail: user?.email || "",
+        createdAt: new Date().toISOString(),
+        trialStartDate: new Date().toISOString(),
+        status: 'active',
+        plan: 'Standard'
+      };
+
       if (user) {
-        // Save to Firestore
-        await setDoc(doc(db, "tenants", user.uid), {
-          storeName,
-          storeUrl,
-          productType,
-          language,
-          ownerEmail: user.email,
-          createdAt: serverTimestamp(),
-          trialStartDate: serverTimestamp(),
-          status: 'active',
-          plan: 'Standard'
-        });
+        // Save to Firestore with a 3.5s timeout race so it never blocks the user
+        const savePromise = setDoc(doc(db, "tenants", user.uid), tenantPayload, { merge: true });
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3500));
+        await Promise.race([savePromise, timeoutPromise]);
       }
       
-      // Save to localStorage for simple persistence across UI components
+      // Save to localStorage for instant UI persistence
+      localStorage.setItem("dzbuild_store_name", storeName);
+      localStorage.setItem("dzbuild_tenant_data", JSON.stringify(tenantPayload));
+      
+      // Navigate directly to dashboard
+      navigate("/dashboard");
+    } catch (err: any) {
+      console.error("Error creating store:", err);
+      // Even if Firestore throws, persist locally and let the user access the dashboard
       localStorage.setItem("dzbuild_store_name", storeName);
       navigate("/dashboard");
-    } catch (error) {
-      console.error("Error creating store:", error);
     } finally {
       setIsSubmitting(false);
     }

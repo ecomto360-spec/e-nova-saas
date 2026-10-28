@@ -31,6 +31,7 @@ export default function Login() {
         await checkTenantAndRedirect(result.user, navigate);
       }
     } catch (err: any) {
+      console.warn("Google authentication error:", err);
       if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
         // User intentionally closed the popup window - normal user action, not a system error
         return;
@@ -38,11 +39,15 @@ export default function Login() {
       
       if (err?.code === "auth/popup-blocked") {
         setError("La fenêtre de connexion a été bloquée par le navigateur. Veuillez autoriser les fenêtres pop-up ou ouvrir l'application dans un nouvel onglet.");
-      } else if (err?.code === "auth/operation-not-allowed") {
-        setError("La connexion Google n'est pas encore activée. Veuillez l'activer dans la console Firebase.");
+      } else if (err?.code === "auth/configuration-not-found" || err?.code === "auth/operation-not-allowed") {
+        setError("L'authentification Google n'est pas encore activée dans votre projet Firebase 'e-nova-87440'. Activez 'Google' dans la console Firebase (Authentication > Mode de connexion).");
+      } else if (err?.code === "auth/unauthorized-domain") {
+        setError(`Le domaine actuel (${window.location.hostname}) n'est pas autorisé dans Firebase Auth. Veuillez ajouter ce domaine aux 'Domaines autorisés' dans la console Firebase (Authentication > Settings), ou vous connecter par email.`);
+      } else if (err?.code === "auth/network-request-failed") {
+        setError("Erreur réseau lors de la communication avec Firebase. Vérifiez votre connexion internet.");
       } else {
-        console.warn("Google authentication error:", err);
-        setError("Erreur lors de la connexion avec Google. Veuillez réessayer.");
+        const errorDetail = err?.message ? ` (${err.message})` : "";
+        setError(`Erreur lors de la connexion avec Google${errorDetail}. Veuillez réessayer ou utiliser la connexion par email.`);
       }
     } finally {
       setIsLoading(false);
@@ -53,6 +58,12 @@ export default function Login() {
     e.preventDefault();
     setIsLoading(true);
     setError("");
+
+    if (email.toLowerCase().trim() === "ecomto360@gmail.com") {
+      // Direct the user to the dedicated Super Admin login page
+      navigate("/admin");
+      return;
+    }
 
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
