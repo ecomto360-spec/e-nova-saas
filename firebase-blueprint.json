@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Store product with variants and offers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "userId": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "price", "userId"]
+    },
+    "ProductOffer": {
+      "title": "ProductOffer",
+      "description": "Product bundle or tier offer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "boutique_id": { "type": "string" },
+        "title": { "type": "string" },
+        "quantity": { "type": "number" },
+        "price_mode": { "type": "string", "enum": ["fixed", "percent", "amount"] },
+        "final_price": { "type": "number" },
+        "original_price": { "type": "number" },
+        "discount_value": { "type": "number" },
+        "badge_text": { "type": "string" },
+        "badge_color": { "type": "string" },
+        "free_shipping": { "type": "boolean" },
+        "image_url": { "type": "string" },
+        "sort_order": { "type": "number" },
+        "is_active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "product_id", "title", "quantity", "price_mode", "final_price"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order with items, offers, and delivery info",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "total": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "userId", "total"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Products collection"
+    },
+    "/product_offers/{offerId}": {
+      "schema": "ProductOffer",
+      "description": "Product offers and bundle tiers"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Store customer orders"
+    }
+  }
+}

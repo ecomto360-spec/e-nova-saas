@@ -1,0 +1,17 @@
+                           {/* Email Input */}
+                           <div className="relative">
+                             <input 
+                               type="email" dir="ltr"
+                               placeholder="البريد الإلكتروني (اختياري - لتلقي إشعار التأكيد والفاتورة)"
+                               value={customerEmail}
+                               onChange={(e) => {
+                                 setCustomerEmail(e.target.value);
+                                 if (customerEmailError) setCustomerEmailError("");
+                               }}
+                               className={`w-full bg-gray-50/50 border rounded-xl py-3.5 px-4 text-right pr-12 focus:outline-none focus:ring-2 focus:bg-white transition-all font-medium ${customerEmailError ? "border-red-500 focus:ring-red-500" : "border-gray-200 focus:ring-[#1c192b]"}`}
+                             />
+                             <Mail className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                           </div>
+                           {customerEmailError && (
+                             <p className="text-xs text-red-600 font-medium text-right -mt-2 mb-2">{customerEmailError}</p>
+                           )}
