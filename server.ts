@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import cookieParser from "cookie-parser";
 import adminAuthRoutes from "./src/routes/adminAuth.js";
 import multer from "multer";
@@ -226,7 +225,11 @@ async function buildApp(): Promise<express.Express> {
       res.status(404).json({ error: "Route API introuvable" });
     });
   } else if (process.env.NODE_ENV !== "production") {
-    // Vite middleware for development
+    // Vite middleware for development.
+    // Import dynamique + webpackIgnore : vite n'est PAS embarque dans le bundle
+    // de la fonction Vercel (sinon son package.json "type": "module" pollue le
+    // bundle et le fait craser en ESM). En dev local, l'import se fait au runtime.
+    const { createServer: createViteServer } = await import(/* webpackIgnore: true */ "vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
