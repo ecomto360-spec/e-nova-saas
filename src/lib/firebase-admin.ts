@@ -1,13 +1,34 @@
-import { initializeApp, getApps } from 'firebase-admin/app';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import rawConfig from '../../firebase-applet-config.json';
+
+const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId || 'e-nova-119f6';
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+const privateKey = process.env.FIREBASE_PRIVATE_KEY 
+  ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') 
+  : undefined;
 
 if (!getApps().length) {
-  initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
+  if (clientEmail && privateKey) {
+    initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+      projectId,
+    });
+  } else {
+    initializeApp({
+      projectId,
+    });
+  }
 }
 
-export const adminDb = getFirestore(firebaseConfig.firestoreDatabaseId);
+const databaseId = process.env.FIREBASE_DATABASE_ID || rawConfig.firestoreDatabaseId || '(default)';
+export const adminDb = (databaseId && databaseId !== '(default)') 
+  ? getFirestore(databaseId) 
+  : getFirestore();
+
 export const adminAuth = getAuth();

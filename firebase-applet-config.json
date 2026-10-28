@@ -1,12 +1,12 @@
 {
-  "projectId": "inspiring-dreamer-gmbw7",
-  "appId": "1:427915420873:web:e7ddbbc16c8502c7875918",
-  "apiKey": "AIzaSyD25sL5NWdPnBeAe4eUufIfbb3rkoF4wEg",
-  "authDomain": "inspiring-dreamer-gmbw7.firebaseapp.com",
+  "projectId": "e-nova-119f6",
+  "appId": "1:795929637617:web:a29219d699b5708c04af50",
+  "apiKey": "AIzaSyAPba-JHcnm3oJhfOK49UIliaif4d346Is",
+  "authDomain": "e-nova-119f6.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-enovasaas-3595c32b-1313-46b6-ac00-5ae12a9740ed",
-  "storageBucket": "inspiring-dreamer-gmbw7.firebasestorage.app",
-  "messagingSenderId": "427915420873",
+  "storageBucket": "e-nova-119f6.firebasestorage.app",
+  "messagingSenderId": "795929637617",
   "measurementId": "",
-  "oAuthClientId": "427915420873-onpsnqmuo45ak2jtumb9s0njkdeg1k1i.apps.googleusercontent.com",
+  "oAuthClientId": "795929637617-n73fckb96f8vukthadehpr95oufm5s9m.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

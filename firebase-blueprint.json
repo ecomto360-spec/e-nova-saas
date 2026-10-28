@@ -49,6 +49,19 @@
         "status": { "type": "string" }
       },
       "required": ["id", "userId", "total"]
+    },
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Multi-tenant store account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeName": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "plan": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "storeName"]
     }
   },
   "firestore": {
@@ -63,6 +76,18 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Store customer orders"
+    },
+    "/tenants/{tenantId}": {
+      "schema": "Tenant",
+      "description": "Multi-tenant store accounts collection"
+    },
+    "/tenants/{tenantId}/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Tenant specific orders subcollection"
+    },
+    "/tenants/{tenantId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Tenant specific products subcollection"
     }
   }
 }

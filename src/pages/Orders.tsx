@@ -104,7 +104,7 @@ const INITIAL_DEMO_ORDERS = [
   { orderNumber: "#1001", date: "15/08/2026 11:10", client: "Lyes Kadi", phone: "0771445566", wilaya: "Sétif - 19", commune: "El Eulma", address: "Rue commerciale", itemsSummary: "Pack Promo Beauté (x3)", total: 25000, status: "Expédiée" as OrderStatus, notes: "Colis confié au transporteur express." },
 ];
 
-import { formatOrderDateTime, compareOrders } from "../lib/orderTimeUtils";
+import { formatOrderDateTime, compareOrders, formatDate } from "../lib/orderTimeUtils";
 
 export function getOrderTimestamp(order: any): number {
   return formatOrderDateTime(order).timestamp;

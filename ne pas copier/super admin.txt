@@ -1,0 +1,12 @@
+https://ais-pre-onkjtja2cggdacyzzcghhq-269968542097.europe-west2.run.app
+
+Allez sur l'adresse de votre espace admin : https://e-nova.vercel.app/admin (ou en ajoutant /admin 
+à la fin de votre lien de prévisualisation actuel).
+Utilisez les identifiants d'administration que je viens de rafraîchir et sécuriser pour vous :
+
+https://ais-pre-onkjtja2cggdacyzzcghhq-269968542097.europe-west2.run.app/admin
+Email : ecomto360@gmail.com
+Mot de passe : NovaSecur!ty2026
+Une fois validé, une sécurité OTP (Code à 6 chiffres) vous sera demandée (simulant l'envoi d'un email de vérification). 
+Comme vous êtes actuellement dans l'environnement de développement, ce code sera généré et automatiquement rempli sur l'écran
+pour vous faciliter les tests !

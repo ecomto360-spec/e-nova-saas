@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="fr" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E nova - Vente en ligne en Algérie</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome pour les icônes -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#1e40af',
+                        accent: '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased">
+
+    <!-- Notification Bar -->
+    <div class="bg-primary text-white text-center py-2 text-sm font-medium">
+        🚀 L'API E nova est en ligne — Consultez la nouvelle <a href="#" class="underline hover:text-accent">Documentation API</a>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center">
+                    <span class="text-2xl font-bold text-primary">E <span class="text-gray-800">nova</span></span>
+                </div>
+                <div class="hidden md:flex space-x-8">
+                    <a href="#plans" class="text-gray-600 hover:text-primary transition">Plans</a>
+                    <a href="#fonctionnalites" class="text-gray-600 hover:text-primary transition">Fonctionnalités</a>
+                    <a href="#demarrage" class="text-gray-600 hover:text-primary transition">Démarrage</a>
+                    <a href="#aide" class="text-gray-600 hover:text-primary transition">Aide</a>
+                </div>
+                <div>
+                    <a href="#" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition font-medium">
+                        Créer un compte
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="bg-white py-20">
+        <div class="max-w-4xl mx-auto px-4 text-center">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 leading-tight">
+                Le moyen le plus rapide de <span class="text-primary">vendre en ligne</span> en Algérie
+            </h1>
+            <p class="text-xl text-gray-600 mb-8">
+                Support complet en arabe et français, intégrations avec tous les coursiers algériens, et le paiement à la livraison (COD) intégré dès le premier jour.
+            </p>
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <a href="#plans" class="bg-primary text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-secondary transition shadow-lg">
+                    Voir les plans
+                </a>
+                <a href="#demo" class="bg-gray-100 text-gray-800 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-gray-200 transition flex items-center justify-center gap-2">
+                    <i class="fas fa-play-circle text-primary"></i> Voir la démo
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="plans" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-gray-900">Aperçu des plans</h2>
+                <p class="text-gray-600 mt-2">3 jours gratuits de Pro pour tester, sans carte bancaire.</p>
+                <div class="mt-4 inline-flex items-center bg-accent/10 text-accent px-4 py-2 rounded-full text-sm font-semibold">
+                    <i class="fas fa-gift mr-2"></i> L'abonnement annuel économise 2 mois !
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Plan Gratuit -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 opacity-75">
+                    <h3 class="text-lg font-semibold text-gray-500">Gratuit</h3>
+                    <div class="my-4"><span class="text-3xl font-bold text-gray-800">Sur demande</span></div>
+                    <p class="text-sm text-gray-500 mb-6">Uniquement pour les comptes hérités.</p>
+                    <ul class="space-y-3 text-sm text-gray-600 mb-6">
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> 30 commandes / mois</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> 5 produits max</li>
+                        <li class="flex items-center"><i class="fas fa-times text-red-400 mr-2"></i> 0 Landing page</li>
+                    </ul>
+                </div>
+
+                <!-- Plan Pro -->
+                <div class="bg-white rounded-2xl shadow-lg border-2 border-primary p-6 relative transform hover:-translate-y-1 transition">
+                    <div class="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">POPULAIRE</div>
+                    <h3 class="text-lg font-semibold text-primary">Pro</h3>
+                    <div class="my-4"><span class="text-3xl font-bold text-gray-900">1 000</span> <span class="text-gray-500">DZD/mois</span></div>
+                    <p class="text-sm text-gray-500 mb-6">Idéal pour une boutique avec pubs payantes.</p>
+                    <ul class="space-y-3 text-sm text-gray-700 mb-6">
+                        <li class="flex items-center"><i class="fas fa-check text-primary mr-2"></i> Commandes illimitées</li>
+                        <li class="flex items-center"><i class="fas fa-check text-primary mr-2"></i> 300 produits</li>
+                        <li class="flex items-center"><i class="fas fa-check text-primary mr-2"></i> 3 Landing pages</li>
+                        <li class="flex items-center"><i class="fas fa-check text-primary mr-2"></i> 1 Utilisateur</li>
+                    </ul>
+                    <button class="w-full bg-primary text-white py-2 rounded-lg font-semibold hover:bg-secondary transition">Choisir Pro</button>
+                </div>
+
+                <!-- Plan Illimité -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition">
+                    <h3 class="text-lg font-semibold text-gray-800">Illimité</h3>
+                    <div class="my-4"><span class="text-3xl font-bold text-gray-900">2 500</span> <span class="text-gray-500">DZD/mois</span></div>
+                    <p class="text-sm text-gray-500 mb-6">Pour boutiques multilingues et opérations CRM.</p>
+                    <ul class="space-y-3 text-sm text-gray-700 mb-6">
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> Tout illimité</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> Produits illimités</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> Landing pages illimitées</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> 3 Utilisateurs</li>
+                    </ul>
+                    <button class="w-full bg-gray-800 text-white py-2 rounded-lg font-semibold hover:bg-gray-900 transition">Choisir Illimité</button>
+                </div>
+
+                <!-- Plan Entreprise -->
+                <div class="bg-gray-900 rounded-2xl shadow-sm border border-gray-800 p-6 text-white">
+                    <h3 class="text-lg font-semibold text-accent">Entreprise</h3>
+                    <div class="my-4"><span class="text-3xl font-bold">5 500</span> <span class="text-gray-400">DZD/mois</span></div>
+                    <p class="text-sm text-gray-400 mb-6">Grandes équipes ayant besoin de nombreux sièges.</p>
+                    <ul class="space-y-3 text-sm text-gray-300 mb-6">
+                        <li class="flex items-center"><i class="fas fa-check text-accent mr-2"></i> Tout illimité</li>
+                        <li class="flex items-center"><i class="fas fa-check text-accent mr-2"></i> 25 sièges inclus (max 200)</li>
+                        <li class="flex items-center"><i class="fas fa-check text-accent mr-2"></i> Support prioritaire</li>
+                        <li class="flex items-center"><i class="fas fa-check text-accent mr-2"></i> Fonctionnalités avancées</li>
+                    </ul>
+                    <button class="w-full bg-accent text-gray-900 py-2 rounded-lg font-bold hover:bg-yellow-400 transition">Contacter</button>
+                </div>
+            </div>
+
+            <!-- Notes importantes -->
+            <div class="mt-8 bg-blue-50 border-l-4 border-primary p-4 rounded-r-lg">
+                <p class="text-sm text-blue-800">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Le plafond de 30 commandes du plan Gratuit ferme toute la boutique.</strong> Les plans payants n'ont aucun plafond. Le renouvellement anticipé s'empile (ex: 10 jours restants + 30 jours achetés = 40 jours).
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="fonctionnalites" class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold text-gray-900">Pourquoi les marchands choisissent E nova</h2>
+                <p class="text-gray-600 mt-2">Une plateforme conçue spécifiquement pour le marché algérien.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="p-6 bg-gray-50 rounded-xl hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-green-100 text-green-600 rounded-lg flex items-center justify-center text-xl mb-4">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">Paiement à la livraison (COD)</h3>
+                    <p class="text-gray-600">Intégré nativement. La méthode de paiement préférée des acheteurs algériens, sans frais de passerelle bancaire pour vos clients.</p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="p-6 bg-gray-50 rounded-xl hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-xl mb-4">
+                        <i class="fas fa-truck"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">58 Wilayas & 50+ Coursiers</h3>
+                    <p class="text-gray-600">Intégrations natives avec Yalidine, Guepex, ZR Express, Maystro, et bien d'autres via l'API Ecotrack.</p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="p-6 bg-gray-50 rounded-xl hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center text-xl mb-4">
+                        <i class="fas fa-language"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">100% Bilingue (Ar / Fr)</h3>
+                    <p class="text-gray-600">Boutique, tableau de bord, emails et reçus disponibles en arabe et en français de bout en bout.</p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="p-6 bg-gray-50 rounded-xl hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-red-100 text-red-600 rounded-lg flex items-center justify-center text-xl mb-4">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">E nova Copilot (IA)</h3>
+                    <p class="text-gray-600">L'IA qui fait tourner votre boutique. Décrivez ce que vous voulez, et le Copilot l'exécute pour vous.</p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="p-6 bg-gray-50 rounded-xl hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-yellow-100 text-yellow-600 rounded-lg flex items-center justify-center text-xl mb-4">
+                        <i class="fas fa-paint-brush"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">7 Thèmes & Landing Pages</h3>
+                    <p class="text-gray-600">Des thèmes professionnels (Starter, Prestige, Bloom...) et un générateur de landing pages par IA.</p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="p-6 bg-gray-50 rounded-xl hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-xl mb-4">
+                        <i class="fas fa-globe"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">Domaine Personnalisé & SSL</h3>
+                    <p class="text-gray-600">Connectez votre propre nom de domaine avec certificat SSL automatique et gratuit.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Getting Started Section -->
+    <section id="demarrage" class="py-20 bg-gray-900 text-white">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold">Par où commencer ?</h2>
+                <p class="text-gray-400 mt-2">Ayez votre boutique en ligne en moins de 5 minutes.</p>
+            </div>
+
+            <div class="space-y-6">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 w-10 h-10 bg-primary rounded-full flex items-center justify-center font-bold text-lg">1</div>
+                    <div class="ml-4">
+                        <h3 class="text-xl font-semibold">Créez votre compte</h3>
+                        <p class="text-gray-400">Inscription en moins d'une minute, sans carte bancaire requise pour l'essai.</p>
+                    </div>
+                </div>
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 w-10 h-10 bg-primary rounded-full flex items-center justify-center font-bold text-lg">2</div>
+                    <div class="ml-4">
+                        <h3 class="text-xl font-semibold">Configurez votre boutique</h3>
+                        <p class="text-gray-400">Choisissez votre thème, ajoutez vos produits et configurez vos zones de livraison.</p>
+                    </div>
+                </div>
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 w-10 h-10 bg-primary rounded-full flex items-center justify-center font-bold text-lg">3</div>
+                    <div class="ml-4">
+                        <h3 class="text-xl font-semibold">Recevez votre première commande</h3>
+                        <p class="text-gray-400">Partagez votre lien <code class="bg-gray-800 px-2 py-1 rounded text-accent">{votre-slug}.enova.app</code> ou votre domaine personnalisé et commencez à vendre.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-12 text-center">
+                <a href="#" class="inline-block bg-accent text-gray-900 px-8 py-3 rounded-lg font-bold text-lg hover:bg-yellow-400 transition">
+                    Créer ma boutique maintenant
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="aide" class="bg-gray-50 border-t border-gray-200 pt-12 pb-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+                <div class="col-span-1 md:col-span-1">
+                    <span class="text-2xl font-bold text-primary">E <span class="text-gray-800">nova</span></span>
+                    <p class="text-gray-500 text-sm mt-2">La plateforme e-commerce conçue pour l'Algérie.</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-gray-900 mb-3">Ressources</h4>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li><a href="#" class="hover:text-primary">Documentation API</a></li>
+                        <li><a href="#" class="hover:text-primary">Catalogue d'addons</a></li>
+                        <li><a href="#" class="hover:text-primary">Guide de démarrage</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-gray-900 mb-3">Support</h4>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li><a href="mailto:support@enova.dz" class="hover:text-primary"><i class="fas fa-envelope mr-2"></i>support@enova.dz</a></li>
+                        <li><a href="https://t.me/enova" class="hover:text-primary"><i class="fab fa-telegram mr-2"></i>@enova</a></li>
+                        <li><a href="#" class="hover:text-primary"><i class="fab fa-youtube mr-2"></i>Chaîne YouTube</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-gray-900 mb-3">Légal</h4>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li><a href="#" class="hover:text-primary">Conditions d'utilisation</a></li>
+                        <li><a href="#" class="hover:text-primary">Politique de confidentialité</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-gray-200 pt-8 text-center text-sm text-gray-500">
+                &copy; 2026 E nova. Tous droits réservés.
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

@@ -40,7 +40,7 @@ export default function Login() {
       if (err?.code === "auth/popup-blocked") {
         setError("La fenêtre de connexion a été bloquée par le navigateur. Veuillez autoriser les fenêtres pop-up ou ouvrir l'application dans un nouvel onglet.");
       } else if (err?.code === "auth/configuration-not-found" || err?.code === "auth/operation-not-allowed") {
-        setError("L'authentification Google n'est pas encore activée dans votre projet Firebase 'e-nova-87440'. Activez 'Google' dans la console Firebase (Authentication > Mode de connexion).");
+        setError("L'authentification Google n'est pas encore activée dans votre projet Firebase 'e-nova-119f6'. Activez 'Google' dans la console Firebase (Authentication > Mode de connexion).");
       } else if (err?.code === "auth/unauthorized-domain") {
         setError(`Le domaine actuel (${window.location.hostname}) n'est pas autorisé dans Firebase Auth. Veuillez ajouter ce domaine aux 'Domaines autorisés' dans la console Firebase (Authentication > Settings), ou vous connecter par email.`);
       } else if (err?.code === "auth/network-request-failed") {

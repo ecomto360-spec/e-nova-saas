@@ -148,11 +148,15 @@ export default function Dashboard() {
     const fetchProducts = async () => {
       try {
         const res = await fetch(`/api/products?tenantId=${tenantData?.id || ''}`);
-        if (!res.ok) throw new Error('Failed to fetch products');
+        if (!res.ok) {
+          setProductOptions([]);
+          return;
+        }
         const data = await res.json();
-        setProductOptions(data);
+        setProductOptions(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error("Error fetching products:", err);
+        console.warn("Could not fetch product options:", err);
+        setProductOptions([]);
       }
     };
     fetchProducts();

@@ -1135,13 +1135,33 @@ async function startServer() {
   app.get("/api/products", async (req, res) => {
     try {
       const tenantId = req.query.tenantId as string;
-      const q = tenantId ? query(collection(db, "products"), where("userId", "==", tenantId)) : collection(db, "products");
-      const snap = await getDocs(q);
-      const products: any[] = [];
-      snap.forEach(d => products.push({ id: d.id, name: d.data().name }));
-      res.json(products);
+      const productsMap = new Map<string, any>();
+
+      const queries: Promise<any>[] = [];
+      if (tenantId) {
+        queries.push(getDocs(query(collection(db, "products"), where("userId", "==", tenantId))).catch(() => null));
+        queries.push(getDocs(collection(db, "tenants", tenantId, "products")).catch(() => null));
+      }
+      queries.push(getDocs(collection(db, "products")).catch(() => null));
+
+      const snaps = await Promise.all(queries);
+      snaps.forEach(snap => {
+        if (snap && snap.docs) {
+          snap.docs.forEach((d: any) => {
+            const data = d.data();
+            const id = d.id;
+            const name = data.name || data.title || "Produit sans nom";
+            if (!productsMap.has(id)) {
+              productsMap.set(id, { id, name });
+            }
+          });
+        }
+      });
+
+      res.json(Array.from(productsMap.values()));
     } catch (e) {
-      res.status(500).json({ error: "Failed to fetch products" });
+      console.warn("Error in /api/products handler:", e);
+      res.json([]);
     }
   });
 
