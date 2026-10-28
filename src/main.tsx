@@ -20,7 +20,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
 }
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
+import App from './App';
 import './index.css';
 
 // Handle benign auth popup closures gracefully

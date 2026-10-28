@@ -18,16 +18,15 @@ const upload = multer({
   limits: { fileSize: 900 * 1024 } 
 });
 
-async function startServer() {
+async function buildApp(): Promise<express.Express> {
   // Configuration Cloudinary avec les clés intégrées directement en dur
-  cloudinary.config({ 
-    cloud_name: 'ie6edvfe', 
-    api_key: '571992972679788', 
+  cloudinary.config({
+    cloud_name: 'ie6edvfe',
+    api_key: '571992972679788',
     api_secret: 'ojRyuQn_r0KsBbWKH0dtLUY4-3I'
   });
 
   const app = express();
-  const PORT = 3000;
   
   app.use(express.json());
   app.use(cookieParser());
@@ -219,14 +218,22 @@ async function startServer() {
   });
 
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  // --- Middleware final selon l'environnement d'exécution ---
+  if (process.env.VERCEL) {
+    // Sur Vercel, cette fonction ne sert que l'API : le SPA et les assets sont
+    // servis par le filesystem Vercel. 404 JSON propre pour toute route inconnue.
+    app.use((req, res) => {
+      res.status(404).json({ error: "Route API introuvable" });
+    });
+  } else if (process.env.NODE_ENV !== "production") {
+    // Vite middleware for development
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    // Serveur autonome (node dist/server.cjs) : sert le build statique
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -234,9 +241,24 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  return app;
 }
 
-startServer();
+// Cache : l'app n'est construite qu'une fois par instance (utile en serverless
+// où la fonction est réutilisée entre les requêtes à chaud).
+let cachedApp: Promise<express.Express> | null = null;
+export function getApp(): Promise<express.Express> {
+  if (!cachedApp) cachedApp = buildApp();
+  return cachedApp;
+}
+
+// Démarrage local uniquement (npm run dev avec tsx, ou node dist/server.cjs).
+// Sur Vercel, la fonction api/[...path].ts importe getApp() sans jamais écouter de port.
+if (!process.env.VERCEL) {
+  const PORT = Number(process.env.PORT) || 3000;
+  getApp().then((app) => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
+}
