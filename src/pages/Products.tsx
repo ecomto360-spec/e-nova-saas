@@ -36,6 +36,7 @@ import {
   Info
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useTenant } from "../contexts/TenantContext";
 import { db, storage } from "../lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { 
@@ -107,6 +108,10 @@ export interface ProductItem {
 export default function Products() {
   const { t, dir } = useLanguage();
   const { user } = useAuth();
+  // Slug public de la boutique (tenant du compte) : les liens « voir en
+  // boutique » doivent TOUJOURS passer par l'URL publique /store/:slug,
+  // jamais par /store sans slug (qui dépend de la session auth).
+  const { tenantData } = useTenant();
   const navigate = useNavigate();
 
   const [products, setProducts] = useState<ProductItem[]>(() => {
@@ -1360,7 +1365,7 @@ export default function Products() {
                     <button className="flex items-center justify-center py-1.5 rounded-lg bg-blue-900/30 text-blue-500 hover:bg-blue-900/50 transition-colors">
                       <ExternalLink className="w-4 h-4" />
                     </button>
-                    <button onClick={() => openStoreWindow(`/store?productId=${prod.id}`)} className="flex items-center justify-center py-1.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors">
+                    <button onClick={() => openStoreWindow(tenantData?.storeUrl ? `/store/${tenantData.storeUrl}?productId=${prod.id}` : `/store?productId=${prod.id}`)} className="flex items-center justify-center py-1.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors">
                       <Eye className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleOpenModal(prod)} className="flex items-center justify-center py-1.5 rounded-lg bg-amber-900/30 text-amber-500 hover:bg-amber-900/50 transition-colors">

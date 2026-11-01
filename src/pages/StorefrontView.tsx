@@ -11,7 +11,22 @@ import { isTenantExpired } from "../lib/checkExpiration";
 import { StoreUnavailable } from "../components/storefront/StoreUnavailable";
 import { StorefrontSettings, mergeStorefrontSettings } from "../types/storefront";
 import { STORE_WINDOW_NAME } from "../lib/openStore";
+import { BUNDLE_ID } from "../version";
 
+/**
+ * Page publique de boutique.
+ *
+ * CONTRAT (Lot 14) : toutes les données (boutique, catégories, produits)
+ * proviennent UNIQUEMENT du slug de l'URL (/store/:slug), lues côté SERVEUR
+ * (getDocsFromServer) — jamais de l'utilisateur connecté, jamais du
+ * localStorage/sessionStorage, jamais d'un cache du dashboard. La session
+ * propriétaire ne fait qu'afficher la barre d'outils (aucun changement de
+ * source de données, aucun filtre uid, aucune collection privée).
+ *
+ * La route /store (sans slug, ouverte par d'anciens boutons du dashboard)
+ * résout via auth.uid UNIQUEMENT pour un compte propriétaire ; elle affiche
+ * désormais un état explicite (jamais une fausse liste vide muette).
+ */
 export default function StorefrontView() {
   const { storeSlug } = useParams<{ storeSlug: string }>();
   const navigate = useNavigate();
@@ -30,11 +45,37 @@ export default function StorefrontView() {
   const [tenantId, setTenantId] = useState<string>("");
   /** Erreur de chargement visible (jamais un faux « aucun produit » muet). */
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Slug fourni mais AUCUNE boutique ne lui correspond (état explicite). */
+  const [storeNotFound, setStoreNotFound] = useState(false);
+  /** Route /store SANS slug : contexte manquant explicite (jamais de grille vide muette). */
+  const [missingStoreUrl, setMissingStoreUrl] = useState<"anonymous" | "no-tenant" | null>(null);
+  /** Vrai uniquement si un compte est connecté (barre d'outils propriétaire). */
+  const [ownerSignedIn, setOwnerSignedIn] = useState(false);
 
   // Fenêtre unique réutilisée par tous les boutons « Voir la boutique » du dashboard.
   useEffect(() => {
     window.name = STORE_WINDOW_NAME;
   }, []);
+
+  // Barre d'outils propriétaire : affichée SEULEMENT si un compte est
+  // connecté. Elle ne modifie JAMAIS les données affichées (voir contrat).
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => setOwnerSignedIn(Boolean(user)));
+    return () => unsubscribe();
+  }, []);
+
+  // Garde-fou : si le chargement dépasse 15 s (réseau bloqué, restauration de
+  // session auth qui pend, requêtes Firestore sans réponse), on affiche
+  // l'erreur visible au lieu d'un spinner infini — jamais un faux « aucun
+  // produit », jamais une page muette.
+  useEffect(() => {
+    if (!loading) return;
+    const t = window.setTimeout(() => {
+      setLoading(false);
+      setLoadError("La boutique met trop de temps à charger (réseau ou session bloquée). Actualisez la page, ou rouvrez-la depuis le tableau de bord.");
+    }, 15000);
+    return () => window.clearTimeout(t);
+  }, [loading]);
 
   useEffect(() => {
     let unsubscribeAuth: (() => void) | undefined;
@@ -42,7 +83,9 @@ export default function StorefrontView() {
     const loadStoreSettings = async (uid?: string) => {
       let targetUserId = uid;
       setLoadError(null);
-      
+      setStoreNotFound(false);
+      setMissingStoreUrl(null);
+
       // If a storeSlug is provided in the URL, fetch the tenant by storeUrl (slug)
             if (storeSlug) {
         try {
@@ -61,6 +104,12 @@ export default function StorefrontView() {
               const found = STORE_THEMES.find(t => t.id === data.activeTheme);
               if (found) setActiveTheme(found);
             }
+          } else {
+            // Slug inconnu : état explicite « boutique introuvable » —
+            // JAMAIS une page boutique factice avec une liste vide.
+            setStoreNotFound(true);
+            setLoading(false);
+            return;
           }
         } catch (err) {
           console.error("Error fetching tenant by slug:", err);
@@ -81,9 +130,15 @@ export default function StorefrontView() {
              }
              if (data.storeName) setStoreName(data.storeName);
              if (data.activeTheme) {
-                 const found = STORE_THEMES.find(t => t.id === data.activeTheme);
-                 if (found) setActiveTheme(found);
+               const found = STORE_THEMES.find(t => t.id === data.activeTheme);
+               if (found) setActiveTheme(found);
              }
+          } else if (!storeSlug) {
+            // Route /store sans slug : le compte connecté n'a PAS de boutique.
+            // État explicite au lieu d'une liste vide silencieuse.
+            setMissingStoreUrl("no-tenant");
+            setLoading(false);
+            return;
           }
 
           // Fetch Custom Store Config
@@ -141,12 +196,16 @@ export default function StorefrontView() {
     };
 
     if (storeSlug) {
+      // Chemin public : UNIQUEMENT le slug de l'URL (indépendant de l'auth).
       loadStoreSettings();
     } else {
+      // Route /store sans slug (anciens boutons du dashboard) : résolution
+      // via le compte connecté, sinon état explicite — jamais une grille vide muette.
       unsubscribeAuth = onAuthStateChanged(auth, (user) => {
         if (user) {
           loadStoreSettings(user.uid);
         } else {
+          setMissingStoreUrl("anonymous");
           setLoading(false);
         }
       });
@@ -167,6 +226,62 @@ export default function StorefrontView() {
     );
   }
 
+  // Slug fourni mais aucune boutique ne correspond : état explicite.
+  if (storeNotFound) {
+    return (
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white border border-neutral-200 rounded-2xl shadow-sm p-8 text-center">
+          <Store className="w-10 h-10 mx-auto text-neutral-400" />
+          <h1 className="mt-4 text-xl font-bold text-gray-900">Boutique introuvable</h1>
+          <p className="mt-1 text-sm text-neutral-600" dir="rtl">لم يتم العثور على هذا المتجر</p>
+          <p className="mt-3 text-xs text-neutral-500 break-all font-mono" dir="ltr">/store/{storeSlug}</p>
+          <p className="mt-3 text-xs text-neutral-500">
+            Vérifiez l'adresse de la boutique (Réglages → Boutique → URL).
+          </p>
+          <a href="/" className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-700 transition-colors">
+            <ArrowLeft size={14} />
+            العودة إلى الرئيسية · Accueil
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Route /store sans slug : aucun compte, ou compte sans boutique.
+  if (missingStoreUrl) {
+    return (
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white border border-neutral-200 rounded-2xl shadow-sm p-8 text-center">
+          <Store className="w-10 h-10 mx-auto text-neutral-400" />
+          <h1 className="mt-4 text-xl font-bold text-gray-900">
+            {missingStoreUrl === "anonymous" ? "URL de boutique manquante" : "Aucune boutique pour ce compte"}
+          </h1>
+          <p className="mt-1 text-sm text-neutral-600" dir="rtl">
+            {missingStoreUrl === "anonymous" ? "رابط المتجر غير مكتمل" : "لا يوجد متجر مرتبط بهذا الحساب"}
+          </p>
+          <p className="mt-3 text-xs text-neutral-500">
+            {missingStoreUrl === "anonymous" ? (
+              <>Chaque boutique a sa propre adresse&nbsp;: <span className="font-mono" dir="ltr">/store/votre-boutique</span></>
+            ) : (
+              <>Créez votre boutique depuis le tableau de bord pour obtenir son adresse publique.</>
+            )}
+          </p>
+          {missingStoreUrl === "no-tenant" ? (
+            <Link to="/create-store" className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-black text-sm font-bold hover:bg-amber-400 transition-colors">
+              <Sparkles size={14} />
+              Créer ma boutique
+            </Link>
+          ) : (
+            <a href="/" className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-700 transition-colors">
+              <ArrowLeft size={14} />
+              العودة إلى الرئيسية · Accueil
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col">
       {/* Erreur de chargement visible (jamais un faux « aucun produit ») */}
@@ -181,7 +296,9 @@ export default function StorefrontView() {
           </button>
         </div>
       )}
-      {/* Top Admin Quick Bar for Store Owner */}
+      {/* Top Admin Quick Bar for Store Owner — affichée UNIQUEMENT si un
+          compte est connecté. Elle n'altère jamais les données affichées. */}
+      {ownerSignedIn && (
       <div className="bg-[#18181b] text-neutral-300 px-4 py-2 text-xs flex items-center justify-between border-b border-neutral-800 z-40 sticky top-0">
         <div className="flex items-center gap-3">
           <Link
@@ -199,6 +316,15 @@ export default function StorefrontView() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Marqueur de version : permet de vérifier en un coup d'œil que
+              cet onglet exécute bien le bundle courant (console :
+              [e-nova] bundle … / attribut html data-enova-bundle). */}
+          <span
+            className="hidden sm:inline text-neutral-600 font-mono"
+            title="Identifiant du bundle déployé (lot de livraison)"
+          >
+            {BUNDLE_ID}
+          </span>
           <Link
             to="/dashboard/themes"
             className="flex items-center gap-1.5 px-3 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-medium transition-colors"
@@ -215,6 +341,7 @@ export default function StorefrontView() {
           </Link>
         </div>
       </div>
+      )}
 
       {/* Main Storefront Layout */}
       <div className="flex-1">

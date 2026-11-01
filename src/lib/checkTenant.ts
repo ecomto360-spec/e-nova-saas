@@ -1,12 +1,13 @@
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 import { User } from "firebase/auth";
+import { readTenantCache, writeTenantCache } from "./tenantCache";
 
 export const checkTenantAndRedirect = async (user: User, navigate: any) => {
   try {
-    // 1. Check local storage first for instant feedback
-    const localStoreName = localStorage.getItem("dzbuild_store_name");
-    const localTenantData = localStorage.getItem("dzbuild_tenant_data");
+    // 1. Cache local versionné (uniquement s'il appartient à CE compte) —
+    //    les anciennes clés dzbuild_* sont purgées automatiquement à la lecture.
+    const cachedTenant = readTenantCache(user.uid);
 
     // 2. Check direct tenant document by UID
     const fetchDocPromise = getDoc(doc(db, "tenants", user.uid));
@@ -17,8 +18,7 @@ export const checkTenantAndRedirect = async (user: User, navigate: any) => {
     if (docSnap && typeof docSnap.exists === "function" && docSnap.exists()) {
       const data = docSnap.data();
       if (data.storeName) {
-        localStorage.setItem("dzbuild_store_name", data.storeName);
-        localStorage.setItem("dzbuild_tenant_data", JSON.stringify(data));
+        writeTenantCache(user.uid, data);
       }
       navigate("/dashboard");
       return;
@@ -33,8 +33,7 @@ export const checkTenantAndRedirect = async (user: User, navigate: any) => {
           const firstDoc = querySnap.docs[0];
           const data = firstDoc.data();
           if (data.storeName) {
-            localStorage.setItem("dzbuild_store_name", data.storeName);
-            localStorage.setItem("dzbuild_tenant_data", JSON.stringify(data));
+            writeTenantCache(user.uid, data);
           }
           navigate("/dashboard");
           return;
@@ -44,8 +43,8 @@ export const checkTenantAndRedirect = async (user: User, navigate: any) => {
       }
     }
 
-    // 4. Fallback to local storage if user had created a store before
-    if (localStoreName || localTenantData) {
+    // 4. Fallback : ce compte avait déjà une boutique (cache versionné)
+    if (cachedTenant) {
       navigate("/dashboard");
       return;
     }
@@ -54,7 +53,7 @@ export const checkTenantAndRedirect = async (user: User, navigate: any) => {
     navigate("/create-store");
   } catch (error) {
     console.warn("Could not retrieve tenant document (checking local fallback):", error);
-    if (localStorage.getItem("dzbuild_store_name")) {
+    if (readTenantCache(user.uid)) {
       navigate("/dashboard");
     } else {
       navigate("/create-store");

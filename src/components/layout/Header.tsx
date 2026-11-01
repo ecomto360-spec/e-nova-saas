@@ -7,6 +7,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useTenant } from "../../contexts/TenantContext";
+import { openStoreWindow } from "../../lib/openStore";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { signOut } from "firebase/auth";
@@ -509,8 +510,12 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
           
           <a 
             href={tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store"}
-            target="_blank"
-            rel="noopener noreferrer"
+            onClick={(e) => {
+              // Fenêtre boutique unique + rechargement systématique (données
+              // à jour) au lieu d'un target="_blank" qui empile les onglets.
+              e.preventDefault();
+              openStoreWindow(tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store");
+            }}
             className="flex items-center gap-2 rounded-md bg-yellow-500 px-4 py-2 text-sm font-medium text-black hover:bg-yellow-400 transition-colors"
           >
             <Eye className="h-4 w-4" />

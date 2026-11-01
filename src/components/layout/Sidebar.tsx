@@ -6,6 +6,7 @@ import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useTenant } from "../../contexts/TenantContext";
+import { openStoreWindow } from "../../lib/openStore";
 import { 
   LayoutDashboard, 
   Palette, 
@@ -143,15 +144,14 @@ export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {tenantData?.storeUrl && (
-              <a
-                href={`/store/${tenantData.storeUrl}`}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => openStoreWindow(`/store/${tenantData.storeUrl}`)}
                 title="Voir la boutique"
                 className="w-7 h-7 flex items-center justify-center rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-600 dark:text-yellow-400 transition-colors"
               >
                 <Globe className="w-3.5 h-3.5" />
-              </a>
+              </button>
             )}
             <button
               onClick={() => {

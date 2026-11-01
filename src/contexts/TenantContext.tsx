@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { doc, onSnapshot, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../hooks/useAuth";
+import { readTenantCache, writeTenantCache, clearTenantCache } from "../lib/tenantCache";
 
 interface TenantData {
   storeName?: string;
@@ -30,30 +31,29 @@ const TenantContext = createContext<TenantContextType>({
 });
 
 export const TenantProvider = ({ children }: { children: React.ReactNode }) => {
-  const { user } = useAuth();
-  const [tenantData, setTenantData] = useState<TenantData | null>(() => {
-    try {
-      const saved = localStorage.getItem("dzbuild_tenant_data");
-      if (saved) return JSON.parse(saved);
-      const storeName = localStorage.getItem("dzbuild_store_name");
-      if (storeName) {
-        return {
-          storeName,
-          status: 'active',
-          plan: 'pro',
-          trialStartDate: new Date().toISOString()
-        };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  });
+  const { user, loading } = useAuth();
+  // Cache versionné (clé enova:v1:tenant) : peinture instantanée du header
+  // pendant que l'auth se résout. Les anciennes clés dzbuild_* sont purgées
+  // à la lecture. Le cache n'est honoré que s'il appartient au compte
+  // connecté (vérifié dans l'effet ci-dessous).
+  const [tenantData, setTenantData] = useState<TenantData | null>(() => readTenantCache());
 
   useEffect(() => {
+    // Attendre que l'état d'authentification soit résolu (sinon on purge le
+    // cache avant même de savoir qui est connecté).
+    if (loading) return;
+
     if (!user) {
       setTenantData(null);
+      // Déconnexion : le cache n'a plus de sens pour le prochain compte.
+      clearTenantCache();
       return;
+    }
+
+    // Cache d'un AUTRE compte (ancienne session) : ignoré immédiatement.
+    // Le onSnapshot ci-dessous fournit les données à jour de CE compte.
+    if (readTenantCache(user.uid) === null) {
+      setTenantData(null);
     }
 
     const docRef = doc(db, "tenants", user.uid);
@@ -94,9 +94,7 @@ export const TenantProvider = ({ children }: { children: React.ReactNode }) => {
             }
 
             setTenantData(data);
-            try {
-              localStorage.setItem("dzbuild_tenant_data", JSON.stringify(data));
-            } catch {}
+            writeTenantCache(user.uid, data);
           } else if (user.email === "nabsterzero@gmail.com") {
             const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
             const initialTest: TenantData = {
@@ -114,25 +112,22 @@ export const TenantProvider = ({ children }: { children: React.ReactNode }) => {
         },
         (error) => {
           // Offline or transient connection drop fallback
-          const cached = localStorage.getItem("dzbuild_tenant_data");
+          // (cache versionné : uniquement s'il appartient à CE compte)
+          const cached = readTenantCache(user.uid);
           if (cached) {
-            try {
-              setTenantData(JSON.parse(cached));
-            } catch {}
+            setTenantData(cached as TenantData);
           }
         }
       );
     } catch (err) {
-      const cached = localStorage.getItem("dzbuild_tenant_data");
+      const cached = readTenantCache(user.uid);
       if (cached) {
-        try {
-          setTenantData(JSON.parse(cached));
-        } catch {}
+        setTenantData(cached as TenantData);
       }
     }
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, loading]);
 
   let isTrialExpired = false;
   let remainingTrialDays = 365;

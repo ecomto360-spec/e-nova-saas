@@ -21,7 +21,15 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import { BUNDLE_ID } from './version';
 import './index.css';
+
+// Marqueur de version de bundle : visible dans la console et sur <html>.
+// Permet de vérifier en une seconde qu'un navigateur exécute le bundle
+// courant (un onglet resté ouvert depuis un déploiement précédent garde
+// l'ancien code en mémoire tant qu'il n'est pas rechargé).
+console.info(`[e-nova] bundle ${BUNDLE_ID}`);
+document.documentElement.setAttribute('data-enova-bundle', BUNDLE_ID);
 
 // Handle benign auth popup closures and extension rejections gracefully
 if (typeof window !== 'undefined') {
