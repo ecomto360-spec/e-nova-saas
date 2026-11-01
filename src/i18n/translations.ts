@@ -204,6 +204,56 @@ export const translations = {
       "remind": "Relancer",
       "ago": "Il y a {time}"
     },
+    "cartDetails": {
+      "title": "Détails du panier abandonné",
+      "clientInfo": "Informations client",
+      "copyAll": "Tout copier",
+      "name": "Nom",
+      "phone": "Téléphone",
+      "location": "Emplacement",
+      "copyName": "Copier le nom",
+      "copyPhone": "Copier le téléphone",
+      "copyLocation": "Copier l'emplacement",
+      "copyPhoneRaw": "Copier tel.",
+      "copyPhoneIntl": "Copier +213",
+      "openWhatsApp": "Ouvrir WhatsApp",
+      "cartContent": "Contenu du panier",
+      "subtotal": "Sous-total",
+      "shipping": "Livraison",
+      "total": "Total",
+      "journal": "Journal d'activité",
+      "journalEmpty": "Aucune activité enregistrée.",
+      "jCreated": "Création du panier",
+      "jUpdated": "Mise à jour du panier",
+      "jContacted": "Passage à « Contacté »",
+      "jWaSent": "Message WhatsApp envoyé",
+      "jWaReminder": "Rappel WhatsApp envoyé",
+      "jWaAnswered": "Réponse client reçue",
+      "jNoteAdded": "Note ajoutée",
+      "jNoteModified": "Note modifiée",
+      "jConverted": "Conversion en commande",
+      "notes": "Notes & remarques",
+      "writeNote": "Écrire une remarque…",
+      "addNote": "Ajouter la note",
+      "ctrlEnter": "Ctrl + Entrée pour envoyer",
+      "noNotes": "Aucune note pour le moment.",
+      "noteBy": "par {author}",
+      "edited": "modifié",
+      "edit": "Modifier la note",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "delete": "Supprimer la note",
+      "confirmDeleteNote": "Supprimer cette note ?",
+      "noteEmpty": "La note est vide.",
+      "close": "Fermer",
+      "convert": "Convertir en commande",
+      "markContacted": "Marquer comme « Contacté »",
+      "contactedDone": "Contacté ✓",
+      "recoveredDone": "Récupéré ✓",
+      "copied": "Copié ✓",
+      "copyFailed": "Copie impossible",
+      "withNotes": "Avec notes"
+    },
     "customers": {
       "title": "Clients",
       "sub": "Suivez vos nouveaux clients et gérez la liste noire",
@@ -277,17 +327,59 @@ export const translations = {
       "whatsapp": {
         "name": "Order Automation (WhatsApp)",
         "description": "Confirmez automatiquement les nouvelles commandes auprès du client via WhatsApp.",
-        "infoBanner": "Quand une nouvelle commande arrive, Enova envoie un message WhatsApp au client pour la confirmer. Sa réponse met à jour le statut de la commande.",
-        "upcomingTitle": "Configuration détaillée (étape suivante)",
-        "upcoming": {
-          "toggle": "Activation / désactivation de la confirmation WhatsApp",
-          "quietHours": "Heures calmes et file d'attente",
-          "reminder": "Rappel unique après 4 h sans réponse",
-          "language": "Langue des messages (arabe / français / auto)",
-          "scope": "Portée : tous les produits ou produits sélectionnés",
-          "notifications": "Notifications client par statut (confirmée, expédiée, en livraison…)",
-          "number": "Connexion du numéro WhatsApp (Meta Embedded Signup)"
-        }
+                "infoBanner": "Quand une nouvelle commande arrive, Enova envoie un message WhatsApp au client pour la confirmer. Sa réponse met à jour le statut de la commande.",
+        "cloud": {
+          "connected": "Cloud API (Meta) connectée — envois réels actifs",
+          "simulation": "Mode simulation — ajoutez WHATSAPP_TOKEN et WHATSAPP_PHONE_NUMBER_ID dans Vercel pour activer les envois réels"
+        },
+        "toggleMain": "Activer l'automatisation WhatsApp",
+        "toggleMainDesc": "Une fois activée, les messages WhatsApp sont envoyés automatiquement selon les réglages ci-dessous.",
+        "orders": {
+          "toggle": "Confirmer les nouvelles commandes",
+          "desc": "Envoie le récapitulatif de la commande avec les boutons Confirmer / Refuser / Suivre."
+        },
+        "carts": {
+          "toggle": "Relancer les paniers abandonnés",
+          "desc": "Envoie un message WhatsApp au client qui a rempli le formulaire sans cliquer sur « Commander ».",
+          "delay": "Délai d'attente avant envoi",
+          "delayDesc": "Le message n'est envoyé que si le panier reste sans commande pendant cette durée.",
+          "reminder": "Rappel unique après 4 h",
+          "reminderDesc": "Si le client n'a pas répondu après 4 h, un seul rappel est envoyé.",
+          "messageAr": "Message (arabe)",
+          "messageFr": "Message (français)",
+          "vars": "Variables disponibles : {nom} {boutique} {produits} {total} {wilaya} {lien}",
+          "preview": "Aperçu du message"
+        },
+        "quiet": {
+          "toggle": "Heures calmes",
+          "desc": "Aucun envoi pendant cette période (reporté automatiquement jusqu'à la fin)."
+        },
+        "language": "Langue des messages",
+        "lang": {
+          "store": "Langue de la boutique (auto)",
+          "ar": "Arabe",
+          "fr": "Français"
+        },
+        "scope": {
+          "title": "Portée des produits",
+          "all": "Tous les produits",
+          "selected": "Produits sélectionnés",
+          "noProducts": "Aucun produit disponible."
+        },
+        "consent": {
+          "toggle": "Consentement avec case à cocher",
+          "desc": "Affiche une case de consentement claire sous le formulaire de commande. Sans case cochée, aucun message n'est envoyé.",
+          "preview": "« En saisissant votre numéro, vous acceptez d'être contacté par WhatsApp au sujet de votre commande. »"
+        },
+        "process": {
+          "title": "Traitement immédiat",
+          "desc": "Traite dès maintenant les messages dus (pratique pour tester vos réglages sans attendre le délai).",
+          "run": "Traiter maintenant",
+          "result": "Résultat (paniers/rappels/confirmations/statuts)",
+          "error": "Échec du traitement"
+        },
+        "save": "Enregistrer les réglages",
+        "saved": "Enregistré ✓"
       }
     }
   },
@@ -496,6 +588,56 @@ export const translations = {
       "remind": "إرسال تذكير",
       "ago": "منذ {time}"
     },
+    "cartDetails": {
+      "title": "تفاصيل السلة المتروكة",
+      "clientInfo": "معلومات العميل",
+      "copyAll": "نسخ الكل",
+      "name": "الاسم",
+      "phone": "الهاتف",
+      "location": "الموقع",
+      "copyName": "نسخ الاسم",
+      "copyPhone": "نسخ الهاتف",
+      "copyLocation": "نسخ الموقع",
+      "copyPhoneRaw": "نسخ الرقم",
+      "copyPhoneIntl": "نسخ +213",
+      "openWhatsApp": "فتح واتساب",
+      "cartContent": "محتوى السلة",
+      "subtotal": "المجموع الفرعي",
+      "shipping": "التوصيل",
+      "total": "الإجمالي",
+      "journal": "سجل النشاط",
+      "journalEmpty": "لا يوجد نشاط مسجل.",
+      "jCreated": "إنشاء السلة",
+      "jUpdated": "تحديث السلة",
+      "jContacted": "التحويل إلى «تم التواصل»",
+      "jWaSent": "تم إرسال رسالة واتساب",
+      "jWaReminder": "تم إرسال تذكير واتساب",
+      "jWaAnswered": "ورد رد من العميل",
+      "jNoteAdded": "تمت إضافة ملاحظة",
+      "jNoteModified": "تم تعديل ملاحظة",
+      "jConverted": "التحويل إلى طلب",
+      "notes": "الملاحظات",
+      "writeNote": "اكتب ملاحظة…",
+      "addNote": "إضافة الملاحظة",
+      "ctrlEnter": "Ctrl + Enter للإرسال",
+      "noNotes": "لا توجد ملاحظات حالياً.",
+      "noteBy": "بواسطة {author}",
+      "edited": "معدّلة",
+      "edit": "تعديل الملاحظة",
+      "save": "حفظ",
+      "cancel": "إلغاء",
+      "delete": "حذف الملاحظة",
+      "confirmDeleteNote": "حذف هذه الملاحظة؟",
+      "noteEmpty": "الملاحظة فارغة.",
+      "close": "إغلاق",
+      "convert": "تحويل إلى طلب",
+      "markContacted": "وضع علامة «تم التواصل»",
+      "contactedDone": "تم التواصل ✓",
+      "recoveredDone": "تم الاسترداد ✓",
+      "copied": "تم النسخ ✓",
+      "copyFailed": "تعذّر النسخ",
+      "withNotes": "مع ملاحظات"
+    },
     "customers": {
       "title": "العملاء",
       "sub": "تابع عملاءك الجدد وأدِر القائمة السوداء",
@@ -569,18 +711,60 @@ export const translations = {
       "whatsapp": {
         "name": "أتمتة الطلبات (واتساب)",
         "description": "أكّد الطلبات الجديدة تلقائيًا مع العميل عبر واتساب.",
-        "infoBanner": "عند وصول طلب جديد، يرسل إينوفا رسالة واتساب إلى العميل لتأكيده. ردّه يحدّث حالة الطلب.",
-        "upcomingTitle": "الإعداد التفصيلي (المرحلة التالية)",
-        "upcoming": {
-          "toggle": "تفعيل / تعطيل تأكيد واتساب",
-          "quietHours": "ساعات الهدوء وقائمة الانتظار",
-          "reminder": "تذكير واحد بعد 4 ساعات دون رد",
-          "language": "لغة الرسائل (العربية / الفرنسية / تلقائي)",
-          "scope": "النطاق: كل المنتجات أو منتجات محددة",
-          "notifications": "إشعارات العميل حسب الحالة (مؤكد، تم الإرسال، قيد التوصيل…)",
-          "number": "ربط رقم واتساب (عبر Meta Embedded Signup)"
+                "infoBanner": "عند وصول طلب جديد، يرسل إينوفا رسالة WhatsApp للعميل لتأكيده، ويقوم رده بتحديث حالة الطلب.",
+        "cloud": {
+          "connected": "Cloud API (Meta) متصلة — الإرسال الحقيقي مفعّل",
+          "simulation": "وضع المحاكاة — أضف WHATSAPP_TOKEN و WHATSAPP_PHONE_NUMBER_ID في Vercel لتفعيل الإرسال الحقيقي"
+        },
+        "toggleMain": "تنشيط الأتمتة عبر WhatsApp",
+        "toggleMainDesc": "بعد التنشيط، تُرسل رسائل WhatsApp للعملاء تلقائياً وفق الإعدادات أدناه.",
+        "orders": {
+          "toggle": "تأكيد الطلبات الجديدة",
+          "desc": "إرسال ملخص الطلب مع أزرار التأكيد / الرفض / التتبع."
+        },
+        "carts": {
+          "toggle": "متابعة السلال المتروكة",
+          "desc": "إرسال رسالة عبر WhatsApp للعميل الذي ملأ النموذج دون إتمام الطلب.",
+          "delay": "مدة الانتظار قبل الإرسال",
+          "delayDesc": "لا تُرسل الرسالة إلا إذا بقيت السلة بدون طلب طوال هذه المدة.",
+          "reminder": "تذكير واحد بعد 4 ساعات",
+          "reminderDesc": "إذا لم يجب العميل خلال 4 ساعات، يُرسل تذكير واحد فقط.",
+          "messageAr": "الرسالة (بالعربية)",
+          "messageFr": "الرسالة (بالفرنسية)",
+          "vars": "المتغيرات المتاحة: {nom} {boutique} {produits} {total} {wilaya} {lien}",
+          "preview": "معاينة الرسالة"
+        },
+        "quiet": {
+          "toggle": "ساعات الهدوء",
+          "desc": "لا يُرسل أي شيء خلال هذه الفترة (تأجيل تلقائي حتى انتهائها)."
+        },
+        "language": "لغة الرسائل",
+        "lang": {
+          "store": "لغة المتجر (تلقائي)",
+          "ar": "العربية",
+          "fr": "الفرنسية"
+        },
+        "scope": {
+          "title": "نطاق المنتجات",
+          "all": "كل المنتجات",
+          "selected": "منتجات مختارة",
+          "noProducts": "لا توجد منتجات."
+        },
+        "consent": {
+          "toggle": "موافقة عبر خانة اختيار",
+          "desc": "إظهار خانة موافقة واضحة تحت نموذج الطلب — بدون تحديدها لا يُرسل أي رسالة.",
+          "preview": "«بإدخال رقمك، فإنك توافق على أن يتم التواصل معك عبر WhatsApp بخصوص طلبك.»"
+        },
+        "process": {
+          "title": "معالجة فورية",
+          "desc": "معالجة الرسائل المستحقة الآن (مفيد لاختبار الإعدادات دون انتظار المدة).",
+          "run": "المعالجة الآن",
+          "result": "النتيجة (سلال/تذكيرات/تأكيدات/حالات)",
+          "error": "تعذّر تنفيذ المعالجة"
+        },
+        "save": "حفظ الإعدادات",
+        "saved": "تم الحفظ ✓"
         }
       }
     }
-  }
-};
+  };

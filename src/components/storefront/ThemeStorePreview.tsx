@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, FormEvent, useEffect } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../../lib/firebase";
+import { db, dbPublic, auth } from "../../lib/firebase";
+import { doc as fsDoc, getDoc as fsGetDoc } from "firebase/firestore";
 import {
   CartCaptureInput,
   trackAbandonedCart,
@@ -231,6 +232,28 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   const [orderId, setOrderId] = useState("");
   const [trackingView, setTrackingView] = useState(false);
 
+  // Consentement WhatsApp (extension Order Automation) : mention sous le
+  // formulaire + case à cocher si le vendeur l'exige (whatsapp_settings).
+  const WA_CONSENT_TEXT_AR = "بإدخال رقمك، فإنك توافق على أن يتم التواصل معك عبر WhatsApp بخصوص طلبك.";
+  const [waConsentRequired, setWaConsentRequired] = useState(false);
+  const [waConsentChecked, setWaConsentChecked] = useState(false);
+
+  useEffect(() => {
+    const tid = tenantId || auth.currentUser?.uid;
+    if (!tid) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const snap = await fsGetDoc(fsDoc(dbPublic, "whatsapp_settings", tid));
+        if (mounted && snap.exists()) {
+          const data = snap.data() || {};
+          setWaConsentRequired(data.enabled === true && data.consentCheckbox === true);
+        }
+      } catch { /* réglages absents → mention simple */ }
+    })();
+    return () => { mounted = false; };
+  }, [tenantId]);
+
   // Communes disponibles filtrées selon la wilaya choisie
   const availableCommunes = useMemo(() => {
     if (!selectedWilayaCode) return [];
@@ -403,11 +426,13 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
       shipping: deliveryPrice,
       total: totalPrice,
       lang: "ar",
-      source: "storefront_product_form"
+      source: "storefront_product_form",
+      consentText: WA_CONSENT_TEXT_AR,
+      consentChecked: waConsentChecked
     };
     latestCartCaptureRef.current = capture;
     trackAbandonedCart(capture);
-  }, [tenantId, selectedProduct, customerPhone, customerName, selectedWilayaCode, commune, customerAddress, deliveryType, quantity, selectedVariants, currentWilaya, totalPrice, deliveryPrice]);
+  }, [tenantId, selectedProduct, customerPhone, customerName, selectedWilayaCode, commune, customerAddress, deliveryType, quantity, selectedVariants, currentWilaya, totalPrice, deliveryPrice, waConsentChecked]);
 
   // Dernier état garanti à la fermeture de l'onglet / changement d'onglet.
   useEffect(() => {
@@ -1662,6 +1687,28 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                            <button type="submit" disabled={isSubmitting} className="flex-1 h-14 bg-[#1c192b] text-white rounded-xl font-black text-lg hover:opacity-90 transition-opacity shadow-md flex items-center justify-center gap-2">
                              {isSubmitting ? 'جاري التسجيل...' : 'اطلب الآن'}
                            </button>
+                         </div>
+
+                         {/* Consentement WhatsApp (mention claire + case optionnelle) */}
+                         <div className="mt-4 pt-3 border-t border-gray-100">
+                           {waConsentRequired && (
+                             <label className="flex items-start gap-2 cursor-pointer mb-2">
+                               <input
+                                 type="checkbox"
+                                 checked={waConsentChecked}
+                                 onChange={(e) => setWaConsentChecked(e.target.checked)}
+                                 className="mt-0.5 w-4 h-4 accent-[#1c192b]"
+                               />
+                               <span className="text-[11px] text-gray-500 leading-relaxed text-right">
+                                 {WA_CONSENT_TEXT_AR}
+                               </span>
+                             </label>
+                           )}
+                           {!waConsentRequired && (
+                             <p className="text-[11px] text-gray-400 leading-relaxed text-right">
+                               {WA_CONSENT_TEXT_AR}
+                             </p>
+                           )}
                          </div>
                       </form>
                    </div>

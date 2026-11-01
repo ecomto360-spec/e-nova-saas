@@ -28,6 +28,7 @@ import {
   Eye, User,
   HelpCircle,
   StickyNote,
+  Send,
   Save,
   Ghost
 } from "lucide-react";
@@ -134,6 +135,8 @@ export default function Orders() {
   const [selectedTab, setSelectedTab] = useState<string>("Tous");
   const [search, setSearch] = useState("");
   const [wilayaFilter, setWilayaFilter] = useState("all");
+  // Extension WhatsApp : filtre « Confirmé via WhatsApp »
+  const [waConfirmedOnly, setWaConfirmedOnly] = useState(false);
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -929,8 +932,10 @@ export default function Orders() {
         o.commune.toLowerCase().includes(search.toLowerCase()) ||
         o.wilaya.toLowerCase().includes(search.toLowerCase());
       const matchWilaya = wilayaFilter === "all" || o.wilaya === wilayaFilter;
+      // Filtre extension WhatsApp
+      const matchWa = !waConfirmedOnly || o.source === "WhatsApp – panier abandonné" || o.whatsappConfirmed === true;
 
-      return matchTab && matchSearch && matchWilaya;
+      return matchTab && matchSearch && matchWilaya && matchWa;
     })
     .sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
 
@@ -1098,6 +1103,20 @@ export default function Orders() {
               ))}
             </select>
 
+            {/* Filtre « Confirmé via WhatsApp » (extension Order Automation) */}
+            <button
+              onClick={() => setWaConfirmedOnly(!waConfirmedOnly)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${
+                waConfirmedOnly
+                  ? "bg-[#25D366]/15 text-[#25D366] border-[#25D366]/40 shadow-sm"
+                  : "border-neutral-700 bg-[#16161a] text-neutral-400 hover:text-white"
+              }`}
+              title="Commandes confirmées par le client via WhatsApp"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Confirmé via WhatsApp</span>
+            </button>
+
             {/* Bulk Actions if items selected */}
             {selectedIds.length > 0 && (
               <div className="flex items-center gap-2">
@@ -1223,6 +1242,11 @@ export default function Orders() {
                           <span className="font-semibold text-white text-base">{order.client}</span>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-yellow-500 text-xs font-mono font-medium">{order.phone}</span>
+                            {(order.source === "WhatsApp – panier abandonné" || order.whatsappConfirmed === true) && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#25D366] bg-[#25D366]/10 border border-[#25D366]/25 px-2 py-0.5 rounded-full" title="Commande confirmée par le client via WhatsApp (panier abandonné)">
+                                <Send className="w-3 h-3" /> WhatsApp
+                              </span>
+                            )}
                             {order.phone && (
                               <EcoTrackBadge 
                                 score={computeEcoTrackScore(

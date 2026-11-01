@@ -21,6 +21,18 @@ export interface AbandonedCartItem {
   image?: string;
 }
 
+/** Note / remarque marchand attachée à un panier abandonné (Lot 19). */
+export interface CartNote {
+  id: string;
+  text: string;
+  authorId: string;
+  authorName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const CART_NOTE_MAX_LENGTH = 1000;
+
 export interface AbandonedCart {
   id: string;
   userId?: string;
@@ -34,11 +46,18 @@ export interface AbandonedCart {
   itemsSummary: string;
   items?: AbandonedCartItem[];
   total: number;
-  status: "abandoned" | "relanced" | "contacted" | "recovered";
+  status: "abandoned" | "relanced" | "contacted" | "recovered" | "refused";
   recovered: boolean;
   relanceCount: number;
   source: string;
   phoneDigits?: string;
+  /** Extension WhatsApp : statut du dernier message + jeton du lien public. */
+  waStatus?: "sent" | "delivered" | "read" | "replied" | "failed";
+  waSimulated?: boolean;
+  waSentAt?: any;
+  waToken?: string;
+  waError?: string;
+  waMerchantTodo?: boolean;
   createdAt: any;
   updatedAt: any;
   date?: string;
@@ -53,6 +72,8 @@ export interface AbandonedCart {
   pageUrl?: string;
   sessionId?: string;
   lang?: string;
+  /** Notes / remarques du marchand (plus récentes en premier). */
+  notes?: CartNote[];
 }
 
 export function cleanPhoneForWhatsApp(phone: string): string {
@@ -632,4 +653,89 @@ export async function convertAbandonedCartToOrder(cart: AbandonedCart, tenantId?
   await markAbandonedCartAsRecovered(cart.phone, generatedOrderId, effectiveTenantId);
 
   return generatedOrderId;
+}
+
+// ---------------------------------------------------------------------------
+// Notes / remarques marchand (Lot 19) — stockées en tableau `notes` sur le
+// document du panier (protégé par les règles owner-only d'abandoned_carts).
+// Lecture-modification-écriture : seul le propriétaire écrit depuis le
+// dashboard, les écritures sont propagées aux deux collections (globale +
+// miroir tenant).
+// ---------------------------------------------------------------------------
+
+/** Lit le tableau de notes actuel d'un panier (globale puis miroir tenant). */
+async function readCartNotes(cartId: string, tenantId?: string): Promise<CartNote[]> {
+  const effectiveTenantId = tenantId || auth.currentUser?.uid;
+  let data: Record<string, unknown> | undefined;
+  try {
+    const snap = await getDoc(doc(db, "abandoned_carts", cartId));
+    if (snap.exists()) data = snap.data();
+  } catch (e) {
+    console.warn("readCartNotes: global read failed:", e);
+  }
+  if (!data && effectiveTenantId) {
+    try {
+      const snap = await getDoc(doc(db, "tenants", effectiveTenantId, "abandoned_carts", cartId));
+      if (snap.exists()) data = snap.data();
+    } catch (e) {
+      console.warn("readCartNotes: tenant read failed:", e);
+    }
+  }
+  return Array.isArray(data?.notes) ? ((data!.notes as CartNote[]).filter(n => n && typeof n.text === "string")) : [];
+}
+
+/** Écrit le tableau de notes sur les deux collections (merge, sans écraser le reste). */
+async function writeCartNotes(cartId: string, notes: CartNote[], tenantId?: string): Promise<void> {
+  const effectiveTenantId = tenantId || auth.currentUser?.uid;
+  const patch = { notes, updatedAt: serverTimestamp() };
+  await setDoc(doc(db, "abandoned_carts", cartId), patch, { merge: true });
+  if (effectiveTenantId) {
+    await setDoc(doc(db, "tenants", effectiveTenantId, "abandoned_carts", cartId), patch, { merge: true }).catch((e) => {
+      console.warn("writeCartNotes: tenant mirror failed:", e);
+    });
+  }
+}
+
+/** Ajoute une note (nouvelle en tête de liste). Texte trimé, 1000 car. max. */
+export async function addCartNote(
+  cartId: string,
+  text: string,
+  author: { id: string; name: string },
+  tenantId?: string
+): Promise<void> {
+  const clean = (text || "").trim().slice(0, CART_NOTE_MAX_LENGTH);
+  if (!clean) throw new Error("EMPTY_NOTE");
+  const current = await readCartNotes(cartId, tenantId);
+  const now = new Date().toISOString();
+  const note: CartNote = {
+    id: `note_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+    text: clean,
+    authorId: author.id,
+    authorName: author.name,
+    createdAt: now,
+    updatedAt: now
+  };
+  await writeCartNotes(cartId, [note, ...current], tenantId);
+}
+
+/** Modifie une note existante (updatedAt mis à jour → mention « modifié »). */
+export async function updateCartNote(
+  cartId: string,
+  noteId: string,
+  text: string,
+  tenantId?: string
+): Promise<void> {
+  const clean = (text || "").trim().slice(0, CART_NOTE_MAX_LENGTH);
+  if (!clean) throw new Error("EMPTY_NOTE");
+  const current = await readCartNotes(cartId, tenantId);
+  const next = current.map((n) =>
+    n.id === noteId ? { ...n, text: clean, updatedAt: new Date().toISOString() } : n
+  );
+  await writeCartNotes(cartId, next, tenantId);
+}
+
+/** Supprime une note. */
+export async function deleteCartNote(cartId: string, noteId: string, tenantId?: string): Promise<void> {
+  const current = await readCartNotes(cartId, tenantId);
+  await writeCartNotes(cartId, current.filter((n) => n.id !== noteId), tenantId);
 }

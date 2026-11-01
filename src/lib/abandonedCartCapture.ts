@@ -34,6 +34,9 @@ export interface CartCaptureInput {
   total: number;
   lang: "ar" | "fr";
   source?: string;
+  /** Consentement WhatsApp : texte affiché + case cochée (si requise). */
+  consentText?: string;
+  consentChecked?: boolean;
 }
 
 interface CartCapturePayload extends CartCaptureInput {
@@ -41,6 +44,7 @@ interface CartCapturePayload extends CartCaptureInput {
   pageUrl: string;
   utm: { source: string; medium: string; campaign: string };
   website: string; // honeypot : doit rester vide
+  consentAt: string;
 }
 
 const VISITOR_KEY = "enova_store_visitor_id";
@@ -82,6 +86,9 @@ function getUtm(): { source: string; medium: string; campaign: string } {
 function buildPayload(input: CartCaptureInput): CartCapturePayload {
   return {
     ...input,
+    consentText: String(input.consentText || "").slice(0, 300),
+    consentChecked: input.consentChecked === true,
+    consentAt: input.consentChecked === true ? new Date().toISOString() : "",
     sessionId: getVisitorId(),
     pageUrl: String(window.location.href || "").slice(0, 300),
     utm: getUtm(),

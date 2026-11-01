@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/whatsapp/process",
+      "schedule": "*/10 * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

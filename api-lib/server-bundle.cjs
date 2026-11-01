@@ -1111,9 +1111,9 @@ var adminAuth_default = router;
 
 // server.ts
 var import_multer = __toESM(require("multer"));
-var import_crypto2 = __toESM(require("crypto"));
+var import_crypto3 = __toESM(require("crypto"));
 var import_nodemailer = __toESM(require("nodemailer"));
-var import_firestore3 = require("firebase/firestore");
+var import_firestore4 = require("firebase/firestore");
 var import_cloudinary = require("cloudinary");
 var import_stream = require("stream");
 
@@ -1254,6 +1254,974 @@ Connectez-vous \xE0 votre tableau de bord pour traiter la commande.`;
 
 // server.ts
 init_date();
+
+// src/lib/whatsappServer.ts
+var import_crypto2 = __toESM(require("crypto"));
+var import_firestore3 = require("firebase/firestore");
+init_landingData();
+
+// src/lib/whatsappDefaults.ts
+var WA_DEFAULT_MESSAGE_AR = "\u0645\u0631\u062D\u0628\u0627\u064B {nom} \u{1F44B}\n\u0644\u0642\u062F \u0628\u062F\u0623\u062A \u0637\u0644\u0628\u0627\u064B \u0641\u064A \u0645\u062A\u062C\u0631 {boutique} :\n\u{1F4E6} {produits}\n\u{1F4B0} \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A : {total} \u062F\u062C (\u0627\u0644\u062F\u0641\u0639 \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645)\n\u{1F4CD} {wilaya}\n\n\u0647\u0644 \u062A\u0631\u064A\u062F \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 \u061F\n\u{1F517} {lien}";
+var WA_DEFAULT_MESSAGE_FR = "Bonjour {nom} \u{1F44B}\nVous avez commenc\xE9 une commande chez {boutique} :\n\u{1F4E6} {produits}\n\u{1F4B0} Total : {total} DA (paiement \xE0 la livraison)\n\u{1F4CD} {wilaya}\n\nSouhaitez-vous confirmer votre commande ?\n\u{1F517} {lien}";
+var WA_ORDER_CONFIRM_AR = "\u0645\u0631\u062D\u0628\u0627\u064B {nom} \u{1F44B}\n\u062A\u0645 \u062A\u0633\u062C\u064A\u0644 \u0637\u0644\u0628\u0643 \u0641\u064A \u0645\u062A\u062C\u0631 {boutique} \u2705\n\u{1F4E6} {produits}\n\u{1F4B0} \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A : {total} \u062F\u062C\n\u{1F4CD} {wilaya}\n\n\u064A\u0631\u062C\u0649 \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 :\n\u{1F517} {lien}";
+var WA_ORDER_CONFIRM_FR = "Bonjour {nom} \u{1F44B}\nVotre commande chez {boutique} a bien \xE9t\xE9 enregistr\xE9e \u2705\n\u{1F4E6} {produits}\n\u{1F4B0} Total : {total} DA\n\u{1F4CD} {wilaya}\n\nMerci de confirmer votre commande :\n\u{1F517} {lien}";
+var WA_ORDER_STATUS_AR = {
+  "Confirm\xE9e": "\u062A\u0645 \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 \u2705",
+  "Exp\xE9di\xE9e": "\u062A\u0645 \u0634\u062D\u0646 \u0637\u0644\u0628\u0643 \u{1F69A}",
+  "En livraison": "\u0637\u0644\u0628\u0643 \u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642 \u0625\u0644\u064A\u0643 \u{1F69A}",
+  "Au bureau de livraison": "\u0637\u0644\u0628\u0643 \u0648\u0635\u0644 \u0625\u0644\u0649 \u0645\u0643\u062A\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u{1F3E2} \u064A\u0645\u0643\u0646\u0643 \u0627\u0633\u062A\u0644\u0627\u0645\u0647 \u0627\u0644\u0622\u0646.",
+  "Livr\xE9e": "\u062A\u0645 \u062A\u0648\u0635\u064A\u0644 \u0637\u0644\u0628\u0643 \u0628\u0646\u062C\u0627\u062D \u{1F389} \u0634\u0643\u0631\u0627\u064B \u0644\u062B\u0642\u062A\u0643!",
+  "\xC9chec": "\u062A\u0639\u0630\u0631 \u062A\u0648\u0635\u064A\u0644 \u0637\u0644\u0628\u0643 \u274C \u064A\u0631\u062C\u0649 \u0627\u0644\u062A\u0648\u0627\u0635\u0644 \u0645\u0639\u0646\u0627.",
+  "Retour": "\u062A\u0645 \u0625\u0631\u062C\u0627\u0639 \u0637\u0644\u0628\u0643 \u0625\u0644\u0649 \u0627\u0644\u0645\u062A\u062C\u0631 \u21A9\uFE0F"
+};
+var WA_ORDER_STATUS_FR = {
+  "Confirm\xE9e": "Votre commande est confirm\xE9e \u2705",
+  "Exp\xE9di\xE9e": "Votre commande a \xE9t\xE9 exp\xE9di\xE9e \u{1F69A}",
+  "En livraison": "Votre commande est en cours de livraison \u{1F69A}",
+  "Au bureau de livraison": "Votre commande est arriv\xE9e au bureau de livraison \u{1F3E2} vous pouvez la r\xE9cup\xE9rer.",
+  "Livr\xE9e": "Votre commande a \xE9t\xE9 livr\xE9e avec succ\xE8s \u{1F389} merci de votre confiance !",
+  "\xC9chec": "La livraison de votre commande a \xE9chou\xE9 \u274C merci de nous contacter.",
+  "Retour": "Votre commande a \xE9t\xE9 retourn\xE9e au magasin \u21A9\uFE0F"
+};
+
+// src/lib/whatsappServer.ts
+var WA_REMINDER_MINUTES = 240;
+var DZ_TZ = "Africa/Algiers";
+var WA_NOTIFIABLE_STATUSES = [
+  "Confirm\xE9e",
+  "Exp\xE9di\xE9e",
+  "En livraison",
+  "Au bureau de livraison",
+  "Livr\xE9e",
+  "\xC9chec",
+  "Retour"
+];
+function isCloudApiConfigured() {
+  return Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
+}
+function waBaseUrl() {
+  return String(process.env.APP_URL || "https://e-nova-saas.vercel.app").replace(/\/+$/, "");
+}
+var settingsCache = /* @__PURE__ */ new Map();
+function waDefaultSettings() {
+  return {
+    enabled: false,
+    orderConfirmations: { enabled: true },
+    abandonedCarts: {
+      enabled: false,
+      delayMinutes: 10,
+      reminderEnabled: false,
+      messageAr: WA_DEFAULT_MESSAGE_AR,
+      messageFr: WA_DEFAULT_MESSAGE_FR
+    },
+    quietHours: { enabled: false, start: "22:00", end: "08:00" },
+    language: "store",
+    scope: { mode: "all", productIds: [] },
+    consentCheckbox: false,
+    connectionStatus: "disconnected"
+  };
+}
+async function getWaSettings(tenantId) {
+  const cached = settingsCache.get(tenantId);
+  if (cached && Date.now() - cached.at < 1e4) return cached.data;
+  let data = waDefaultSettings();
+  try {
+    const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "whatsapp_settings", tenantId));
+    if (snap.exists()) {
+      const raw = snap.data() || {};
+      const d = waDefaultSettings();
+      data = {
+        enabled: raw.enabled === true,
+        orderConfirmations: { enabled: raw.orderConfirmations?.enabled !== false },
+        abandonedCarts: {
+          enabled: raw.abandonedCarts?.enabled === true,
+          delayMinutes: [5, 10, 30, 60].includes(raw.abandonedCarts?.delayMinutes) ? raw.abandonedCarts.delayMinutes : 10,
+          reminderEnabled: raw.abandonedCarts?.reminderEnabled === true,
+          messageAr: String(raw.abandonedCarts?.messageAr || WA_DEFAULT_MESSAGE_AR).slice(0, 1500),
+          messageFr: String(raw.abandonedCarts?.messageFr || WA_DEFAULT_MESSAGE_FR).slice(0, 1500)
+        },
+        quietHours: {
+          enabled: raw.quietHours?.enabled === true,
+          start: String(raw.quietHours?.start || "22:00").slice(0, 5),
+          end: String(raw.quietHours?.end || "08:00").slice(0, 5)
+        },
+        language: raw.language === "ar" || raw.language === "fr" ? raw.language : "store",
+        scope: {
+          mode: raw.scope?.mode === "selected" ? "selected" : "all",
+          productIds: Array.isArray(raw.scope?.productIds) ? raw.scope.productIds.map((p) => String(p).slice(0, 60)) : []
+        },
+        consentCheckbox: raw.consentCheckbox === true,
+        connectionStatus: raw.connectionStatus === "connected" || raw.connectionStatus === "pending" ? raw.connectionStatus : "disconnected"
+      };
+    }
+  } catch (e) {
+    console.warn("getWaSettings: read failed:", e);
+  }
+  settingsCache.set(tenantId, { at: Date.now(), data });
+  return data;
+}
+function dzHourMinute() {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: DZ_TZ,
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false
+    }).format(/* @__PURE__ */ new Date()).split(":").map(Number);
+    return { h: parts[0] % 24, m: parts[1] || 0 };
+  } catch {
+    const d = /* @__PURE__ */ new Date();
+    return { h: d.getUTCHours() + 1, m: d.getUTCMinutes() };
+  }
+}
+function parseHM(v) {
+  const [h, m] = String(v || "0:0").split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+function inQuietHours(s) {
+  if (!s.quietHours.enabled || !s.quietHours.start || !s.quietHours.end) return false;
+  const now = dzHourMinute();
+  const cur = now.h * 60 + now.m;
+  const start = parseHM(s.quietHours.start);
+  const end = parseHM(s.quietHours.end);
+  if (start === end) return false;
+  return start > end ? cur >= start || cur < end : cur >= start && cur < end;
+}
+async function waSendText(toDigits, body) {
+  const to = toDigits.replace(/^0/, "213");
+  if (!isCloudApiConfigured()) {
+    return { ok: true, simulated: true, waMessageId: `sim_${import_crypto2.default.randomUUID()}` };
+  }
+  try {
+    const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "text",
+        text: { preview_url: true, body: body.slice(0, 4096) }
+      })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errObj = j.error;
+      const detail = errObj?.message ? `Meta ${errObj.code ?? ""}${errObj.error_subcode ? "/" + errObj.error_subcode : ""} ${errObj.message}`.trim() : `HTTP ${res.status} ${JSON.stringify(j).slice(0, 160)}`;
+      return { ok: false, simulated: false, waMessageId: "", error: detail };
+    }
+    const mid = j.messages?.[0]?.id || `wa_${Date.now()}`;
+    return { ok: true, simulated: false, waMessageId: mid };
+  } catch (e) {
+    return { ok: false, simulated: false, waMessageId: "", error: waErrText(e) };
+  }
+}
+function waErrText(e) {
+  if (e instanceof Error) return e.message || e.name;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e).slice(0, 200);
+  } catch {
+    return String(e);
+  }
+}
+async function logWaMessage(msg) {
+  const id = `wa_${Date.now().toString(36)}_${import_crypto2.default.randomUUID().slice(0, 8)}`;
+  const clean = {
+    sentAt: msg.sentAt || (/* @__PURE__ */ new Date()).toISOString(),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  for (const [k, v] of Object.entries(msg)) {
+    if (v !== void 0) clean[k] = v;
+  }
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "whatsapp_messages", id), clean);
+  return id;
+}
+async function findMessagesByCart(cartId, kinds) {
+  const out = [];
+  const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "whatsapp_messages"), (0, import_firestore3.where)("cartId", "==", cartId)));
+  snap.forEach((d) => {
+    const data = d.data() || {};
+    if (kinds.includes(String(data.kind))) out.push({ id: d.id, data });
+  });
+  return out;
+}
+async function isUnsubscribed(tenantId, phoneDigits) {
+  try {
+    const globalSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "whatsapp_unsubscribes", `global_${phoneDigits}`));
+    if (globalSnap.exists()) return true;
+    const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "whatsapp_unsubscribes", `${tenantId}_${phoneDigits}`));
+    return snap.exists();
+  } catch {
+    return false;
+  }
+}
+async function markUnsubscribed(tenantId, phoneDigits, source) {
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "whatsapp_unsubscribes", `${tenantId}_${phoneDigits}`), {
+    tenantId,
+    phoneDigits,
+    source,
+    stoppedAt: (/* @__PURE__ */ new Date()).toISOString()
+  }, { merge: true });
+}
+var STOP_KEYWORDS = ["stop", "STOP", "Stop", "\u0625\u064A\u0642\u0627\u0641", "\u0627\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643", "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643", "unsubscribe", "D\xC9SISTER"];
+function renderWaTemplate(tpl, vars) {
+  return tpl.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m);
+}
+function cartItemsSummary(items) {
+  const list = Array.isArray(items) ? items.slice(0, 5) : [];
+  const parts = list.map((it) => {
+    const name = String(it.name || "\u0645\u0646\u062A\u062C");
+    const qty = Number(it.quantity ?? it.qty) || 1;
+    return `${name} x${qty}`;
+  });
+  return parts.join("\u060C ") || "\u2014";
+}
+function resolveLang(settings, cartLang) {
+  if (settings.language === "ar" || settings.language === "fr") return settings.language;
+  return cartLang === "fr" ? "fr" : "ar";
+}
+function resolveTenantName(tenantData) {
+  return String(tenantData.storeName || tenantData.name || "\u0627\u0644\u0645\u062A\u062C\u0631").slice(0, 60);
+}
+function toMs(v) {
+  try {
+    if (!v) return 0;
+    if (typeof v === "object" && typeof v.toMillis === "function") {
+      return v.toMillis();
+    }
+    const t = new Date(String(v)).getTime();
+    return Number.isFinite(t) ? t : 0;
+  } catch {
+    return 0;
+  }
+}
+var lastProcessAt = 0;
+var PROCESS_MIN_INTERVAL_MS = 60 * 1e3;
+async function processWhatsAppQueue(force) {
+  const summary = {
+    cartsSent: 0,
+    remindersSent: 0,
+    orderConfirmsSent: 0,
+    statusNotificationsSent: 0,
+    skippedQuietHours: 0,
+    errors: [],
+    cloudApi: isCloudApiConfigured()
+  };
+  if (!force && Date.now() - lastProcessAt < PROCESS_MIN_INTERVAL_MS) return summary;
+  lastProcessAt = Date.now();
+  try {
+    const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "abandoned_carts"), (0, import_firestore3.where)("status", "==", "abandoned")));
+    for (const d of snap.docs) {
+      try {
+        const cart = d.data() || {};
+        const tenantId = String(cart.tenantId || "");
+        if (!tenantId) continue;
+        const settings = await getWaSettings(tenantId);
+        if (!settings.enabled || !settings.abandonedCarts.enabled) continue;
+        const digits = String(cart.phoneDigits || "");
+        if (!/^0[567]\d{8}$/.test(digits)) continue;
+        if (await isUnsubscribed(tenantId, digits)) continue;
+        if (settings.consentCheckbox && cart.consentChecked !== true) continue;
+        const firstProductId = String(cart.items?.[0]?.productId || "");
+        if (settings.scope.mode === "selected" && !settings.scope.productIds.includes(firstProductId)) continue;
+        try {
+          const ordersSnap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("phone", "==", digits)));
+          let hasOrder = false;
+          ordersSnap.forEach((o) => {
+            if ((o.data() || {}).userId === tenantId) hasOrder = true;
+          });
+          if (hasOrder) continue;
+        } catch {
+        }
+        const updatedAtMs = toMs(cart.updatedAt) || toMs(cart.createdAt);
+        if (!updatedAtMs) continue;
+        const dueMs = updatedAtMs + settings.abandonedCarts.delayMinutes * 6e4;
+        const sent = await findMessagesByCart(d.id, ["cart"]);
+        const reminders = await findMessagesByCart(d.id, ["cart_reminder"]);
+        if (sent.length === 0) {
+          if (Date.now() < dueMs) continue;
+          if (inQuietHours(settings)) {
+            summary.skippedQuietHours++;
+            continue;
+          }
+          const r = await sendCartMessage(d.id, cart, tenantId, settings, "cart");
+          if (r) summary.cartsSent++;
+          else summary.errors.push(`cart ${d.id}`);
+        } else if (reminders.length === 0 && settings.abandonedCarts.reminderEnabled) {
+          const sentAt = toMs(sent[0].data.sentAt);
+          if (Date.now() < sentAt + WA_REMINDER_MINUTES * 6e4) continue;
+          if (toMs(cart.waRepliedAt) > 0) continue;
+          if (inQuietHours(settings)) {
+            summary.skippedQuietHours++;
+            continue;
+          }
+          const r = await sendCartMessage(d.id, cart, tenantId, settings, "cart_reminder");
+          if (r) summary.remindersSent++;
+          else summary.errors.push(`reminder ${d.id}`);
+        }
+      } catch (e) {
+        summary.errors.push(String(e.message || e).slice(0, 120));
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`phaseA: ${String(e.message || e).slice(0, 120)}`);
+  }
+  try {
+    const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("status", "==", "En attente")));
+    const cutoff = Date.now() - 48 * 3600 * 1e3;
+    for (const d of snap.docs) {
+      try {
+        const order = d.data() || {};
+        if (order.waConfirmSent === true) continue;
+        const tenantId = String(order.userId || "");
+        if (!tenantId) continue;
+        const digits = String(order.phone || "").replace(/\D/g, "");
+        if (!/^0[567]\d{8}$/.test(digits) && !/^213[567]\d{8}$/.test(digits)) continue;
+        if (toMs(order.createdAt) < cutoff) continue;
+        const settings = await getWaSettings(tenantId);
+        if (!settings.enabled || !settings.orderConfirmations.enabled) continue;
+        if (await isUnsubscribed(tenantId, digits.replace(/^213/, "0"))) continue;
+        if (inQuietHours(settings)) {
+          summary.skippedQuietHours++;
+          continue;
+        }
+        const ok = await sendOrderConfirmMessage(d.id, order, tenantId, settings);
+        if (ok) summary.orderConfirmsSent++;
+        else summary.errors.push(`order ${d.id}`);
+      } catch (e) {
+        summary.errors.push(String(e.message || e).slice(0, 120));
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`phaseB: ${String(e.message || e).slice(0, 120)}`);
+  }
+  try {
+    for (const status of WA_NOTIFIABLE_STATUSES) {
+      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("status", "==", status)));
+      const cutoff = Date.now() - 24 * 3600 * 1e3;
+      for (const d of snap.docs) {
+        try {
+          const order = d.data() || {};
+          if (order.waConfirmSent !== true && order.whatsappConfirmed !== true) continue;
+          if (order.waLastStatusSent === status) continue;
+          if (toMs(order.updatedAt || order.createdAt) < cutoff) continue;
+          const tenantId = String(order.userId || "");
+          if (!tenantId) continue;
+          const settings = await getWaSettings(tenantId);
+          if (!settings.enabled) continue;
+          const digits = String(order.phone || "").replace(/\D/g, "");
+          if (await isUnsubscribed(tenantId, digits.replace(/^213/, "0"))) continue;
+          if (inQuietHours(settings)) {
+            summary.skippedQuietHours++;
+            continue;
+          }
+          const lang = settings.language === "store" ? "ar" : settings.language;
+          const tplMap = lang === "fr" ? WA_ORDER_STATUS_FR : WA_ORDER_STATUS_AR;
+          const line = tplMap[status];
+          if (!line) continue;
+          const tenantSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", tenantId)).catch(() => null);
+          const tenantData = tenantSnap?.data() || {};
+          const trackUrl = `${waBaseUrl()}/track/${encodeURIComponent(String(order.reference || order.id || ""))}`;
+          const body = `${line}
+
+\u{1F4E6} ${cartItemsSummary(order.items)}
+\u{1F517} ${trackUrl}`;
+          const r = await waSendText(digits, body);
+          await logWaMessage({
+            tenantId,
+            kind: "order_status",
+            direction: "out",
+            orderId: d.id,
+            phone: digits,
+            lang,
+            body,
+            status: r.ok ? "sent" : "failed",
+            simulated: r.simulated,
+            waMessageId: r.waMessageId,
+            error: r.error
+          });
+          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "orders", d.id), {
+            waLastStatusSent: status,
+            waLastStatusAt: (/* @__PURE__ */ new Date()).toISOString(),
+            ...r.ok ? {} : { waLastError: r.error || "" }
+          }, { merge: true });
+          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "orders", d.id), {
+            waLastStatusSent: status,
+            waLastStatusAt: (/* @__PURE__ */ new Date()).toISOString()
+          }, { merge: true }).catch(() => {
+          });
+          if (r.ok) summary.statusNotificationsSent++;
+          else summary.errors.push(`status ${d.id}`);
+        } catch (e) {
+          summary.errors.push(String(e.message || e).slice(0, 120));
+        }
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`phaseC: ${String(e.message || e).slice(0, 120)}`);
+  }
+  return summary;
+}
+async function ensureCartToken(cartId, cart) {
+  const existing = String(cart.waToken || "");
+  if (existing) return existing;
+  const token = import_crypto2.default.randomBytes(12).toString("hex");
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId), { waToken: token }, { merge: true });
+  const tenantId = String(cart.tenantId || "");
+  if (tenantId) {
+    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), { waToken: token }, { merge: true }).catch(() => {
+    });
+  }
+  return token;
+}
+async function sendCartMessage(cartId, cart, tenantId, settings, kind) {
+  const digits = String(cart.phoneDigits || "");
+  const lang = resolveLang(settings, cart.lang);
+  const tenantSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", tenantId)).catch(() => null);
+  const tenantData = tenantSnap?.data() || {};
+  const token = await ensureCartToken(cartId, cart);
+  const link = `${waBaseUrl()}/wa/${cartId}?t=${token}`;
+  const reminderPrefix = kind === "cart_reminder" ? lang === "fr" ? "\u23F0 Petit rappel \u2014 " : "\u23F0 \u062A\u0630\u0643\u064A\u0631 \u2014 " : "";
+  const tpl = lang === "fr" ? settings.abandonedCarts.messageFr : settings.abandonedCarts.messageAr;
+  const total = Number(cart.total) || 0;
+  const body = reminderPrefix + renderWaTemplate(tpl, {
+    nom: String(cart.client || "").split(" ")[0] || (lang === "fr" ? "cher client" : "\u0639\u0645\u064A\u0644\u0646\u0627"),
+    boutique: resolveTenantName(tenantData),
+    produits: cartItemsSummary(cart.items),
+    total: total.toLocaleString("fr-FR"),
+    wilaya: String(cart.wilaya || ""),
+    lien: link
+  });
+  const r = await waSendText(digits, body);
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  await logWaMessage({
+    tenantId,
+    kind,
+    direction: "out",
+    cartId,
+    phone: digits,
+    lang,
+    body,
+    status: r.ok ? "sent" : "failed",
+    simulated: r.simulated,
+    waMessageId: r.waMessageId,
+    error: r.error,
+    sentAt: nowIso
+  });
+  const patch = {
+    waStatus: r.ok ? "sent" : "failed",
+    waSimulated: r.simulated,
+    waSentAt: nowIso,
+    ...kind === "cart_reminder" ? { waReminderSentAt: nowIso } : {},
+    ...r.ok ? {} : { waError: r.error || "" }
+  };
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
+  });
+  return r.ok;
+}
+async function sendOrderConfirmMessage(orderId, order, tenantId, settings) {
+  const digits = String(order.phone || "").replace(/\D/g, "").replace(/^213/, "0");
+  const lang = settings.language === "store" ? order.lang === "fr" ? "fr" : "ar" : settings.language;
+  const tenantSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", tenantId)).catch(() => null);
+  const tenantData = tenantSnap?.data() || {};
+  const token = import_crypto2.default.randomBytes(12).toString("hex");
+  const link = `${waBaseUrl()}/wa/order/${orderId}?t=${token}`;
+  const tpl = lang === "fr" ? WA_ORDER_CONFIRM_FR : WA_ORDER_CONFIRM_AR;
+  const body = renderWaTemplate(tpl, {
+    nom: String(order.client || "").split(" ")[0] || (lang === "fr" ? "cher client" : "\u0639\u0645\u064A\u0644\u0646\u0627"),
+    boutique: resolveTenantName(tenantData),
+    produits: cartItemsSummary(order.items),
+    total: (Number(order.total) || 0).toLocaleString("fr-FR"),
+    wilaya: String(order.wilaya || ""),
+    lien: link
+  });
+  const r = await waSendText(digits, body);
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  await logWaMessage({
+    tenantId,
+    kind: "order_confirm",
+    direction: "out",
+    orderId,
+    phone: digits,
+    lang,
+    body,
+    status: r.ok ? "sent" : "failed",
+    simulated: r.simulated,
+    waMessageId: r.waMessageId,
+    error: r.error,
+    sentAt: nowIso
+  });
+  const patch = {
+    waConfirmSent: r.ok === true,
+    waConfirmSimulated: r.simulated,
+    waConfirmSentAt: nowIso,
+    waToken: token,
+    ...r.ok ? {} : { waLastError: r.error || "" }
+  };
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "orders", orderId), patch, { merge: true });
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "orders", orderId), patch, { merge: true }).catch(() => {
+  });
+  return r.ok;
+}
+async function getProductDoc(tenantId, productId) {
+  const tries = [(0, import_firestore3.doc)(db, "products", productId), (0, import_firestore3.doc)(db, "tenants", tenantId, "products", productId)];
+  for (const ref of tries) {
+    try {
+      const snap = await (0, import_firestore3.getDoc)(ref);
+      if (snap.exists()) return snap.data() || {};
+    } catch {
+    }
+  }
+  return null;
+}
+async function convertCartViaWhatsApp(cartId, acceptNewPrice) {
+  const cartSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId)).catch(() => null);
+  if (!cartSnap || !cartSnap.exists()) return { ok: false, reason: "invalid" };
+  const cart = cartSnap.data() || {};
+  const tenantId = String(cart.tenantId || "");
+  if (!tenantId) return { ok: false, reason: "invalid" };
+  if (cart.status === "recovered" && cart.orderId) {
+    return { ok: true, reason: "already", orderId: String(cart.orderId), trackingCode: String(cart.orderId) };
+  }
+  const items = Array.isArray(cart.items) ? cart.items : [];
+  const first = items[0] || {};
+  const productId = String(first.productId || "");
+  const product = productId ? await getProductDoc(tenantId, productId) : null;
+  if (productId && !product) return { ok: false, reason: "product_unavailable" };
+  if (product && String(product.status || "active") !== "active") {
+    return { ok: false, reason: "product_unavailable" };
+  }
+  const stock = product ? Number(product.stock) : NaN;
+  if (product && Number.isFinite(stock) && stock <= 0) {
+    return { ok: false, reason: "out_of_stock" };
+  }
+  const currentPrice = product ? Number(product.price) : Number(first.price) || 0;
+  const qty = Number(first.quantity ?? first.qty) || 1;
+  const wilayaStr = String(cart.wilaya || "");
+  const codeMatch = wilayaStr.match(/(\d{1,2})\s*[-–]/);
+  const wilaya = codeMatch ? ALGERIAN_WILAYAS.find((w) => w.code === Number(codeMatch[1])) : void 0;
+  const deliveryType = String(cart.deliveryType || "home") === "desk" ? "desk" : "home";
+  const currentShipping = wilaya ? deliveryType === "home" ? wilaya.homeDeliveryPrice : wilaya.deskDeliveryPrice : Number(cart.shipping) || 0;
+  const currentTotal = currentPrice * qty + currentShipping;
+  const oldTotal = Number(cart.total) || 0;
+  if (!acceptNewPrice && (currentPrice !== (Number(first.price) || 0) || currentTotal !== oldTotal)) {
+    return { ok: false, reason: "price_changed", currentPrice, currentShipping, currentTotal };
+  }
+  const generatedOrderId = `ORD-${Math.floor(Math.random() * 9e4) + 1e4}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "")}-${import_crypto2.default.randomBytes(3).toString("hex").toUpperCase()}`;
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  const productImage = String(product && (product.image || (product.images || [])[0]) || first.image || "");
+  const productName = String(product && (product.nameAr || product.name) || first.name || "Produit");
+  const orderPayload = {
+    orderNumber: generatedOrderId.substring(4, 10),
+    reference: generatedOrderId,
+    trackingCode: generatedOrderId,
+    userId: tenantId,
+    client: String(cart.client || "Client WhatsApp"),
+    phone: String(cart.phone || ""),
+    wilaya: wilayaStr,
+    commune: String(cart.commune || ""),
+    address: String(cart.address || ""),
+    itemsSummary: cartItemsSummary(items),
+    total: currentTotal,
+    status: "Confirm\xE9e",
+    paymentStatus: "Non pay\xE9",
+    paymentMethod: "COD (\u0627\u0644\u062F\u0641\u0639 \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645)",
+    deliveryType: deliveryType === "home" ? "Livraison \xE0 domicile" : "Point de relais / Stop Desk",
+    shippingMethod: deliveryType === "home" ? "Livraison \xE0 domicile" : "Point de relais / Stop Desk",
+    shippingCost: currentShipping,
+    source: "WhatsApp \u2013 panier abandonn\xE9",
+    whatsappConfirmed: true,
+    confirmedAt: nowIso,
+    date: nowIso,
+    image: productImage,
+    items: [{
+      productId,
+      name: productName,
+      price: currentPrice,
+      quantity: qty,
+      variants: first.variants || {},
+      image: productImage
+    }]
+  };
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "orders", generatedOrderId), {
+    ...orderPayload,
+    createdAt: (0, import_firestore3.serverTimestamp)(),
+    updatedAt: (0, import_firestore3.serverTimestamp)()
+  }, { merge: true });
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "orders", generatedOrderId), {
+    ...orderPayload,
+    createdAt: (0, import_firestore3.serverTimestamp)(),
+    updatedAt: (0, import_firestore3.serverTimestamp)()
+  }, { merge: true });
+  const patch = {
+    status: "recovered",
+    recovered: true,
+    orderId: generatedOrderId,
+    recoveredAt: nowIso,
+    updatedAt: nowIso,
+    waStatus: "replied",
+    waRepliedAt: nowIso,
+    total: currentTotal
+  };
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
+  });
+  await logWaMessage({
+    tenantId,
+    kind: "incoming",
+    direction: "in",
+    cartId,
+    orderId: generatedOrderId,
+    phone: String(cart.phoneDigits || ""),
+    lang: cart.lang === "fr" ? "fr" : "ar",
+    body: "\u2705 Confirmer ma commande (bouton)",
+    status: "received",
+    sentAt: nowIso
+  });
+  return { ok: true, orderId: generatedOrderId, trackingCode: generatedOrderId, currentTotal };
+}
+async function waCartAction(cartId, token, action, acceptNewPrice) {
+  const cartSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId)).catch(() => null);
+  if (!cartSnap || !cartSnap.exists()) return { ok: false, error: "Panier introuvable." };
+  const cart = cartSnap.data() || {};
+  if (String(cart.waToken || "") !== token) return { ok: false, error: "Lien invalide ou expir\xE9." };
+  const tenantId = String(cart.tenantId || "");
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  if (action === "confirm") {
+    return convertCartViaWhatsApp(cartId, acceptNewPrice);
+  }
+  if (action === "modify") {
+    const patch2 = { status: "contacted", waStatus: "replied", waRepliedAt: nowIso, waMerchantTodo: true, updatedAt: nowIso };
+    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId), patch2, { merge: true });
+    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch2, { merge: true }).catch(() => {
+    });
+    await logWaMessage({
+      tenantId,
+      kind: "incoming",
+      direction: "in",
+      cartId,
+      phone: String(cart.phoneDigits || ""),
+      lang: cart.lang === "fr" ? "fr" : "ar",
+      body: "\u270F\uFE0F Modifier / Appeler (bouton)",
+      status: "received",
+      sentAt: nowIso
+    });
+    return { ok: true };
+  }
+  const patch = { status: "refused", waStatus: "replied", waRepliedAt: nowIso, refusedAt: nowIso, updatedAt: nowIso };
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
+  });
+  await logWaMessage({
+    tenantId,
+    kind: "incoming",
+    direction: "in",
+    cartId,
+    phone: String(cart.phoneDigits || ""),
+    lang: cart.lang === "fr" ? "fr" : "ar",
+    body: "\u274C Non merci (bouton)",
+    status: "received",
+    sentAt: nowIso
+  });
+  return { ok: true };
+}
+function clientText(v, max) {
+  return String(v ?? "").trim().slice(0, max);
+}
+function registerWhatsAppRoutes(app2) {
+  app2.get("/api/whatsapp/status", (_req, res) => {
+    res.json({ cloudApi: isCloudApiConfigured(), baseUrl: waBaseUrl() });
+  });
+  const handleProcess = async (req, res) => {
+    try {
+      const force = req.method === "POST" && clientText(req.query.force, 5) === "1";
+      const summary = await processWhatsAppQueue(force);
+      res.json({ ok: true, ...summary });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e.message || e) });
+    }
+  };
+  app2.get("/api/whatsapp/process", handleProcess);
+  app2.post("/api/whatsapp/process", handleProcess);
+  app2.post("/api/whatsapp/action", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const cartId = clientText(b.cartId, 120);
+      const token = clientText(b.token, 60);
+      const action = clientText(b.action, 20);
+      const acceptNewPrice = b.acceptNewPrice === true;
+      if (!cartId || !token || !["confirm", "modify", "decline"].includes(action)) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+      const r = await waCartAction(cartId, token, action, acceptNewPrice);
+      res.json(r);
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "action_failed", detail: String(e.message || e) });
+    }
+  });
+  app2.post("/api/whatsapp/resend", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const cartId = clientText(b.cartId, 120);
+      const token = clientText(b.token, 60);
+      if (!cartId || !token) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+      const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "abandoned_carts", cartId));
+      if (!snap.exists()) {
+        res.status(404).json({ ok: false, error: "not_found" });
+        return;
+      }
+      const cart = snap.data() || {};
+      if (String(cart.waToken || "") !== token) {
+        res.status(403).json({ ok: false, error: "forbidden" });
+        return;
+      }
+      const tenantId = String(cart.tenantId || "");
+      const settings = await getWaSettings(tenantId);
+      if (!settings.enabled || !settings.abandonedCarts.enabled) {
+        res.status(409).json({ ok: false, error: "extension_disabled" });
+        return;
+      }
+      if (["recovered", "refused"].includes(String(cart.status))) {
+        res.status(409).json({ ok: false, error: "cart_closed" });
+        return;
+      }
+      if (await isUnsubscribed(tenantId, String(cart.phoneDigits || ""))) {
+        res.status(409).json({ ok: false, error: "unsubscribed" });
+        return;
+      }
+      const ok = await sendCartMessage(cartId, cart, tenantId, settings, "cart");
+      res.json({ ok });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "resend_failed" });
+    }
+  });
+  app2.post("/api/whatsapp/order-action", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const orderId = clientText(b.orderId, 120);
+      const token = clientText(b.token, 60);
+      const action = clientText(b.action, 20);
+      if (!orderId || !token || !["confirm", "decline"].includes(action)) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+      let orderSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "orders", orderId)).catch(() => null);
+      let orderData = orderSnap?.exists() ? orderSnap.data() || {} : null;
+      let docId = orderId;
+      if (!orderData) {
+        const byRef = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("reference", "==", orderId))).catch(() => null);
+        if (byRef && !byRef.empty) {
+          docId = byRef.docs[0].id;
+          orderData = byRef.docs[0].data() || {};
+        }
+      }
+      if (!orderData) {
+        res.status(404).json({ ok: false, error: "not_found" });
+        return;
+      }
+      if (String(orderData.waToken || "") !== token) {
+        res.status(403).json({ ok: false, error: "forbidden" });
+        return;
+      }
+      const tenantId = String(orderData.userId || "");
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const newStatus = action === "confirm" ? "Confirm\xE9e" : "Annul\xE9e";
+      const patch = {
+        status: newStatus,
+        updatedAt: nowIso,
+        ...action === "confirm" ? { whatsappConfirmed: true, confirmedAt: nowIso } : { refusedAt: nowIso }
+      };
+      await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "orders", docId), patch, { merge: true });
+      if (tenantId) {
+        await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "orders", docId), patch, { merge: true }).catch(() => {
+        });
+      }
+      await logWaMessage({
+        tenantId,
+        kind: "incoming",
+        direction: "in",
+        orderId: docId,
+        phone: String(orderData.phone || "").replace(/\D/g, ""),
+        lang: "ar",
+        body: action === "confirm" ? "\u2705 Confirmer ma commande (bouton)" : "\u274C Refuser (bouton)",
+        status: "received",
+        sentAt: nowIso
+      });
+      res.json({ ok: true, status: newStatus, trackingCode: String(orderData.trackingCode || orderData.reference || docId) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "order_action_failed" });
+    }
+  });
+  app2.get("/api/webhooks/whatsapp", (req, res) => {
+    const mode = clientText(req.query["hub.mode"], 20);
+    const token = clientText(req.query["hub.verify_token"], 100);
+    const challenge = clientText(req.query["hub.challenge"], 200);
+    if (mode === "subscribe" && token && token === String(process.env.WHATSAPP_VERIFY_TOKEN || "")) {
+      res.status(200).send(challenge);
+      return;
+    }
+    res.sendStatus(403);
+  });
+  app2.post("/api/webhooks/whatsapp", async (req, res) => {
+    try {
+      const rawBody = req.rawBody;
+      const appSecret = String(process.env.WHATSAPP_APP_SECRET || "");
+      if (appSecret) {
+        const sig = String(req.headers["x-hub-signature-256"] || "");
+        if (!sig) {
+          res.sendStatus(401);
+          return;
+        }
+        const expected = "sha256=" + import_crypto2.default.createHmac("sha256", appSecret).update(rawBody || Buffer.from(JSON.stringify(req.body || {}))).digest("hex");
+        if (sig !== expected) {
+          res.sendStatus(401);
+          return;
+        }
+      }
+      const payload = req.body || {};
+      const entries = payload.entry || [];
+      for (const entry of entries) {
+        const changes = entry.changes || [];
+        for (const change of changes) {
+          const value = change.value || {};
+          const tenantId = String(value.metadata?.phone_number_id || "");
+          const statuses = value.statuses || [];
+          for (const st of statuses) {
+            const waMessageId = String(st.id || "");
+            const status = String(st.status || "");
+            if (!waMessageId || !["sent", "delivered", "read", "failed"].includes(status)) continue;
+            try {
+              const msgsSnap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "whatsapp_messages"), (0, import_firestore3.where)("waMessageId", "==", waMessageId)));
+              for (const m of msgsSnap.docs) {
+                const data = m.data() || {};
+                const patch = { status };
+                const tsField = status === "delivered" ? "waDeliveredAt" : status === "read" ? "waReadAt" : status === "failed" ? "waFailedAt" : null;
+                if (tsField) patch[tsField] = (/* @__PURE__ */ new Date()).toISOString();
+                const errors = st.errors || [];
+                if (errors.length) patch.error = errors[0]?.title || errors[0]?.message || "failed";
+                await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "whatsapp_messages", m.id), patch, { merge: true });
+                if (data.cartId) {
+                  const cPatch = { waStatus: status };
+                  if (tsField) cPatch[tsField] = patch[tsField];
+                  if (errors.length) cPatch.waError = patch.error;
+                  const tenantOfCart = String(data.tenantId || "");
+                  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", String(data.cartId)), cPatch, { merge: true });
+                  if (tenantOfCart) {
+                    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantOfCart, "abandoned_carts", String(data.cartId)), cPatch, { merge: true }).catch(() => {
+                    });
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("webhook status update failed:", e);
+            }
+          }
+          const messages = value.messages || [];
+          for (const msg of messages) {
+            const waMessageId = String(msg.id || "");
+            const from = String(msg.from || "");
+            if (!waMessageId || !from) continue;
+            const digits = from.replace(/\D/g, "").replace(/^213/, "0");
+            try {
+              const seen = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "whatsapp_messages"), (0, import_firestore3.where)("waMessageId", "==", waMessageId)));
+              if (!seen.empty) continue;
+            } catch {
+            }
+            const type = String(msg.type || "text");
+            let body = "";
+            let buttonAction = null;
+            if (type === "text") {
+              body = String(msg.text?.body || "");
+              const low = body.trim().toLowerCase();
+              if (STOP_KEYWORDS.some((k) => low === k.toLowerCase() || low.startsWith(k.toLowerCase()))) {
+                await markUnsubscribed("global", digits, "webhook_stop");
+                await logWaMessage({
+                  tenantId: tenantId || "global",
+                  kind: "incoming",
+                  direction: "in",
+                  phone: digits,
+                  lang: "ar",
+                  body: `\u{1F6AB} STOP : ${body}`,
+                  status: "received",
+                  waMessageId
+                });
+                continue;
+              }
+            } else if (type === "button") {
+              body = String(msg.button?.text || "");
+              const payload2 = String(msg.button?.payload || "");
+              if (payload2.includes("confirm") || /confirmer|تأكيد/i.test(body)) buttonAction = "confirm";
+              else if (payload2.includes("modify") || /modifier|appeler|تعديل|اتصال/i.test(body)) buttonAction = "modify";
+              else if (payload2.includes("decline") || /non merci|لا شكرا/i.test(body)) buttonAction = "decline";
+            } else if (type === "interactive") {
+              const reply = msg.interactive;
+              body = String(reply?.button_reply?.title || reply?.list_reply?.title || "");
+              const id = String(reply?.button_reply?.id || reply?.list_reply?.id || "");
+              if (id.includes("confirm") || /confirmer|تأكيد/i.test(body)) buttonAction = "confirm";
+              else if (id.includes("modify") || /modifier|appeler|تعديل/i.test(body)) buttonAction = "modify";
+              else if (id.includes("decline") || /non merci|لا شكرا/i.test(body)) buttonAction = "decline";
+            }
+            let targetCartId = "";
+            let targetToken = "";
+            let targetTenantId = "";
+            try {
+              const cartsSnap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "abandoned_carts"), (0, import_firestore3.where)("phoneDigits", "==", digits)));
+              let bestAt = 0;
+              cartsSnap.forEach((c) => {
+                const data = c.data() || {};
+                if (["recovered", "refused"].includes(String(data.status))) return;
+                const at = toMs(data.waSentAt) || toMs(data.updatedAt);
+                if (at > bestAt && data.waToken) {
+                  bestAt = at;
+                  targetCartId = c.id;
+                  targetToken = String(data.waToken);
+                  targetTenantId = String(data.tenantId || "");
+                }
+              });
+            } catch {
+            }
+            await logWaMessage({
+              tenantId: targetTenantId || tenantId || "global",
+              kind: "incoming",
+              direction: "in",
+              cartId: targetCartId || void 0,
+              phone: digits,
+              lang: "ar",
+              body: body || `[${type}]`,
+              status: "received",
+              waMessageId
+            });
+            if (buttonAction && targetCartId && targetToken) {
+              await waCartAction(targetCartId, targetToken, buttonAction, false);
+            } else {
+              if (targetCartId) {
+                const patch = { waStatus: "replied", waRepliedAt: (/* @__PURE__ */ new Date()).toISOString(), waMerchantTodo: true };
+                await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", targetCartId), patch, { merge: true }).catch(() => {
+                });
+              }
+            }
+          }
+        }
+      }
+      res.sendStatus(200);
+    } catch (e) {
+      console.warn("webhook error:", e);
+      res.sendStatus(200);
+    }
+  });
+}
+
+// server.ts
 var storage = import_multer.default.memoryStorage();
 var upload = (0, import_multer.default)({
   storage,
@@ -1266,7 +2234,11 @@ async function getApp() {
     api_secret: "ojRyuQn_r0KsBbWKH0dtLUY4-3I"
   });
   const app2 = (0, import_express2.default)();
-  app2.use(import_express2.default.json());
+  app2.use(import_express2.default.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
   app2.use((0, import_cookie_parser.default)());
   app2.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -1304,21 +2276,21 @@ async function getApp() {
       let orderDocRef = null;
       if (effectiveTenantId && lookupRef) {
         try {
-          const directSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef));
+          const directSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef));
           if (directSnap.exists()) {
             orderData = directSnap.data();
-            orderDocRef = (0, import_firestore3.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef);
+            orderDocRef = (0, import_firestore4.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef);
           }
         } catch {
         }
       }
       if (!orderData && lookupRef) {
         try {
-          const q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("reference", "==", lookupRef));
-          const snap = await (0, import_firestore3.getDocs)(q);
+          const q = (0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("reference", "==", lookupRef));
+          const snap = await (0, import_firestore4.getDocs)(q);
           if (!snap.empty) {
             orderData = snap.docs[0].data();
-            orderDocRef = (0, import_firestore3.doc)(db, "orders", snap.docs[0].id);
+            orderDocRef = (0, import_firestore4.doc)(db, "orders", snap.docs[0].id);
             if (!effectiveTenantId && orderData.userId) {
               effectiveTenantId = orderData.userId;
             }
@@ -1349,7 +2321,7 @@ async function getApp() {
       let storeName = "Votre boutique DZ Build";
       if (effectiveTenantId) {
         try {
-          const tenantSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", effectiveTenantId));
+          const tenantSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", effectiveTenantId));
           if (tenantSnap.exists()) {
             const tData = tenantSnap.data();
             ownerEmail = tData.notificationEmail || tData.email || tData.ownerEmail || "";
@@ -1359,7 +2331,7 @@ async function getApp() {
             if (tData.callmebotApiKey) callmebotApiKey = tData.callmebotApiKey;
             if (tData.storeName) storeName = tData.storeName;
           }
-          const settingsSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", effectiveTenantId, "settings", "notifications"));
+          const settingsSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", effectiveTenantId, "settings", "notifications"));
           if (settingsSnap.exists()) {
             const sData = settingsSnap.data();
             if (sData.notificationEmail) ownerEmail = sData.notificationEmail;
@@ -1552,7 +2524,7 @@ async function getApp() {
       };
       if (orderDocRef) {
         try {
-          await (0, import_firestore3.setDoc)(orderDocRef, { ownerNotified: ownerNotifiedPayload }, { merge: true });
+          await (0, import_firestore4.setDoc)(orderDocRef, { ownerNotified: ownerNotifiedPayload }, { merge: true });
         } catch (updateErr) {
           console.warn("[NOTIFY] Could not update order ownerNotified:", updateErr);
         }
@@ -1560,7 +2532,7 @@ async function getApp() {
       if (effectiveTenantId) {
         try {
           const logId = `log_${lookupRef}_${Date.now()}`;
-          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", effectiveTenantId, "notificationLogs", logId), {
+          await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", effectiveTenantId, "notificationLogs", logId), {
             orderId: lookupRef,
             orderNumber,
             date: (/* @__PURE__ */ new Date()).toISOString(),
@@ -1702,10 +2674,10 @@ async function getApp() {
       return res.status(400).json({ error: "No image uploaded" });
     }
     try {
-      const id = import_crypto2.default.randomUUID();
+      const id = import_crypto3.default.randomUUID();
       const mimeType = req.file.mimetype;
       const base64Data = req.file.buffer.toString("base64");
-      await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "hosted_images", id), {
+      await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "hosted_images", id), {
         id,
         mimeType,
         data: base64Data,
@@ -1720,8 +2692,8 @@ async function getApp() {
   });
   app2.get("/api/images/:id", async (req, res) => {
     try {
-      const docRef = (0, import_firestore3.doc)(db, "hosted_images", req.params.id);
-      const docSnap = await (0, import_firestore3.getDoc)(docRef);
+      const docRef = (0, import_firestore4.doc)(db, "hosted_images", req.params.id);
+      const docSnap = await (0, import_firestore4.getDoc)(docRef);
       if (docSnap.exists()) {
         const data = docSnap.data();
         const buffer = Buffer.from(data.data, "base64");
@@ -1738,10 +2710,10 @@ async function getApp() {
   });
   app2.get("/api/admin/images", async (req, res) => {
     try {
-      const querySnapshot = await (0, import_firestore3.getDocs)((0, import_firestore3.collection)(db, "hosted_images"));
+      const querySnapshot = await (0, import_firestore4.getDocs)((0, import_firestore4.collection)(db, "hosted_images"));
       const images = [];
-      querySnapshot.forEach((doc3) => {
-        const data = doc3.data();
+      querySnapshot.forEach((doc4) => {
+        const data = doc4.data();
         images.push({
           id: data.id,
           mimeType: data.mimeType,
@@ -1758,7 +2730,7 @@ async function getApp() {
   });
   app2.delete("/api/admin/images/:id", async (req, res) => {
     try {
-      await (0, import_firestore3.deleteDoc)((0, import_firestore3.doc)(db, "hosted_images", req.params.id));
+      await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "hosted_images", req.params.id));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting image:", error);
@@ -1771,23 +2743,23 @@ async function getApp() {
       const signature = req.headers["signature"];
       const payload = JSON.stringify(req.body);
       const secret = process.env.CHARGILY_SECRET_KEY || "dummy_secret";
-      const computedSignature = import_crypto2.default.createHmac("sha256", secret).update(payload).digest("hex");
+      const computedSignature = import_crypto3.default.createHmac("sha256", secret).update(payload).digest("hex");
       const event = req.body;
       if (event && event.type === "checkout.paid") {
         const checkout = event.data;
         const tenantId = checkout.metadata?.tenantId;
         if (tenantId) {
-          const q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "payments"), (0, import_firestore3.where)("tenantId", "==", tenantId), (0, import_firestore3.where)("status", "==", "pending"));
-          const snap = await (0, import_firestore3.getDocs)(q);
+          const q = (0, import_firestore4.query)((0, import_firestore4.collection)(db, "payments"), (0, import_firestore4.where)("tenantId", "==", tenantId), (0, import_firestore4.where)("status", "==", "pending"));
+          const snap = await (0, import_firestore4.getDocs)(q);
           if (!snap.empty) {
             const paymentDoc = snap.docs[0];
-            await (0, import_firestore3.updateDoc)((0, import_firestore3.doc)(db, "payments", paymentDoc.id), {
+            await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "payments", paymentDoc.id), {
               status: "completed",
               approvedAt: (/* @__PURE__ */ new Date()).toISOString()
             });
             const paymentData = paymentDoc.data();
-            const tenantRef = (0, import_firestore3.doc)(db, "tenants", tenantId);
-            const tenantSnap = await (0, import_firestore3.getDoc)(tenantRef);
+            const tenantRef = (0, import_firestore4.doc)(db, "tenants", tenantId);
+            const tenantSnap = await (0, import_firestore4.getDoc)(tenantRef);
             let baseDate = /* @__PURE__ */ new Date();
             if (tenantSnap.exists()) {
               const tData = tenantSnap.data();
@@ -1802,7 +2774,7 @@ async function getApp() {
             else if (duration.includes("6 mois")) expiresAt.setMonth(baseDate.getMonth() + 6);
             else if (duration.includes("1 an") || duration.includes("12 mois")) expiresAt.setFullYear(baseDate.getFullYear() + 1);
             else expiresAt.setMonth(baseDate.getMonth() + 1);
-            await (0, import_firestore3.updateDoc)(tenantRef, {
+            await (0, import_firestore4.updateDoc)(tenantRef, {
               plan: paymentData.planType || "pro",
               planName: paymentData.plan || "Professionnel",
               planExpiresAt: expiresAt.toISOString(),
@@ -1819,8 +2791,8 @@ async function getApp() {
   });
   const getProductOffersList = async (productId) => {
     try {
-      const q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "product_offers"), (0, import_firestore3.where)("product_id", "==", productId));
-      const snap = await (0, import_firestore3.getDocs)(q);
+      const q = (0, import_firestore4.query)((0, import_firestore4.collection)(db, "product_offers"), (0, import_firestore4.where)("product_id", "==", productId));
+      const snap = await (0, import_firestore4.getDocs)(q);
       const list = [];
       snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
       list.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
@@ -1832,7 +2804,7 @@ async function getApp() {
   const handleGetProductById = async (req, res) => {
     try {
       const prodId = req.params.id;
-      const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "products", prodId));
+      const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "products", prodId));
       if (!snap.exists()) {
         return res.status(404).json({ error: "Produit non trouv\xE9" });
       }
@@ -1871,9 +2843,9 @@ async function getApp() {
         createdAt: payload.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
-      await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "products", prodId), productData, { merge: true });
+      await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "products", prodId), productData, { merge: true });
       for (const off of cleanOffers) {
-        await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "product_offers", off.id), off, { merge: true });
+        await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "product_offers", off.id), off, { merge: true });
       }
       res.status(201).json({ success: true, product: productData });
     } catch (err) {
@@ -1900,9 +2872,9 @@ async function getApp() {
         offers: cleanOffers,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
-      await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "products", prodId), productData, { merge: true });
+      await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "products", prodId), productData, { merge: true });
       for (const off of cleanOffers) {
-        await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "product_offers", off.id), off, { merge: true });
+        await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "product_offers", off.id), off, { merge: true });
       }
       res.json({ success: true, product: productData });
     } catch (err) {
@@ -1915,12 +2887,12 @@ async function getApp() {
     try {
       const slugOrId = req.params.slug;
       let product = null;
-      const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "products", slugOrId));
+      const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "products", slugOrId));
       if (snap.exists()) {
         product = { id: snap.id, ...snap.data() };
       } else {
-        const q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "products"), (0, import_firestore3.where)("slug", "==", slugOrId));
-        const qSnap = await (0, import_firestore3.getDocs)(q);
+        const q = (0, import_firestore4.query)((0, import_firestore4.collection)(db, "products"), (0, import_firestore4.where)("slug", "==", slugOrId));
+        const qSnap = await (0, import_firestore4.getDocs)(q);
         if (!qSnap.empty) {
           product = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() };
         }
@@ -1963,7 +2935,7 @@ async function getApp() {
       const targetProductId = productId || req.body.items?.[0]?.productId;
       let authenticProduct = null;
       if (targetProductId) {
-        const pSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "products", targetProductId));
+        const pSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "products", targetProductId));
         if (pSnap.exists()) {
           authenticProduct = { id: pSnap.id, ...pSnap.data() };
         }
@@ -1971,7 +2943,7 @@ async function getApp() {
       const unitBasePrice = authenticProduct?.price || Number(req.body.items?.[0]?.price) || 1e3;
       let authenticOffer = null;
       if (effectiveOfferId) {
-        const oSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "product_offers", effectiveOfferId));
+        const oSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "product_offers", effectiveOfferId));
         if (oSnap.exists()) {
           authenticOffer = { id: oSnap.id, ...oSnap.data() };
         } else if (authenticProduct?.offers) {
@@ -2039,9 +3011,9 @@ async function getApp() {
           variants: variants || req.body.items?.[0]?.variants || {}
         }]
       };
-      await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "orders", generatedOrderId), verifiedOrder);
+      await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "orders", generatedOrderId), verifiedOrder);
       if (effectiveTenant && effectiveTenant !== "default_tenant") {
-        await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", effectiveTenant, "orders", generatedOrderId), verifiedOrder);
+        await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", effectiveTenant, "orders", generatedOrderId), verifiedOrder);
       }
       res.status(201).json({
         success: true,
@@ -2089,9 +3061,9 @@ async function getApp() {
         recentEventsBuffer.splice(0, 1e3);
       }
       try {
-        const eventsColl = (0, import_firestore3.collection)(db, "events");
-        const newDocRef = (0, import_firestore3.doc)(eventsColl);
-        (0, import_firestore3.setDoc)(newDocRef, eventData).catch(() => {
+        const eventsColl = (0, import_firestore4.collection)(db, "events");
+        const newDocRef = (0, import_firestore4.doc)(eventsColl);
+        (0, import_firestore4.setDoc)(newDocRef, eventData).catch(() => {
         });
       } catch {
       }
@@ -2125,13 +3097,13 @@ async function getApp() {
       const ordersMap = /* @__PURE__ */ new Map();
       const queries = [];
       if (effectiveTenantId) {
-        queries.push((0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("userId", "==", effectiveTenantId))).catch(() => null));
-        queries.push((0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("tenantId", "==", effectiveTenantId))).catch(() => null));
-        queries.push((0, import_firestore3.getDocs)((0, import_firestore3.collection)(db, "tenants", effectiveTenantId, "orders")).catch(() => null));
+        queries.push((0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("userId", "==", effectiveTenantId))).catch(() => null));
+        queries.push((0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("tenantId", "==", effectiveTenantId))).catch(() => null));
+        queries.push((0, import_firestore4.getDocs)((0, import_firestore4.collection)(db, "tenants", effectiveTenantId, "orders")).catch(() => null));
       }
-      queries.push((0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.where)("userId", "==", "default_tenant"))).catch(() => null));
-      queries.push((0, import_firestore3.getDocs)((0, import_firestore3.collection)(db, "tenants", "default_tenant", "orders")).catch(() => null));
-      queries.push((0, import_firestore3.getDocs)((0, import_firestore3.collection)(db, "orders")).catch(() => null));
+      queries.push((0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("userId", "==", "default_tenant"))).catch(() => null));
+      queries.push((0, import_firestore4.getDocs)((0, import_firestore4.collection)(db, "tenants", "default_tenant", "orders")).catch(() => null));
+      queries.push((0, import_firestore4.getDocs)((0, import_firestore4.collection)(db, "orders")).catch(() => null));
       const snaps = await Promise.all(queries);
       snaps.forEach((snap) => {
         if (snap && snap.docs) {
@@ -2147,9 +3119,9 @@ async function getApp() {
       try {
         const prodQueries = [];
         if (effectiveTenantId) {
-          prodQueries.push((0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "products"), (0, import_firestore3.where)("userId", "==", effectiveTenantId))).catch(() => null));
+          prodQueries.push((0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "products"), (0, import_firestore4.where)("userId", "==", effectiveTenantId))).catch(() => null));
         }
-        prodQueries.push((0, import_firestore3.getDocs)((0, import_firestore3.collection)(db, "products")).catch(() => null));
+        prodQueries.push((0, import_firestore4.getDocs)((0, import_firestore4.collection)(db, "products")).catch(() => null));
         const pSnaps = await Promise.all(prodQueries);
         pSnaps.forEach((snap) => {
           if (snap && snap.docs) {
@@ -2193,10 +3165,10 @@ async function getApp() {
       const productsMap = /* @__PURE__ */ new Map();
       const queries = [];
       if (tenantId) {
-        queries.push((0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "products"), (0, import_firestore3.where)("userId", "==", tenantId))).catch(() => null));
-        queries.push((0, import_firestore3.getDocs)((0, import_firestore3.collection)(db, "tenants", tenantId, "products")).catch(() => null));
+        queries.push((0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "products"), (0, import_firestore4.where)("userId", "==", tenantId))).catch(() => null));
+        queries.push((0, import_firestore4.getDocs)((0, import_firestore4.collection)(db, "tenants", tenantId, "products")).catch(() => null));
       }
-      queries.push((0, import_firestore3.getDocs)((0, import_firestore3.collection)(db, "products")).catch(() => null));
+      queries.push((0, import_firestore4.getDocs)((0, import_firestore4.collection)(db, "products")).catch(() => null));
       const snaps = await Promise.all(queries);
       snaps.forEach((snap) => {
         if (snap && snap.docs) {
@@ -2261,7 +3233,7 @@ async function getApp() {
       }
       let tenantExists = false;
       try {
-        const tenantSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", tenantId));
+        const tenantSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", tenantId));
         tenantExists = tenantSnap.exists();
       } catch (e) {
         console.warn("abandoned-carts/track: tenant check failed:", e);
@@ -2320,13 +3292,17 @@ async function getApp() {
         utmMedium: cartText(utm.medium, 60),
         utmCampaign: cartText(utm.campaign, 60),
         lang: b.lang === "fr" ? "fr" : "ar",
+        // Consentement WhatsApp (mention + case éventuelle) stocké avec le panier
+        consentText: cartText(b.consentText, 300),
+        consentChecked: b.consentChecked === true,
+        consentAt: b.consentChecked === true ? nowIso : "",
         updatedAt: nowIso
       };
-      const cartRef = (0, import_firestore3.doc)(db, "abandoned_carts", cartId);
+      const cartRef = (0, import_firestore4.doc)(db, "abandoned_carts", cartId);
       let status = "abandoned";
       let createdAt = nowIso;
       try {
-        const existing = await (0, import_firestore3.getDoc)(cartRef);
+        const existing = await (0, import_firestore4.getDoc)(cartRef);
         if (existing.exists()) {
           const prev = existing.data() || {};
           if (prev.status === "contacted" || prev.status === "relanced" || prev.status === "recovered") {
@@ -2340,8 +3316,10 @@ async function getApp() {
       }
       payload.status = status;
       payload.createdAt = createdAt;
-      await (0, import_firestore3.setDoc)(cartRef, payload, { merge: true });
-      await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), payload, { merge: true });
+      await (0, import_firestore4.setDoc)(cartRef, payload, { merge: true });
+      await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), payload, { merge: true });
+      processWhatsAppQueue(false).catch(() => {
+      });
       res.json({ ok: true, id: cartId, status });
     } catch (e) {
       console.warn("Error in /api/abandoned-carts/track:", e);
@@ -2368,7 +3346,7 @@ async function getApp() {
       if (orderId) updates.orderId = orderId;
       let updated = 0;
       try {
-        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "abandoned_carts"), (0, import_firestore3.where)("phoneDigits", "==", digits)));
+        const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "abandoned_carts"), (0, import_firestore4.where)("phoneDigits", "==", digits)));
         const ids = [];
         snap.forEach((d) => {
           const data = d.data() || {};
@@ -2377,8 +3355,8 @@ async function getApp() {
           }
         });
         for (const id of ids) {
-          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", id), updates, { merge: true });
-          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", id), updates, { merge: true });
+          await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", id), updates, { merge: true });
+          await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", id), updates, { merge: true });
           updated++;
         }
       } catch (e) {
@@ -2386,10 +3364,10 @@ async function getApp() {
       }
       const legacyId = `cart_${tenantId}_${digits}`;
       try {
-        const legacy = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "abandoned_carts", legacyId));
+        const legacy = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "abandoned_carts", legacyId));
         if (legacy.exists()) {
-          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", legacyId), updates, { merge: true });
-          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", legacyId), updates, { merge: true });
+          await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", legacyId), updates, { merge: true });
+          await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", legacyId), updates, { merge: true });
           updated++;
         }
       } catch (e) {
@@ -2401,6 +3379,7 @@ async function getApp() {
       res.status(500).json({ ok: false, error: "recover_failed" });
     }
   });
+  registerWhatsAppRoutes(app2);
   return app2;
 }
 async function startServer() {

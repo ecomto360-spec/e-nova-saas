@@ -12,6 +12,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { Readable } from "stream";
 import { sendOwnerWhatsAppNotification } from "./src/lib/whatsappOwner.js";
 import { formatDateTime } from "./src/lib/date.js";
+import { registerWhatsAppRoutes, processWhatsAppQueue } from "./src/lib/whatsappServer.js";
 
 // Setup multer to use memory storage since Cloud Run disk is ephemeral
 const storage = multer.memoryStorage();
@@ -30,8 +31,14 @@ export async function getApp(): Promise<express.Express> {
   });
 
   const app = express();
-  
-  app.use(express.json());
+
+  // rawBody conservé pour la vérification de signature X-Hub-Signature-256
+  // du webhook WhatsApp (HMAC-SHA256 sur le corps brut).
+  app.use(express.json({
+    verify: (req: express.Request, _res: express.Response, buf: Buffer) => {
+      (req as { rawBody?: Buffer }).rawBody = buf;
+    }
+  }));
   app.use(cookieParser());
 
   // Security headers for admin dashboard
@@ -1298,6 +1305,10 @@ export async function getApp(): Promise<express.Express> {
         utmMedium: cartText(utm.medium, 60),
         utmCampaign: cartText(utm.campaign, 60),
         lang: b.lang === "fr" ? "fr" : "ar",
+        // Consentement WhatsApp (mention + case éventuelle) stocké avec le panier
+        consentText: cartText(b.consentText, 300),
+        consentChecked: b.consentChecked === true,
+        consentAt: b.consentChecked === true ? nowIso : "",
         updatedAt: nowIso
       };
 
@@ -1324,6 +1335,10 @@ export async function getApp(): Promise<express.Express> {
 
       await setDoc(cartRef, payload, { merge: true });
       await setDoc(doc(db, "tenants", tenantId, "abandoned_carts", cartId), payload, { merge: true });
+
+      // Piggyback : chaque capture de panier fait avancer la file WhatsApp
+      // (délais, heures calmes, anti-doublon) sans infrastructure dédiée.
+      processWhatsAppQueue(false).catch(() => {});
 
       res.json({ ok: true, id: cartId, status });
     } catch (e) {
@@ -1392,6 +1407,11 @@ export async function getApp(): Promise<express.Express> {
       res.status(500).json({ ok: false, error: "recover_failed" });
     }
   });
+
+  // ==========================================================================
+  // EXTENSION « ORDER AUTOMATION (WHATSAPP) » — paniers abandonnés + commandes
+  // ==========================================================================
+  registerWhatsAppRoutes(app);
 
   return app;
 }

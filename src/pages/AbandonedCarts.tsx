@@ -1,5 +1,5 @@
 import { useLanguage } from "../contexts/LanguageContext";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { 
   Ghost, 
   Search, 
@@ -22,9 +22,13 @@ import {
   ArrowRight,
   Clock,
   MapPin,
+  XCircle,
   Mail,
   User,
-  DollarSign
+  DollarSign,
+  Copy,
+  Check,
+  StickyNote
 } from "lucide-react";
 import { 
   AbandonedCart, 
@@ -37,9 +41,46 @@ import {
   saveAbandonedCart,
   cleanupOldAbandonedCarts
 } from "../lib/abandonedCartService";
+import { copyToClipboard } from "../lib/clipboard";
+import CartDetailsModal from "../components/common/CartDetailsModal";
 import { auth, db } from "../lib/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { formatDateTime } from "../lib/date";
+
+/** Bouton copier compact des lignes du tableau (visible au survol, feedback ✓ + toast). */
+function QuickCopyButton({ value, ariaLabel, onToast, hoverClass = "opacity-0 group-hover/name:opacity-100 group-focus-within/name:opacity-100" }: {
+  value: string;
+  ariaLabel: string;
+  onToast: (msg?: string) => void;
+  hoverClass?: string;
+}) {
+  const { t } = useLanguage();
+  const [copied, setCopied] = useState(false);
+
+  const handle = async () => {
+    if (!value || copied) return;
+    const ok = await copyToClipboard(value);
+    if (ok) {
+      setCopied(true);
+      onToast();
+      window.setTimeout(() => setCopied(false), 1500);
+    } else {
+      onToast(t("cartDetails.copyFailed"));
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      aria-label={ariaLabel}
+      title={ariaLabel}
+      className={`transition-opacity p-0.5 text-neutral-500 hover:text-amber-400 cursor-pointer ${hoverClass}`}
+    >
+      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+    </button>
+  );
+}
 
 export default function AbandonedCarts() {
   const { t, dir } = useLanguage();
@@ -49,9 +90,18 @@ export default function AbandonedCarts() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "abandoned" | "contacted" | "recovered">("all");
-  const [selectedCartDetails, setSelectedCartDetails] = useState<AbandonedCart | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<{ id: string; focusNotes?: boolean } | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  // Extension WhatsApp : filtre « envoyés uniquement », renvoi, historique
+  const [waOnlyFilter, setWaOnlyFilter] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [waHistory, setWaHistory] = useState<Array<{ id: string; data: Record<string, unknown> }> | null>(null);
+  // Lot 19 : notes (filtre, brouillons conservés tant que la page est ouverte, toast)
+  const [notesOnlyFilter, setNotesOnlyFilter] = useState(false);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
 
   // Template personnalisé de relance WhatsApp
   const [waTemplate, setWaTemplate] = useState<string>(() => {
@@ -128,6 +178,34 @@ export default function AbandonedCarts() {
   const isContactedStatus = (c: AbandonedCart) =>
     c.status === "contacted" || c.status === "relanced" || (c.relanceCount && c.relanceCount > 0);
 
+  // Panier vivant affiché dans la modale (suit les mises à jour temps réel)
+  const selectedCart = useMemo(
+    () => (detailsTarget ? carts.find((c) => c.id === detailsTarget.id) || null : null),
+    [detailsTarget, carts]
+  );
+
+  // Fermer la modale si le panier a été supprimé
+  useEffect(() => {
+    if (detailsTarget && !selectedCart) setDetailsTarget(null);
+  }, [detailsTarget, selectedCart]);
+
+  // Toast « Copié ✓ » (partagé modale + lignes)
+  const notifyCopied = useCallback((message?: string) => {
+    setToast(message || t("cartDetails.copied"));
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+  }, [t]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  const setNoteDraft = useCallback((cartId: string, value: string) => {
+    setNoteDrafts((prev) => ({ ...prev, [cartId]: value }));
+  }, []);
+
   const stats = useMemo(() => {
     const totalAbandoned = carts.length;
     const abandonedActive = carts.filter(c => c.status === "abandoned" && !c.recovered).length;
@@ -168,12 +246,57 @@ export default function AbandonedCarts() {
         (cart.phone && cart.phone.includes(q)) ||
         (cart.email && cart.email.toLowerCase().includes(q)) ||
         (cart.wilaya && cart.wilaya.toLowerCase().includes(q)) ||
-        (cart.itemsSummary && cart.itemsSummary.toLowerCase().includes(q))
+        (cart.itemsSummary && cart.itemsSummary.toLowerCase().includes(q)) ||
+        // Lot 19 : la recherche inclut aussi le texte des notes
+        ((cart.notes || []).some((n) => (n.text || "").toLowerCase().includes(q)))
       );
 
-      return matchesStatus && matchesSearch;
+      // Filtre WhatsApp : uniquement les paniers avec un message envoyé
+      const matchesWa = !waOnlyFilter || Boolean(cart.waStatus);
+
+      // Lot 19 : filtre « Avec notes »
+      const matchesNotes = !notesOnlyFilter || (cart.notes || []).length > 0;
+
+      return matchesStatus && matchesSearch && matchesWa && matchesNotes;
     });
-  }, [carts, statusFilter, searchQuery]);
+  }, [carts, statusFilter, searchQuery, waOnlyFilter, notesOnlyFilter]);
+
+  // Extension WhatsApp : renvoyer le message d'un panier
+  const handleWaResend = async (cart: AbandonedCart) => {
+    if (!cart.waToken) return;
+    setResendingId(cart.id);
+    try {
+      const r = await fetch("/api/whatsapp/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cartId: cart.id, token: cart.waToken })
+      });
+      const j = await r.json().catch(() => ({}) as Record<string, unknown>);
+      if (j.ok === true) {
+        await loadCarts();
+      } else {
+        alert(`Renvoi impossible : ${String(j.error || "erreur")}`);
+      }
+    } catch {
+      alert("Renvoi impossible : erreur réseau.");
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  // Extension WhatsApp : historique des messages d'un panier
+  const openWaHistory = async (cart: AbandonedCart) => {
+    setWaHistory([]);
+    try {
+      const snap = await getDocs(query(collection(db, "whatsapp_messages"), where("cartId", "==", cart.id)));
+      const list: Array<{ id: string; data: Record<string, unknown> }> = [];
+      snap.forEach((d) => list.push({ id: d.id, data: d.data() as Record<string, unknown> }));
+      list.sort((a, b) => String(a.data.sentAt || "").localeCompare(String(b.data.sentAt || "")));
+      setWaHistory(list);
+    } catch {
+      setWaHistory(null);
+    }
+  };
 
   // Date relative compacte ("il y a 3 min")
   const formatRelativeTime = (value: any): string => {
@@ -250,8 +373,8 @@ export default function AbandonedCarts() {
     }
     await deleteAbandonedCart(cartId, auth.currentUser?.uid);
     await loadCarts();
-    if (selectedCartDetails?.id === cartId) {
-      setSelectedCartDetails(null);
+    if (detailsTarget?.id === cartId) {
+      setDetailsTarget(null);
     }
   };
 
@@ -454,14 +577,43 @@ export default function AbandonedCarts() {
               className="w-full rounded-xl border border-neutral-700 bg-[#16161a] py-2.5 pl-10 pr-4 text-xs font-medium text-white placeholder-neutral-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all"
             />
             {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery("")} 
+              <button
+                onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
+
+          {/* Filtre WhatsApp (extension Order Automation) */}
+          <button
+            onClick={() => setWaOnlyFilter(!waOnlyFilter)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${
+              waOnlyFilter
+                ? "bg-[#25D366]/15 text-[#25D366] border-[#25D366]/40 shadow-sm"
+                : "border-neutral-700 bg-[#1e1e24] text-neutral-400 hover:text-white"
+            }`}
+            title="Afficher uniquement les paniers relancés par WhatsApp"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>WhatsApp</span>
+          </button>
+
+          {/* Filtre « Avec notes » (Lot 19) */}
+          <button
+            onClick={() => setNotesOnlyFilter(!notesOnlyFilter)}
+            aria-pressed={notesOnlyFilter}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${
+              notesOnlyFilter
+                ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/40 shadow-sm"
+                : "border-neutral-700 bg-[#1e1e24] text-neutral-400 hover:text-white"
+            }`}
+            title={t("cartDetails.withNotes")}
+          >
+            <StickyNote className="w-3.5 h-3.5" />
+            <span>{t("cartDetails.withNotes")}</span>
+          </button>
         </div>
 
         {/* Table of abandoned carts */}
@@ -505,6 +657,10 @@ export default function AbandonedCarts() {
                 {filteredCarts.map((cart) => {
                   const isRecovered = cart.status === "recovered" || cart.recovered;
                   const isContacted = cart.status === "contacted" || cart.status === "relanced";
+                  const isRefused = cart.status === "refused";
+                  const waStatusLabel: Record<string, string> = {
+                    sent: "Envoyé", delivered: "Livré", read: "Lu", replied: "Répondu", failed: "Échec"
+                  };
 
                   return (
                     <tr key={cart.id} className="hover:bg-neutral-800/30 transition-colors">
@@ -519,22 +675,40 @@ export default function AbandonedCarts() {
                             <User className="w-4 h-4" />
                           </div>
                           <div>
-                            <div className="font-bold text-sm text-white flex items-center gap-2">
-                              <span>{cart.client || "Client sans nom"}</span>
+                            <div className="font-bold text-sm text-white flex items-center gap-1.5 group/name">
+                              <span dir="auto">{cart.client || "Client sans nom"}</span>
+                              {cart.client && (
+                                <QuickCopyButton value={cart.client} ariaLabel={t("cartDetails.copyName")} onToast={notifyCopied} />
+                              )}
                               {cart.source && (
                                 <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full font-mono">
                                   {cart.source.includes("cart") ? "Panier" : "Fiche"}
                                 </span>
                               )}
+                              {/* Icône notes (Lot 19) : compteur + aperçu de la dernière note */}
+                              {(cart.notes || []).length > 0 && (
+                                <button
+                                  onClick={() => setDetailsTarget({ id: cart.id, focusNotes: true })}
+                                  aria-label={`${t("cartDetails.notes")} (${cart.notes!.length})`}
+                                  title={`${(cart.notes || []).map((n) => n.text).find(Boolean) || ""}`.slice(0, 120)}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/25 hover:bg-yellow-500/20 transition-colors cursor-pointer"
+                                >
+                                  <StickyNote className="w-3 h-3" />
+                                  {cart.notes!.length}
+                                </button>
+                              )}
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-2 mt-1 group/phone">
                               <a 
                                 href={`tel:${cart.phone}`} 
                                 className="text-xs font-mono font-medium text-neutral-300 hover:text-amber-400 flex items-center gap-1"
                               >
                                 <Phone className="w-3 h-3 text-neutral-500" />
-                                <span>{cart.phone}</span>
+                                <span dir="ltr">{cart.phone}</span>
                               </a>
+                              {cart.phone && (
+                                <QuickCopyButton value={cart.phone} ariaLabel={t("cartDetails.copyPhone")} onToast={notifyCopied} hoverClass="opacity-0 group-hover/phone:opacity-100 group-focus-within/phone:opacity-100" />
+                              )}
                               {cart.email && (
                                 <span className="text-[11px] text-neutral-500 truncate max-w-[130px]" title={cart.email}>
                                   • {cart.email}
@@ -583,9 +757,26 @@ export default function AbandonedCarts() {
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
                               <MessageSquare className="w-3 h-3" /> Contacté{cart.relanceCount && cart.relanceCount > 1 ? ` (${cart.relanceCount}x)` : ""}
                             </span>
+                          ) : isRefused ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
+                              <XCircle className="w-3 h-3" /> Refusé
+                            </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                               <Clock className="w-3 h-3" /> Abandonné
+                            </span>
+                          )}
+                          {/* Badge WhatsApp (extension Order Automation) */}
+                          {cart.waStatus && (
+                            <span className={`ms-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              cart.waStatus === "failed"
+                                ? "bg-red-500/10 text-red-400 border-red-500/20"
+                                : cart.waStatus === "replied"
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : "bg-[#25D366]/10 text-[#25D366] border-[#25D366]/25"
+                            }`} title={cart.waSimulated ? "Mode simulation (Cloud API non configurée)" : "Envoyé via Meta Cloud API"}>
+                              <Send className="w-3 h-3" /> {waStatusLabel[cart.waStatus] || cart.waStatus}
+                              {cart.waSimulated && <span className="opacity-60">(simulé)</span>}
                             </span>
                           )}
                         </div>
@@ -632,9 +823,36 @@ export default function AbandonedCarts() {
                             </button>
                           )}
 
+                          {/* Bouton Renvoyer WhatsApp (extension) */}
+                          {cart.waToken && !isRecovered && !isRefused && (
+                            <button
+                              onClick={() => handleWaResend(cart)}
+                              disabled={resendingId === cart.id}
+                              className="p-1.5 text-neutral-400 hover:text-[#25D366] rounded-lg hover:bg-[#25D366]/10 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Renvoyer le message WhatsApp"
+                            >
+                              {resendingId === cart.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
+
+                          {/* Bouton Historique WhatsApp (extension) */}
+                          {cart.waStatus && (
+                            <button
+                              onClick={() => openWaHistory(cart)}
+                              className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+                              title="Historique des messages WhatsApp"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </button>
+                          )}
+
                           {/* Bouton Voir Détails */}
                           <button
-                            onClick={() => setSelectedCartDetails(cart)}
+                            onClick={() => setDetailsTarget({ id: cart.id })}
                             className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
                             title="Voir les détails complets"
                           >
@@ -660,144 +878,31 @@ export default function AbandonedCarts() {
         )}
       </div>
 
-      {/* MODAL : Détails du Panier Abandonné */}
-      {selectedCartDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-[#1e1e24] shadow-2xl p-6 text-white max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                  <Ghost className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base">Fiche Panier Abandonné</h3>
-                  <p className="text-xs text-neutral-400 font-mono">ID: {selectedCartDetails.id}</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setSelectedCartDetails(null)}
-                className="text-neutral-400 hover:text-white p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* MODAL : Détails du Panier Abandonné (Lot 19 — client, contenu, journal, notes) */}
+      {selectedCart && (
+        <CartDetailsModal
+          cart={selectedCart}
+          focusNotes={detailsTarget?.focusNotes === true}
+          onClose={() => setDetailsTarget(null)}
+          onConvert={handleConvertToOrder}
+          onMarkContacted={handleMarkContacted}
+          converting={convertingId === selectedCart.id}
+          draft={noteDrafts[selectedCart.id] || ""}
+          onDraftChange={(v) => setNoteDraft(selectedCart.id, v)}
+          onToast={notifyCopied}
+        />
+      )}
 
-            <div className="py-4 space-y-4 text-xs">
-              {/* Coordonnées Client */}
-              <div className="p-3.5 rounded-xl bg-[#16161a] border border-neutral-800 space-y-2">
-                <div className="font-bold text-neutral-300 text-xs mb-2">Coordonnées du client :</div>
-                <div className="flex justify-between items-center">
-                  <span className="text-neutral-400">Nom & Prénom :</span>
-                  <span className="font-bold text-white">{selectedCartDetails.client || "Non renseigné"}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-neutral-400">Numéro de téléphone :</span>
-                  <a href={`tel:${selectedCartDetails.phone}`} className="font-mono font-bold text-amber-400 hover:underline">
-                    {selectedCartDetails.phone}
-                  </a>
-                </div>
-                {selectedCartDetails.email && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-400">Email :</span>
-                    <span className="text-white font-mono">{selectedCartDetails.email}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center">
-                  <span className="text-neutral-400">Wilaya :</span>
-                  <span className="text-white font-bold">{selectedCartDetails.wilaya || "Non spécifiée"}</span>
-                </div>
-                {selectedCartDetails.commune && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-400">Commune :</span>
-                    <span className="text-white">{selectedCartDetails.commune}</span>
-                  </div>
-                )}
-                {selectedCartDetails.address && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-400">Adresse de livraison :</span>
-                    <span className="text-white">{selectedCartDetails.address}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Articles */}
-              <div className="p-3.5 rounded-xl bg-[#16161a] border border-neutral-800">
-                <div className="font-bold text-neutral-300 text-xs mb-2">Articles dans le panier :</div>
-                <div className="space-y-2">
-                  {selectedCartDetails.items && selectedCartDetails.items.length > 0 ? (
-                    selectedCartDetails.items.map((item, idx) => (
-                      <div key={idx} className="flex items-center justify-between py-1.5 border-b border-neutral-800 last:border-0">
-                        <div className="flex items-center gap-2">
-                          {item.image && (
-                            <img src={item.image} alt="" className="w-8 h-8 rounded-lg object-cover border border-neutral-700" />
-                          )}
-                          <div>
-                            <p className="font-bold text-white">{item.quantity}x {item.name}</p>
-                            {item.variants && Object.keys(item.variants).length > 0 && (
-                              <p className="text-[10px] text-neutral-400">
-                                {Object.entries(item.variants).map(([k, v]) => `${k}: ${v}`).join(", ")}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <span className="font-bold text-neutral-300">{(item.price * item.quantity).toLocaleString()} DZD</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-neutral-300">{selectedCartDetails.itemsSummary}</p>
-                  )}
-                </div>
-                <div className="mt-3 pt-3 border-t border-neutral-800 flex justify-between items-center">
-                  <span className="font-bold text-neutral-400">Montant total :</span>
-                  <span className="text-base font-black text-emerald-400">{(selectedCartDetails.total || 0).toLocaleString()} DZD</span>
-                </div>
-              </div>
-
-              {/* Historique & Statut */}
-              <div className="p-3.5 rounded-xl bg-[#16161a] border border-neutral-800 space-y-2 text-[11px]">
-                <div className="flex justify-between">
-                  <span className="text-neutral-400">Date de détection :</span>
-                  <span className="font-mono text-neutral-300">
-                    {formatDateTime(selectedCartDetails.createdAt || selectedCartDetails.date, true)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-neutral-400">Nombre de relances :</span>
-                  <span className="text-neutral-300 font-bold">{selectedCartDetails.relanceCount || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-neutral-400">Origine :</span>
-                  <span className="font-mono text-neutral-400">{selectedCartDetails.source}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions de pied */}
-            <div className="pt-4 border-t border-neutral-800 flex items-center justify-end gap-2.5">
-              <button
-                onClick={() => setSelectedCartDetails(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-400 hover:text-white"
-              >
-                Fermer
-              </button>
-              <button
-                onClick={() => handleRelanceWhatsApp(selectedCartDetails)}
-                className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-                <span>Relancer sur WhatsApp</span>
-              </button>
-              {!(selectedCartDetails.status === "recovered" || selectedCartDetails.recovered) && (
-                <button
-                  onClick={() => handleConvertToOrder(selectedCartDetails)}
-                  className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Convertir en commande</span>
-                </button>
-              )}
-            </div>
-          </div>
+      {/* Toast « Copié » (Lot 19) */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200"
+          dir={isRtl ? "rtl" : "ltr"}
+        >
+          <Check className="w-4 h-4" />
+          <span>{toast}</span>
         </div>
       )}
 
@@ -866,6 +971,54 @@ export default function AbandonedCarts() {
               >
                 Enregistrer le modèle
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL : Historique des messages WhatsApp (extension) */}
+      {waHistory !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1e1e24] border border-neutral-800 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-neutral-800">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Send className="w-4 h-4 text-[#25D366]" />
+                Historique WhatsApp
+              </h3>
+              <button onClick={() => setWaHistory(null)} className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2.5 overflow-y-auto">
+              {waHistory.length === 0 && (
+                <p className="text-xs text-neutral-400 text-center py-6">Aucun message pour ce panier.</p>
+              )}
+              {waHistory.map((m) => {
+                const kind = String(m.data.kind || "");
+                const isIn = m.data.direction === "in";
+                const st = String(m.data.status || "");
+                const stLabel: Record<string, string> = { sent: "envoyé", delivered: "livré", read: "lu", replied: "répondu", failed: "échec", received: "reçu" };
+                const kindLabel: Record<string, string> = {
+                  cart: "Relance panier", cart_reminder: "Rappel 4 h", order_confirm: "Confirmation commande",
+                  order_status: "Statut commande", incoming: "Réponse client", merchant_todo: "À traiter"
+                };
+                return (
+                  <div key={m.id} className={`rounded-xl border p-3 ${isIn ? "bg-emerald-500/5 border-emerald-500/20" : "bg-neutral-800/40 border-neutral-700/60"}`}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span className="text-[10px] font-bold text-neutral-300 uppercase tracking-wide">
+                        {isIn ? "← " : "→ "}{kindLabel[kind] || kind}
+                      </span>
+                      <span className="text-[10px] text-neutral-500 font-mono">
+                        {String(m.data.sentAt || "").slice(0, 19).replace("T", " ")} · {stLabel[st] || st}
+                        {m.data.simulated === true ? " · simulé" : ""}
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-200 whitespace-pre-wrap leading-relaxed" dir={m.data.lang === "ar" ? "rtl" : "ltr"}>
+                      {String(m.data.body || "")}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
