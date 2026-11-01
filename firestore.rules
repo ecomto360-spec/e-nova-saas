@@ -1,8 +1,125 @@
 rules_version = '2';
+// ============================================================================
+// RÈGLES FIRESTORE e-nova — DURCIES (brouillon à déployer via la console)
+// ----------------------------------------------------------------------------
+// Principes :
+//   • LECTURE publique : uniquement ce que la boutique publique lit réellement
+//     (tenants, store_config, produits, catégories, pixels, offres, commandes
+//     pour les "meilleures ventes", réglages de thème).
+//   • ÉCRITURE : réservée au propriétaire authentifié (userId == auth.uid),
+//     SAUF les créations du checkout public (commandes + paniers abandonnés)
+//     qui sont écrites côté client par des visiteurs anonymes.
+//   • À DÉPLOYER : Console Firebase → Firestore Database → Règles → coller → Publier.
+//     ⚠️ Après publication, tester : boutique publique, checkout, dashboard.
+// ============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ---- Tenants (fiche boutique + sous-collections publiques) ----
+    match /tenants/{tenantId} {
+      allow read: if true;                       // résolution slug -> boutique
+      allow write: if isOwner(tenantId);          // fiche : propriétaire only
+
+      match /settings/{docId} {
+        allow read: if true;                      // contenu éditable de la page d'accueil
+        allow write: if isOwner(tenantId);
+      }
+      match /orders/{docId} {
+        allow read: if isOwner(tenantId);         // commandes du tenant : propriétaire
+        allow create: if true;                    // checkout public (Fast Checkout)
+        allow update, delete: if isOwner(tenantId);
+      }
+      match /abandoned_carts/{docId} {
+        allow read, update, delete: if isOwner(tenantId);
+        allow create: if true;                    // suivi panier visiteur
+        // Lot 19 — notes/remarkes : champ `notes` du document, jamais exposé
+        // côté boutique publique ; lecture/écriture réservées au propriétaire
+        // (couvert par isOwner ci-dessus, aucune règle supplémentaire requise).
+      }
+      match /whatsapp_messages/{docId} {
+        allow read: if isOwner(tenantId);         // historique WhatsApp (dashboard)
+        allow write: if false;                    // écritures uniquement via le serveur (Admin SDK)
+      }
+      match /whatsapp_settings/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == docId;
+      }
+      match /whatsapp_unsubscribes/{docId} {
+        allow read: if request.auth != null;      // vérification STOP côté serveur via Admin SDK
+        allow write: if false;
+      }
+      match /{sub}/{docId} {
+        allow read: if isOwner(tenantId);         // toute autre sous-collection : privé
+        allow write: if isOwner(tenantId);
+      }
+    }
+
+    // ---- Configuration de boutique ----
+    match /store_config/{tenantId} {
+      allow read: if true;                        // thème actif, personnalisation
+      allow write: if isOwner(tenantId);
+    }
+    match /store_theme_settings/{docId} {
+      allow read: if true;                        // brouillon/publié par thème (docId = uid_theme)
+      allow write: if isSignedIn();               // le service vérifie l'uid côté docId
+    }
+
+    // ---- Catalogue ----
+    match /products/{productId} {
+      allow read: if true;                        // boutique publique
+      allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /product_offers/{offerId} {
+      allow read: if true;                        // offres affichées sur les fiches produit
+      allow write: if isSignedIn() && request.resource.data.boutique_id == request.auth.uid;
+    }
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // ---- Commandes (checkout public, top-level) ----
+    match /orders/{orderId} {
+      allow create: if true;                      // visiteur anonyme passe commande
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ---- Pixels de suivi (lus par la boutique publique) ----
+    match /pixels/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // ---- Privé : dashboard uniquement ----
+    match /customers/{docId}   { allow read, write: if isSignedIn(); }
+    match /blacklist/{docId}   { allow read, write: if isSignedIn(); }
+    match /payments/{docId}    { allow read, write: if isSignedIn(); }
+    match /users/{docId}       { allow read, write: if isOwner(docId); }
+
+    // ---- LOT A — Espace Super Admin : collections SERVEUR uniquement ----
+    // Écrites/lues via le backend (JWT admin vérifié + Identity Toolkit),
+    // JAMAIS depuis le navigateur : allow false bloque tout accès client.
+    match /admin_users/{docId}     { allow read, write: if false; }
+    match /admin_otps/{docId}      { allow read, write: if false; }
+    match /admin_emails/{docId}    { allow read, write: if false; }
+    match /admin_audit/{docId}     { allow read, write: if false; }
+    match /platform_settings/{docId} { allow read, write: if false; }
+    match /platform_stats/{docId=**}  { allow read, write: if false; }
+    match /platform_counters/{docId} { allow read, write: if false; }
+    match /user_presence/{docId}   { allow read, write: if false; }
+
+    // ---- Refus explicite par défaut ----
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

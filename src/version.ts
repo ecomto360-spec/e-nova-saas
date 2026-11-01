@@ -14,4 +14,4 @@
  *
  * À METTRE À JOUR À CHAQUE LIVRAISON (format : lot<N>-<AAAA>-<MM>-<JJ>).
  */
-export const BUNDLE_ID = "lot19-paniers-details-2026-11-01";
+export const BUNDLE_ID = "lotA-admin-fondations-2026-11-01";

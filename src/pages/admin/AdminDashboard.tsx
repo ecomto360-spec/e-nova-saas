@@ -403,7 +403,7 @@ export default function AdminDashboard() {
                   Gestion des Administrateurs Autorisés
                 </h2>
                 <p className="text-xs text-neutral-400 mt-1">
-                  Toutes ces adresses mails réelles peuvent se connecter sur <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-yellow-500">/admin</code> avec le mot de passe <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-white font-mono">NovaSecur!ty2026</code>.
+                  Ces adresses peuvent se connecter sur <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-yellow-500">/admin</code> avec leur mot de passe administrateur (ou le mot de passe maître défini côté serveur).
                 </p>
               </div>
             </div>

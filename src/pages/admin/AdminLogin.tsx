@@ -1,8 +1,24 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ShieldAlert, Loader2, Mail, Lock, KeyRound } from "lucide-react";
+import { useLanguage } from "../../contexts/LanguageContext";
+
+interface LoginResponse {
+  otpId: string;
+  _dev_otp?: string;
+  error?: string;
+}
+
+interface VerifyResponse {
+  ok?: boolean;
+  error?: string;
+}
+
+const messageOf = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
 
 export default function AdminLogin() {
+  const { t } = useLanguage();
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,10 +41,10 @@ export default function AdminLogin() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as LoginResponse;
 
       if (!response.ok) {
-        throw new Error(data.error || "Login failed");
+        throw new Error(data.error || t("admin.login.failed"));
       }
 
       setOtpId(data.otpId);
@@ -38,8 +54,8 @@ export default function AdminLogin() {
         setOtp(data._dev_otp);
       }
       setStep("otp");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(messageOf(err));
     } finally {
       setIsLoading(false);
     }
@@ -57,15 +73,15 @@ export default function AdminLogin() {
         body: JSON.stringify({ otpId, otp }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as VerifyResponse;
 
       if (!response.ok) {
-        throw new Error(data.error || "OTP verification failed");
+        throw new Error(data.error || t("admin.login.otpFailed"));
       }
 
       navigate("/admin/dashboard");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(messageOf(err));
     } finally {
       setIsLoading(false);
     }
@@ -78,18 +94,18 @@ export default function AdminLogin() {
           <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mb-4 border border-red-500/20 shadow-[0_0_40px_rgba(239,68,68,0.15)]">
             <ShieldAlert className="w-8 h-8 text-red-500" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Espace Super Admin</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">{t("admin.title")}</h1>
           <p className="text-sm text-neutral-500 mt-2 text-center">
-            {step === "credentials" 
-              ? "Accès restreint. Authentification requise." 
-              : "Un code à 6 chiffres a été envoyé à votre adresse email."}
+            {step === "credentials"
+              ? t("admin.login.restricted")
+              : t("admin.login.otpSent")}
           </p>
         </div>
 
         <div className="bg-[#111111] border border-neutral-800 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
           {/* Subtle red top border for admin context */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 to-red-400 opacity-50" />
-          
+
           {error && (
             <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-sm font-medium">
               {error}
@@ -99,9 +115,9 @@ export default function AdminLogin() {
           {step === "credentials" ? (
             <form onSubmit={handleCredentialsSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-neutral-400 mb-1.5 ml-1">Email administrateur</label>
+                <label className="block text-xs font-medium text-neutral-400 mb-1.5 ms-1">{t("admin.login.email")}</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none">
                     <Mail className="h-5 w-5 text-neutral-500" />
                   </div>
                   <input
@@ -109,16 +125,17 @@ export default function AdminLogin() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-[#1a1a1a] border border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-colors"
+                    dir="ltr"
+                    className="w-full bg-[#1a1a1a] border border-neutral-800 rounded-xl ps-10 pe-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-colors"
                     placeholder="admin@votre-domaine.com"
                   />
                 </div>
               </div>
-              
+
               <div>
-                <label className="block text-xs font-medium text-neutral-400 mb-1.5 ml-1">Mot de passe</label>
+                <label className="block text-xs font-medium text-neutral-400 mb-1.5 ms-1">{t("admin.login.password")}</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-neutral-500" />
                   </div>
                   <input
@@ -126,7 +143,7 @@ export default function AdminLogin() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-[#1a1a1a] border border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-colors"
+                    className="w-full bg-[#1a1a1a] border border-neutral-800 rounded-xl ps-10 pe-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-colors"
                     placeholder="••••••••••••"
                   />
                 </div>
@@ -137,35 +154,23 @@ export default function AdminLogin() {
                 disabled={isLoading}
                 className="w-full flex items-center justify-center bg-red-600 text-white font-medium rounded-xl py-3 mt-6 hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Continuer"}
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : t("admin.login.continue")}
               </button>
 
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail("ecomto360@gmail.com");
-                    setPassword("NovaSecur!ty2026");
-                  }}
-                  className="text-xs text-neutral-500 hover:text-red-400 transition-colors underline underline-offset-2"
-                >
-                  Remplir les identifiants Super Admin (Test)
-                </button>
-              </div>
             </form>
           ) : (
             <form onSubmit={handleOtpSubmit} className="space-y-6">
               {devOtp && (
                 <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl text-xs text-center mb-4">
-                  Mode Test : Le code OTP simulé est <strong className="text-white text-sm">{devOtp}</strong> (Rempli automatiquement)
+                  {t("admin.login.devOtp")} <strong className="text-white text-sm">{devOtp}</strong> {t("admin.login.devOtpFilled")}
                 </div>
               )}
               <div>
                 <label className="block text-sm font-medium text-neutral-300 text-center mb-4">
-                  Code de sécurité (OTP)
+                  {t("admin.login.otpCode")}
                 </label>
                 <div className="relative max-w-[200px] mx-auto">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <div className="absolute inset-y-0 start-0 ps-4 flex items-center pointer-events-none">
                     <KeyRound className="h-5 w-5 text-neutral-500" />
                   </div>
                   <input
@@ -174,7 +179,8 @@ export default function AdminLogin() {
                     maxLength={6}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                    className="w-full bg-[#1a1a1a] border border-neutral-800 rounded-xl pl-12 pr-4 py-4 text-center text-xl tracking-[0.5em] text-white focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-colors"
+                    dir="ltr"
+                    className="w-full bg-[#1a1a1a] border border-neutral-800 rounded-xl ps-12 pe-4 py-4 text-center text-xl tracking-[0.5em] text-white focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-colors"
                     placeholder="000000"
                     autoFocus
                   />
@@ -186,15 +192,15 @@ export default function AdminLogin() {
                 disabled={isLoading || otp.length !== 6}
                 className="w-full flex items-center justify-center bg-red-600 text-white font-medium rounded-xl py-3 hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Vérifier et accéder"}
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : t("admin.login.verify")}
               </button>
-              
+
               <button
                 type="button"
                 onClick={() => setStep("credentials")}
                 className="w-full text-sm text-neutral-500 hover:text-white transition-colors"
               >
-                Retour
+                {t("admin.login.back")}
               </button>
             </form>
           )}

@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import cookieParser from "cookie-parser";
 import adminAuthRoutes from "./src/routes/adminAuth.js";
+import adminApiRoutes, { adminApiGuard } from "./src/routes/adminApi.js";
 import multer from "multer";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
@@ -536,7 +537,7 @@ export async function getApp(): Promise<express.Express> {
     }
   });
 
-  app.post("/api/admin/upload", upload.single('image') as any, async (req: any, res) => {
+  app.post("/api/admin/upload", adminApiGuard("media"), upload.single('image') as any, async (req: any, res) => {
     if (!req.file) {
       return res.status(400).json({ error: "No image uploaded" });
     }
@@ -581,7 +582,7 @@ export async function getApp(): Promise<express.Express> {
   });
 
   // Media Manager endpoints
-  app.get("/api/admin/images", async (req, res) => {
+  app.get("/api/admin/images", adminApiGuard("media"), async (req, res) => {
     try {
       const querySnapshot = await getDocs(collection(db, 'hosted_images'));
       const images: any[] = [];
@@ -602,7 +603,7 @@ export async function getApp(): Promise<express.Express> {
     }
   });
 
-  app.delete("/api/admin/images/:id", async (req, res) => {
+  app.delete("/api/admin/images/:id", adminApiGuard("media"), async (req, res) => {
     try {
       await deleteDoc(doc(db, 'hosted_images', req.params.id));
       res.json({ success: true });
@@ -613,6 +614,9 @@ export async function getApp(): Promise<express.Express> {
   });
 
   app.use("/api/admin/auth", adminAuthRoutes);
+
+  // LOT A — API Super Admin v1 (auth serveur, permissions, audit, stats agrégées, présence)
+  app.use("/api/admin/v1", adminApiRoutes);
 
   // Chargily Pay Webhook (Phase 3)
   app.post("/api/webhooks/payment", async (req, res) => {

@@ -17,7 +17,14 @@ const DEFAULT_AUTHORIZED_EMAILS = [
   "nabsterzero@gmail.com"
 ];
 
-const SUPER_ADMIN_DEFAULT_PASS = "NovaSecur!ty2026";
+const SUPER_ADMIN_DEFAULT_PASS = process.env.ADMIN_MASTER_PASSWORD || "";
+// Le code OTP n'est JAMAIS renvoyé dans la réponse API sauf activation explicite
+// de la variable ADMIN_DEV_EXPOSE_OTP=1 (recettes locales / tests Vercel).
+const DEV_EXPOSE_OTP = process.env.ADMIN_DEV_EXPOSE_OTP === "1";
+
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  console.warn("[SECURITE] JWT_SECRET non défini en production — cookies signés avec le fallback de dev. Définir JWT_SECRET dans les variables Vercel.");
+}
 
 const logOTP = (email: string, otp: string) => {
   console.log(`\n\n=========================================\n[SUPER ADMIN OTP] To: ${email}\n[SUPER ADMIN OTP] Code: ${otp}\n=========================================\n\n`);
@@ -83,7 +90,7 @@ router.post("/login", async (req, res) => {
     }
 
     if (!isAuthorized) {
-      return res.status(401).json({ error: "Identifiants administrateur incorrects. Utilisez votre mot de passe admin ou 'NovaSecur!ty2026'." });
+      return res.status(401).json({ error: "Identifiants administrateur incorrects." });
     }
 
     // 4. Generate OTP
@@ -122,7 +129,7 @@ router.post("/login", async (req, res) => {
       message: "Code OTP envoyé", 
       otpId,
       email: cleanEmail,
-      _dev_otp: otp // Rempli automatiquement pour faciliter les tests
+      ...(DEV_EXPOSE_OTP ? { _dev_otp: otp } : {})
     });
   } catch (error) {
     console.error("Admin login error:", error);

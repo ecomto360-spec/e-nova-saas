@@ -15,6 +15,7 @@ import { auth, db } from "../../lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { getOrderDeduplicationKey } from "../../lib/orderUtils";
 import { formatOrderDateTime, formatTime, formatDate } from "../../lib/date";
+import { startPresenceHeartbeat } from "../../lib/presence";
 
 interface NotificationItem {
   id: string;
@@ -112,6 +113,11 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const isInitialLoadRef = useRef(true);
 
   // Load read notification IDs from local storage
+  // LOT A — présence « En ligne maintenant » (heartbeat 60 s, onglet actif uniquement)
+  useEffect(() => {
+    startPresenceHeartbeat(() => String(tenantData?.storeName || ""));
+  }, [tenantData]);
+
   useEffect(() => {
     if (!user?.uid) return;
     const storageKey = `notifications_read_${user.uid}`;
