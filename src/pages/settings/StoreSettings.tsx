@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Store, Link as LinkIcon, CheckCircle, Copy, ExternalLink, Eye, PlusCircle, ShoppingCart, Info, MapPin, Phone, Search, Zap } from "lucide-react";
+import { openStoreWindow } from "../../lib/openStore";
 
 import { useTenant } from "../../contexts/TenantContext";
 import { useAuth } from "../../hooks/useAuth";
@@ -44,7 +45,7 @@ export default function StoreSettings() {
               <LinkIcon className="w-5 h-5 text-neutral-400" />
               <span className="text-neutral-300 text-sm">Lien de votre boutique :</span>
               {tenantData?.storeUrl ? (
-                <Link to={`/store/${tenantData.storeUrl}`} target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400 text-sm font-medium flex items-center gap-2">
+                <Link to={`/store/${tenantData.storeUrl}`} onClick={(e) => { e.preventDefault(); openStoreWindow(`/store/${tenantData.storeUrl}`); }} className="text-yellow-500 hover:text-yellow-400 text-sm font-medium flex items-center gap-2">
                   {window.location.origin}/store/{tenantData.storeUrl}
                   <ExternalLink className="w-4 h-4" />
                 </Link>
@@ -326,7 +327,7 @@ export default function StoreSettings() {
                   <ExternalLink className="w-4 h-4 text-neutral-700" />
                 </div>
               ) : (
-                <Link to={tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store"} target="_blank" className="flex items-center justify-between p-2 hover:bg-[#1e1e24] rounded-lg transition-colors group">
+                <Link to={tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store"} onClick={(e) => { e.preventDefault(); openStoreWindow(tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store"); }} className="flex items-center justify-between p-2 hover:bg-[#1e1e24] rounded-lg transition-colors group">
                   <div className="flex items-center gap-3 text-sm text-neutral-300 group-hover:text-white">
                     <Eye className="w-4 h-4 text-yellow-500" />
                     Aperçu de la boutique

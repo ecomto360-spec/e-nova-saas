@@ -10,6 +10,7 @@ import { StoreCustomizerConfig, defaultStoreConfig } from "../components/admin/S
 import { isTenantExpired } from "../lib/checkExpiration";
 import { StoreUnavailable } from "../components/storefront/StoreUnavailable";
 import { StorefrontSettings, mergeStorefrontSettings } from "../types/storefront";
+import { STORE_WINDOW_NAME } from "../lib/openStore";
 
 export default function StorefrontView() {
   const { storeSlug } = useParams<{ storeSlug: string }>();
@@ -27,12 +28,20 @@ export default function StorefrontView() {
   const [soldCounts, setSoldCounts] = useState<Record<string, number>>({});
   const [isExpired, setIsExpired] = useState(false);
   const [tenantId, setTenantId] = useState<string>("");
+  /** Erreur de chargement visible (jamais un faux « aucun produit » muet). */
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Fenêtre unique réutilisée par tous les boutons « Voir la boutique » du dashboard.
+  useEffect(() => {
+    window.name = STORE_WINDOW_NAME;
+  }, []);
 
   useEffect(() => {
     let unsubscribeAuth: (() => void) | undefined;
 
     const loadStoreSettings = async (uid?: string) => {
       let targetUserId = uid;
+      setLoadError(null);
       
       // If a storeSlug is provided in the URL, fetch the tenant by storeUrl (slug)
             if (storeSlug) {
@@ -55,6 +64,7 @@ export default function StorefrontView() {
           }
         } catch (err) {
           console.error("Error fetching tenant by slug:", err);
+          setLoadError("Impossible de retrouver cette boutique (slug). Vérifiez votre connexion.");
         }
       }
 
@@ -124,6 +134,7 @@ export default function StorefrontView() {
           setActualCategories(categoriesData);
         } catch (err) {
           console.error("Error fetching storefront data:", err);
+          setLoadError("Impossible de charger les données de la boutique (produits, commandes, catégories). Vérifiez votre connexion puis actualisez.");
         }
       }
       setLoading(false);
@@ -158,6 +169,18 @@ export default function StorefrontView() {
 
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col">
+      {/* Erreur de chargement visible (jamais un faux « aucun produit ») */}
+      {loadError && (
+        <div className="bg-red-50 border-b border-red-200 text-red-700 px-4 py-2 text-xs sm:text-sm flex items-center justify-center gap-2 flex-wrap text-center">
+          <span>⚠️ {loadError}</span>
+          <button
+            onClick={() => window.location.reload()}
+            className="underline font-bold hover:text-red-900"
+          >
+            Actualiser
+          </button>
+        </div>
+      )}
       {/* Top Admin Quick Bar for Store Owner */}
       <div className="bg-[#18181b] text-neutral-300 px-4 py-2 text-xs flex items-center justify-between border-b border-neutral-800 z-40 sticky top-0">
         <div className="flex items-center gap-3">

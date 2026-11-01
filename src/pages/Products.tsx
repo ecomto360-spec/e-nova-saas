@@ -57,6 +57,7 @@ import { VariantManager, VariantType as AdminVariantType, VariantOptionDef as Ad
 import { OfferManager } from "../components/admin/OfferManager";
 import { ProductOffer } from "../types/offers";
 import { deduplicateProducts } from "../lib/orderUtils";
+import { openStoreWindow } from "../lib/openStore";
 
 export type VariantType = AdminVariantType;
 
@@ -1359,7 +1360,7 @@ export default function Products() {
                     <button className="flex items-center justify-center py-1.5 rounded-lg bg-blue-900/30 text-blue-500 hover:bg-blue-900/50 transition-colors">
                       <ExternalLink className="w-4 h-4" />
                     </button>
-                    <button onClick={() => window.open(`/store?productId=${prod.id}`, '_blank')} className="flex items-center justify-center py-1.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors">
+                    <button onClick={() => openStoreWindow(`/store?productId=${prod.id}`)} className="flex items-center justify-center py-1.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors">
                       <Eye className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleOpenModal(prod)} className="flex items-center justify-center py-1.5 rounded-lg bg-amber-900/30 text-amber-500 hover:bg-amber-900/50 transition-colors">

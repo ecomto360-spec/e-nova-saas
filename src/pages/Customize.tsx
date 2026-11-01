@@ -37,6 +37,7 @@ import { HeroEditor } from "../components/admin/storefront/HeroEditor";
 import { TrustBarEditor } from "../components/admin/storefront/TrustBarEditor";
 import { CategoriesEditor } from "../components/admin/storefront/CategoriesEditor";
 import { FeaturedProductsEditor } from "../components/admin/storefront/FeaturedProductsEditor";
+import { openStoreWindow } from "../lib/openStore";
 import {
   StorefrontSettings,
   SectionId,
@@ -864,8 +865,10 @@ export default function Customize() {
             </div>
             <a
               href={tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store"}
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={(e) => {
+                e.preventDefault();
+                openStoreWindow(tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store", { forceReload: true });
+              }}
               className="px-4 py-1.5 text-xs font-bold text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg border border-neutral-700 flex items-center gap-2 transition-colors"
             >
               <ExternalLink size={14} /> Voir la boutique

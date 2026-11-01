@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useTenant } from "../contexts/TenantContext";
 import { db } from "../lib/firebase";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
+import { openStoreWindow } from "../lib/openStore";
 import { 
   ShoppingCart, 
   CheckCircle2, 
@@ -184,7 +185,10 @@ export default function Dashboard() {
 
         <Link
           to={tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store"}
-          target="_blank"
+          onClick={(e) => {
+            e.preventDefault();
+            openStoreWindow(tenantData?.storeUrl ? `/store/${tenantData.storeUrl}` : "/store");
+          }}
           className="self-start sm:self-auto bg-amber-500 hover:bg-amber-400 text-black font-bold px-4 py-2 rounded-xl text-xs sm:text-sm transition-all flex items-center gap-2 shadow-lg shadow-amber-500/10 active:scale-95"
         >
           <Eye className="w-4 h-4" />

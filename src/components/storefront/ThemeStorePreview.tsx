@@ -141,7 +141,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   // Announcement
   const c_announcementShow = getBool(config?.showAnnouncement, true);
   const c_announcementBg = getVal(config?.announcementBgColor, theme.primaryColor || "#f59e0b", "#999999");
-  const c_announcementText = getVal(config?.announcementText, "{c_announcementText}", "Votre message d'annonce");
+  const c_announcementText = getVal(config?.announcementText, "🚚 توصيل سريع لـ 58 ولاية — الدفع عند الاستلام", "Votre message d'annonce");
   const c_announcementTextColor = getVal(config?.announcementTextColor, "#ffffff", "#ffffff");
 
   
@@ -255,16 +255,27 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   const displayCategories = useMemo(() => {
     if (actualCategories !== undefined) {
-      return actualCategories.map(c => ({
+      const mapped = actualCategories.map(c => ({
         id: c.name, // The product.category usually matches the category name in the db
         name: c.name,
         nameAr: c.name,
         image: c.imageUrl,
         productCount: c.productCount || 0
       }));
+      // Aucune catégorie enregistrée en base : on les déduit des produits
+      // (ex. « Vêtements », « Général ») pour ne jamais montrer une section vide.
+      if (mapped.length === 0) {
+        const names = Array.from(new Set(
+          (actualProducts ?? [])
+            .map((p) => (p && typeof p === "object" ? (p as { category?: string }).category : undefined))
+            .filter((n): n is string => Boolean(n))
+        ));
+        return names.map((n) => ({ id: n, name: n, nameAr: n, image: undefined, productCount: 0 }));
+      }
+      return mapped;
     }
     return theme.categories;
-  }, [actualCategories, theme.categories]);
+  }, [actualCategories, actualProducts, theme.categories]);
 
   // Catégories affichées dans la SECTION Catégories (sélection éditable + maximum)
   const sectionCategories = useMemo(() => {
@@ -285,17 +296,22 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   // Filtered Products
   const filteredProducts = useMemo(() => {
     return (actualProducts ? actualProducts : theme.products).filter(product => {
+      // Un produit réel marqué inactif/brouillon ne doit JAMAIS apparaître en
+      // boutique publique (les produits de démo n'ont pas de statut -> actifs).
+      const isActive = !product.status || product.status === "active";
       const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
       const matchesSearch = searchQuery === "" || 
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (product.nameAr && product.nameAr.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesSearch;
+      return isActive && matchesCategory && matchesSearch;
     });
   }, [(actualProducts ? actualProducts : theme.products), selectedCategory, searchQuery]);
 
   // Featured products (source : meilleures ventes ou sélection manuelle)
   const featuredProducts = useMemo(() => {
-    const source = actualProducts ? actualProducts : theme.products;
+    const rawSource = actualProducts ? actualProducts : theme.products;
+    // Même règle : pas de produit inactif en vedette.
+    const source = rawSource.filter(p => !p.status || p.status === "active");
     if (!isActivated) {
       return source.filter(p => p.isFeatured).slice(0, 4);
     }
