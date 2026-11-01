@@ -262,6 +262,33 @@ export const translations = {
       "available": "Transporteurs disponibles",
       "showing": "Affichage {count} sur {total} transporteurs",
       "link": "Lier"
+    },
+    "extensions": {
+      "title": "Apps & Intégrations",
+      "subtitle": "Découvrez des outils professionnels pour votre boutique.",
+      "openApp": "Ouvrir l'app",
+      "backToApps": "Retour aux apps",
+      "badge": {
+        "loading": "…",
+        "inactive": "Inactive",
+        "active": "Active",
+        "not_connected": "Non connecté"
+      },
+      "whatsapp": {
+        "name": "Order Automation (WhatsApp)",
+        "description": "Confirmez automatiquement les nouvelles commandes auprès du client via WhatsApp.",
+        "infoBanner": "Quand une nouvelle commande arrive, Enova envoie un message WhatsApp au client pour la confirmer. Sa réponse met à jour le statut de la commande.",
+        "upcomingTitle": "Configuration détaillée (étape suivante)",
+        "upcoming": {
+          "toggle": "Activation / désactivation de la confirmation WhatsApp",
+          "quietHours": "Heures calmes et file d'attente",
+          "reminder": "Rappel unique après 4 h sans réponse",
+          "language": "Langue des messages (arabe / français / auto)",
+          "scope": "Portée : tous les produits ou produits sélectionnés",
+          "notifications": "Notifications client par statut (confirmée, expédiée, en livraison…)",
+          "number": "Connexion du numéro WhatsApp (Meta Embedded Signup)"
+        }
+      }
     }
   },
   "ar": {
@@ -527,6 +554,33 @@ export const translations = {
       "available": "شركات التوصيل المتاحة",
       "showing": "عرض {count} من {total} شركة توصيل",
       "link": "ربط"
+    },
+    "extensions": {
+      "title": "التطبيقات والتكاملات",
+      "subtitle": "اكتشف أدوات احترافية لتطوير متجرك.",
+      "openApp": "افتح التطبيق",
+      "backToApps": "العودة إلى التطبيقات",
+      "badge": {
+        "loading": "…",
+        "inactive": "غير مفعّلة",
+        "active": "مفعّلة",
+        "not_connected": "غير متصل"
+      },
+      "whatsapp": {
+        "name": "أتمتة الطلبات (واتساب)",
+        "description": "أكّد الطلبات الجديدة تلقائيًا مع العميل عبر واتساب.",
+        "infoBanner": "عند وصول طلب جديد، يرسل إينوفا رسالة واتساب إلى العميل لتأكيده. ردّه يحدّث حالة الطلب.",
+        "upcomingTitle": "الإعداد التفصيلي (المرحلة التالية)",
+        "upcoming": {
+          "toggle": "تفعيل / تعطيل تأكيد واتساب",
+          "quietHours": "ساعات الهدوء وقائمة الانتظار",
+          "reminder": "تذكير واحد بعد 4 ساعات دون رد",
+          "language": "لغة الرسائل (العربية / الفرنسية / تلقائي)",
+          "scope": "النطاق: كل المنتجات أو منتجات محددة",
+          "notifications": "إشعارات العميل حسب الحالة (مؤكد، تم الإرسال، قيد التوصيل…)",
+          "number": "ربط رقم واتساب (عبر Meta Embedded Signup)"
+        }
+      }
     }
   }
 };

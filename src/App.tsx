@@ -26,6 +26,8 @@ import CreateStore from "./pages/auth/CreateStore";
 import ShippingRates from "./pages/ShippingRates";
 import ShippingCarriers from "./pages/ShippingCarriers";
 import Pixels from "./pages/Pixels";
+import Extensions from "./pages/Extensions";
+import WhatsAppSettings from "./pages/extensions/WhatsAppSettings";
 import StoreSettings from "./pages/settings/StoreSettings";
 import AccountSettings from "./pages/settings/AccountSettings";
 import NotificationSettings from "./pages/settings/NotificationSettings";
@@ -94,6 +96,10 @@ export default function App() {
                 <Route path="pages-destination" element={<Navigate to="/landing-pages" replace />} />
                 
                 <Route path="pixels" element={<Pixels />} />
+
+                {/* Extensions (Apps & Intégrations) */}
+                <Route path="extensions" element={<Extensions />} />
+                <Route path="extensions/whatsapp" element={<WhatsAppSettings />} />
 
                 {/* Settings */}
                 <Route path="settings" element={<StoreSettings />} />
