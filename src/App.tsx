@@ -51,6 +51,8 @@ import AdminThemes from "./pages/admin/AdminThemes";
 import AdminExtensions from "./pages/admin/AdminExtensions";
 import AdminWhatsApp from "./pages/admin/AdminWhatsApp";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminNotifications from "./pages/admin/AdminNotifications";
+import AdminHealth from "./pages/admin/AdminHealth";
 import LandingPages from "./pages/LandingPages";
 import LandingPagePublicView from "./pages/LandingPagePublicView";
 
@@ -82,6 +84,9 @@ export default function App() {
                 <Route path="/admin/extensions" element={<AdminExtensions />} />
                 <Route path="/admin/integrations" element={<AdminWhatsApp />} />
                 <Route path="/admin/settings" element={<AdminSettings />} />
+                <Route path="/admin/notifications" element={<AdminNotifications />} />
+                <Route path="/admin/health" element={<AdminHealth />} />
+                {/* L'ancien panneau est retiré du menu : ses fonctions vivent dans Membres/Paiements */}
                 <Route path="/admin/legacy" element={<Navigate to="/admin/members" replace />} />
               </Route>
               

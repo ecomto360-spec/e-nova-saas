@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Store, CreditCard, Wallet, BarChart3, Palette, Puzzle, MessageCircle, Settings, ScrollText, LogOut, Menu, X, ShieldCheck, Loader2, ExternalLink
+  LayoutDashboard, Users, Store, CreditCard, Wallet, BarChart3, Palette,
+  Puzzle, MessageCircle, Settings, Bell, ScrollText, HeartPulse, LogOut,
+  Menu, X, ShieldCheck, Loader2, ExternalLink
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 
@@ -28,7 +30,9 @@ const MODULES: Array<{ to: string; key: string; icon: typeof LayoutDashboard; pe
   { to: "/admin/extensions", key: "admin.nav.extensions", icon: Puzzle, permission: "extensions" },
   { to: "/admin/integrations", key: "admin.nav.integrations", icon: MessageCircle, permission: "integrations" },
   { to: "/admin/settings", key: "admin.nav.settings", icon: Settings, permission: "settings" },
+  { to: "/admin/notifications", key: "admin.nav.notifications", icon: Bell, permission: "notifications" },
   { to: "/admin/audit", key: "admin.nav.audit", icon: ScrollText, permission: "audit" },
+  { to: "/admin/health", key: "admin.nav.health", icon: HeartPulse, permission: "health" }
 ];
 
 export default function AdminLayout() {

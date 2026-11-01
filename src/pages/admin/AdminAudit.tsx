@@ -28,6 +28,9 @@ export default function AdminAudit() {
   const [loading, setLoading] = useState(true);
   const [actionFilter, setActionFilter] = useState("");
   const [actorFilter, setActorFilter] = useState("");
+  const [targetFilter, setTargetFilter] = useState("");
+  const [fromFilter, setFromFilter] = useState("");
+  const [toFilter, setToFilter] = useState("");
   const [nextBefore, setNextBefore] = useState("");
   const [beforeCursor, setBeforeCursor] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -39,6 +42,9 @@ export default function AdminAudit() {
       if (cursor) params.set("before", cursor);
       if (actionFilter.trim()) params.set("action", actionFilter.trim());
       if (actorFilter.trim()) params.set("actor", actorFilter.trim());
+      if (targetFilter.trim()) params.set("target", targetFilter.trim());
+      if (fromFilter) params.set("from", fromFilter);
+      if (toFilter) params.set("to", toFilter);
       const res = await fetch(`/api/admin/v1/audit?${params}`, { credentials: "include" });
       const j = (await res.json()) as { entries?: AuditEntry[]; nextBefore?: string };
       setEntries(j.entries || []);
@@ -46,7 +52,7 @@ export default function AdminAudit() {
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, [actionFilter, actorFilter]);
+  }, [actionFilter, actorFilter, targetFilter, fromFilter, toFilter]);
 
   useEffect(() => { load(""); }, [load]);
 
@@ -78,6 +84,17 @@ export default function AdminAudit() {
             className="w-full rounded-xl border border-neutral-700 bg-[#111114] py-2.5 ps-9 pe-3 text-xs text-white placeholder-neutral-500 focus:border-red-500/50 focus:outline-none"
           />
         </div>
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+          <input
+            value={targetFilter}
+            onChange={(e) => setTargetFilter(e.target.value)}
+            placeholder={t("admin.audit.filterTarget")}
+            className="w-full rounded-xl border border-neutral-700 bg-[#111114] py-2.5 ps-9 pe-3 text-xs text-white placeholder-neutral-500 focus:border-red-500/50 focus:outline-none"
+          />
+        </div>
+        <input type="date" value={fromFilter} onChange={(e) => setFromFilter(e.target.value)} aria-label={t("admin.audit.filterFrom")} className="rounded-xl border border-neutral-700 bg-[#111114] px-3 py-2.5 text-xs text-white focus:border-red-500/50 focus:outline-none" />
+        <input type="date" value={toFilter} onChange={(e) => setToFilter(e.target.value)} aria-label={t("admin.audit.filterTo")} className="rounded-xl border border-neutral-700 bg-[#111114] px-3 py-2.5 text-xs text-white focus:border-red-500/50 focus:outline-none" />
         <button
           onClick={() => { setBeforeCursor(""); load(""); }}
           className="px-4 py-2.5 rounded-xl text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 cursor-pointer"

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { 
+  Megaphone,
   Globe, Moon, Sun, Eye, Bell, Check, CheckCheck, ChevronDown, ChevronUp, 
   UserCog, HelpCircle, LogOut, User, Menu, ShoppingBag, AlertTriangle, ArrowRight, Inbox,
   Clock, Volume2, VolumeX, X, Sparkles, MapPin
@@ -12,7 +13,7 @@ import { useLanguage } from "../../contexts/LanguageContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../../lib/firebase";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, getDocs, limit as fsLimit } from "firebase/firestore";
 import { getOrderDeduplicationKey } from "../../lib/orderUtils";
 import { formatOrderDateTime, formatTime, formatDate } from "../../lib/date";
 import { startPresenceHeartbeat } from "../../lib/presence";
@@ -105,6 +106,8 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
     return localStorage.getItem("order_alert_sound") !== "false";
   });
   const [activeToast, setActiveToast] = useState<NotificationItem | null>(null);
+  /** LOT E — annonces de la plateforme (super admin) ciblant ce marchand. */
+  const [announcements, setAnnouncements] = useState<Array<{ id: string; title: string; body: string; at: string }>>([]);
 
   const langRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -117,6 +120,30 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   useEffect(() => {
     startPresenceHeartbeat(() => String(tenantData?.storeName || ""));
   }, [tenantData]);
+
+  // LOT E — annonces plateforme (super admin) : audience tous / plan / membre.
+  useEffect(() => {
+    if (!user?.uid) return;
+    let alive = true;
+    getDocs(query(collection(db, "announcements"), fsLimit(30))).then((snap) => {
+      if (!alive) return;
+      const plan = String((tenantData as Record<string, unknown> | undefined)?.plan || "");
+      const rows: Array<{ id: string; title: string; body: string; at: string }> = [];
+      snap.docs.forEach((d) => {
+        const a = d.data() as Record<string, unknown>;
+        if (!a.sentAt) return; // planifiée non envoyée
+        const audience = String(a.audience || "");
+        if (audience === "all"
+          || (audience === "member" && String(a.memberId || "") === user.uid)
+          || (audience === "plan" && plan && (String(a.planId || "") === plan || String(a.planId || "").toLowerCase() === plan.toLowerCase()))) {
+          rows.push({ id: d.id, title: String(a.title || ""), body: String(a.body || ""), at: String(a.sentAt || a.createdAt || "") });
+        }
+      });
+      rows.sort((x, y) => y.at.localeCompare(x.at));
+      setAnnouncements(rows.slice(0, 5));
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [user?.uid, tenantData]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -586,7 +613,20 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
                 </div>
 
                 <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-100 dark:divide-neutral-800/60">
-                  {notifications.length === 0 ? (
+                  {announcements.length > 0 && (
+                    <div className="p-3 space-y-2 bg-yellow-500/5 border-b border-neutral-800/60">
+                      {announcements.map((a) => (
+                        <div key={a.id} className="p-3 rounded-xl bg-[#111] border border-yellow-500/20">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <Megaphone className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                            <span className="text-xs font-bold text-white truncate">{a.title}</span>
+                          </div>
+                          <p className="text-xs text-neutral-400 line-clamp-3">{a.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {notifications.length === 0 && announcements.length === 0 ? (
                     <div className="py-10 px-6 text-center">
                       <div className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mx-auto mb-3 text-neutral-400">
                         <Inbox className="w-6 h-6" />
@@ -604,7 +644,9 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
                       </button>
                     </div>
                   ) : (
-                    notifications.slice(0, 20).map((item) => {
+                    <div className="py-6"></div>
+                  )}
+                  {notifications.length > 0 && notifications.slice(0, 20).map((item) => {
                       const isUnread = !readIds.includes(item.id);
                       return (
                         <div 
@@ -664,8 +706,7 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
                           )}
                         </div>
                       );
-                    })
-                  )}
+                    })}
                 </div>
 
                 <div className="p-2.5 bg-gray-50 dark:bg-neutral-900/60 border-t border-gray-100 dark:border-neutral-800 flex items-center justify-between px-4">
