@@ -1,5 +1,5 @@
 import { useState, FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { auth, googleProvider } from "../../lib/firebase";
 import { signInWithPopup, signInWithEmailAndPassword } from "firebase/auth";
@@ -21,6 +21,9 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  /** Lot B — bandeau si le compte a été suspendu par un administrateur. */
+  const [searchParams] = useSearchParams();
+  const suspendedBanner = searchParams.get("suspended") === "1";
 
   const handleGoogleLogin = async () => {
     try {
@@ -85,7 +88,13 @@ export default function Login() {
   };
 
   return (
-    <div className="w-full max-w-[440px] bg-[#1a1a1f] rounded-[24px] p-10 shadow-2xl border border-neutral-800/50">
+    <div className="w-full max-w-[440px]">
+      {suspendedBanner && (
+        <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
+          Ce compte a été suspendu par l'administrateur de la plateforme. Contactez le support.
+        </div>
+      )}
+      <div className="w-full max-w-[440px] bg-[#1a1a1f] rounded-[24px] p-10 shadow-2xl border border-neutral-800/50">
       <div className="flex justify-center mb-6">
         <img src="/logo.png" alt="E nova" className="h-14 w-auto max-w-[200px] object-contain shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />
       </div>
@@ -181,6 +190,7 @@ export default function Login() {
           Inscrivez-vous gratuitement
         </Link>
       </p>
+    </div>
     </div>
   );
 }

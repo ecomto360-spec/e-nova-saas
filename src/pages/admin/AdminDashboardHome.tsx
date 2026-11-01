@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Users, UserCheck, Wifi, UserPlus, Store, Banknote, CreditCard, ShoppingCart,
-  Ghost, CheckCircle2, MessageCircle, AlertTriangle, RefreshCw, Loader2, TrendingUp
+  Ghost, CheckCircle2, MessageCircle, AlertTriangle, RefreshCw, Loader2, TrendingUp, Trash2
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid
@@ -28,6 +28,8 @@ interface Overview {
   latestPayments: Array<{ id: string; storeName: string; amountDA: number; status: string; method: string; createdAt: string }>;
   alerts: Array<{ type: string; label: string; detail: string }>;
   statsUpdatedAt: string;
+  includeTest?: boolean;
+  hasTestData?: boolean;
 }
 
 const fmtNum = (n: number): string => (Number(n) || 0).toLocaleString("fr-FR");
@@ -37,6 +39,10 @@ export default function AdminDashboardHome() {
   const { t, language } = useLanguage();
   const isAr = language === "ar";
   const [days, setDays] = useState<7 | 30 | 90>(30);
+  const [includeTest, setIncludeTest] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const [noticeData, setNoticeData] = useState("");
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [recomputing, setRecomputing] = useState(false);
@@ -46,7 +52,7 @@ export default function AdminDashboardHome() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/v1/overview?days=${days}`, { credentials: "include" });
+      const res = await fetch(`/api/admin/v1/overview?days=${days}&includeTest=${includeTest ? 1 : 0}`, { credentials: "include" });
       if (!res.ok) throw new Error(String(res.status));
       setData((await res.json()) as Overview);
     } catch {
@@ -54,7 +60,7 @@ export default function AdminDashboardHome() {
     } finally {
       setLoading(false);
     }
-  }, [days, t]);
+  }, [days, includeTest, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -92,10 +98,16 @@ export default function AdminDashboardHome() {
     signups: Number(d.signups) || 0,
     orders: Number(d.orders) || 0
   }));
-  const monthlyChart = (data?.series.monthly || []).map((m) => ({
-    month: String(m.month).slice(2),
-    revenue: Number(m.revenue) || 0
-  }));
+  const fmtMonthLabel = (m: string): string => {
+    if (!/^\d{4}-\d{2}$/.test(m)) return m;
+    try { return new Date(m + "-01").toLocaleDateString("fr-FR", { month: "short", year: "numeric" }); } catch { return m; }
+  };
+  const monthlyChart = (data?.series.monthly || [])
+    .filter((m) => Number(m.revenue) > 0 || Number(m.signups) > 0)
+    .map((m) => ({
+      month: fmtMonthLabel(String(m.month)),
+      revenue: Number(m.revenue) || 0
+    }));
 
   const fmtDate = (iso: string): string => {
     if (!iso) return "—";
@@ -121,9 +133,23 @@ export default function AdminDashboardHome() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {data?.statsUpdatedAt && (
             <span className="text-[10px] text-neutral-500">{t("admin.statsUpTo")} {fmtDate(data.statsUpdatedAt)}</span>
+          )}
+          {data?.hasTestData && (
+            <label className="inline-flex items-center gap-1.5 text-[11px] text-neutral-400 cursor-pointer select-none">
+              <input type="checkbox" checked={includeTest} onChange={(e) => setIncludeTest(e.target.checked)} className="w-3.5 h-3.5 accent-red-500" />
+              {t("admin.testdata.include")}
+            </label>
+          )}
+          {data?.hasTestData && (
+            <button
+              onClick={() => setConfirmPurge(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30"
+            >
+              <Trash2 className="w-3.5 h-3.5" />{t("admin.testdata.purge")}
+            </button>
           )}
           <button
             onClick={recompute}
@@ -135,6 +161,41 @@ export default function AdminDashboardHome() {
           </button>
         </div>
       </div>
+
+      {confirmPurge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setConfirmPurge(false)}>
+          <div className="bg-[#111] border border-orange-500/30 rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-white mb-2">{t("admin.testdata.purgeTitle")}</h2>
+            <p className="text-sm text-neutral-400 mb-4">{t("admin.testdata.purgeWarn")}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmPurge(false)} className="flex-1 px-4 py-2 text-sm border border-neutral-800 rounded-xl text-neutral-300">{t("admin.actions.cancel")}</button>
+              <button
+                disabled={purging}
+                onClick={async () => {
+                  setConfirmPurge(false);
+                  setPurging(true);
+                  try {
+                    const res = await fetch("/api/admin/v1/test-data/purge", {
+                      method: "POST", credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ confirm: true })
+                    });
+                    const j = (await res.json()) as { tenantsDeleted?: number; paymentsDeleted?: number };
+                    setNoticeData(`${t("admin.testdata.purged")} : ${j.tenantsDeleted || 0} ${t("admin.members.store").toLowerCase()}(s), ${j.paymentsDeleted || 0} ${t("admin.nav.payments").toLowerCase()}`);
+                    await load();
+                  } catch { setNoticeData("✗ " + t("admin.loadError")); }
+                  finally { setPurging(false); }
+                }}
+                className="flex-1 px-4 py-2 text-sm bg-orange-600 text-white rounded-xl hover:bg-orange-700 disabled:opacity-50"
+              >
+                {purging ? <Loader2 className="w-4 h-4 animate-spin inline" /> : t("admin.testdata.purgeConfirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noticeData && <div className="p-3 bg-neutral-800/60 border border-neutral-700 rounded-xl text-sm text-neutral-200">{noticeData}</div>}
 
       {error && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>

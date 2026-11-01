@@ -4,6 +4,8 @@ import { createServer as createViteServer } from "vite";
 import cookieParser from "cookie-parser";
 import adminAuthRoutes from "./src/routes/adminAuth.js";
 import adminApiRoutes, { adminApiGuard } from "./src/routes/adminApi.js";
+import adminModulesRoutes, { runDailyJobs } from "./src/routes/adminModules.js";
+import adminPlatformRoutes from "./src/routes/adminPlatform.js";
 import multer from "multer";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
@@ -617,6 +619,22 @@ export async function getApp(): Promise<express.Express> {
 
   // LOT A — API Super Admin v1 (auth serveur, permissions, audit, stats agrégées, présence)
   app.use("/api/admin/v1", adminApiRoutes);
+  // LOTS B+C — modules Super Admin (membres, boutiques, plans, abonnements, paiements, factures, coupons, rapports, stats, données de test)
+  app.use("/api/admin/v1", adminModulesRoutes);
+  // LOTS D+E — plateforme (thèmes, extensions, WhatsApp chiffré, réglages, notifications, santé, jobs)
+  app.use("/api/admin/v1", adminPlatformRoutes);
+
+  // Jobs quotidiens (relances abonnements, suspension après grâce, annonces planifiées)
+  // branchés sur le cron Vercel existant (/api/whatsapp/process, 1×/jour en Hobby)
+  // + endpoint dédié pour « Relancer » depuis Santé système.
+  app.all("/api/jobs/daily", async (_req, res) => {
+    try {
+      const jobs = await runDailyJobs();
+      res.json({ ok: true, jobs });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String((e as Error).message || e) });
+    }
+  });
 
   // Chargily Pay Webhook (Phase 3)
   app.post("/api/webhooks/payment", async (req, res) => {
@@ -1415,6 +1433,12 @@ export async function getApp(): Promise<express.Express> {
   // ==========================================================================
   // EXTENSION « ORDER AUTOMATION (WHATSAPP) » — paniers abandonnés + commandes
   // ==========================================================================
+  // Le cron Vercel quotidien (/api/whatsapp/process) déclenche aussi les jobs
+  // plateforme (relances, grâce, annonces) — best-effort, sans bloquer le WA.
+  app.use("/api/whatsapp/process", (_req, _res, next) => {
+    void runDailyJobs().catch(() => undefined);
+    next();
+  });
   registerWhatsAppRoutes(app);
 
   return app;

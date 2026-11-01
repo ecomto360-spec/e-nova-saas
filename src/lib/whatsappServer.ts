@@ -21,6 +21,7 @@ import { db } from "./firebase-backend.js";
 import {
   doc, getDoc, setDoc, getDocs, query, where, collection, serverTimestamp
 } from "firebase/firestore";
+import { decryptSecret } from "./secretBox.js";
 import { ALGERIAN_WILAYAS } from "../data/landingData.js";
 import {
   WA_DEFAULT_MESSAGE_AR, WA_DEFAULT_MESSAGE_FR,
@@ -70,12 +71,93 @@ const WA_NOTIFIABLE_STATUSES = [
   "Confirmée", "Expédiée", "En livraison", "Au bureau de livraison", "Livrée", "Échec", "Retour"
 ];
 
-function isCloudApiConfigured(): boolean {
-  return Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
-}
-
 function waBaseUrl(): string {
   return String(process.env.APP_URL || "https://e-nova-saas.vercel.app").replace(/\/+$/, "");
+}
+
+// ---------------------------------------------------------------------------
+// Configuration runtime — ordre de résolution :
+//   1. Config super admin (platform_settings/whatsapp, secrets chiffrés AES-256-GCM)
+//   2. Variables d'environnement (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID…)
+//   3. Mode simulation
+// ---------------------------------------------------------------------------
+
+export interface WaRuntimeConfig {
+  mode: "real" | "simulation";
+  phoneNumberId: string;
+  wabaId: string;
+  appId: string;
+  graphVersion: string;
+  appUrl: string;
+  verifyToken: string;
+  token: string;
+  appSecret: string;
+  hasToken: boolean;
+  hasAppSecret: boolean;
+  source: "admin_config" | "env" | "simulation";
+  webhookVerifiedAt: string;
+}
+
+let waRuntimeCache: { at: number; cfg: WaRuntimeConfig } | null = null;
+
+export async function getWaAdminConfig(): Promise<WaRuntimeConfig> {
+  if (waRuntimeCache && Date.now() - waRuntimeCache.at < 30_000) return waRuntimeCache.cfg;
+  const cfg = await loadWaRuntimeConfig();
+  waRuntimeCache = { at: Date.now(), cfg };
+  return cfg;
+}
+
+export function invalidateWaRuntimeConfig(): void {
+  waRuntimeCache = null;
+}
+
+async function loadWaRuntimeConfig(): Promise<WaRuntimeConfig> {
+  const appUrl = waBaseUrl();
+  let admin: Record<string, unknown> = {};
+  try {
+    const snap = await getDoc(doc(db, "platform_settings", "whatsapp"));
+    admin = (snap.data() || {}) as Record<string, unknown>;
+  } catch { /* Firestore indisponible */ }
+  const fromAdmin = async (field: string): Promise<string> => {
+    const stored = String(admin[field] || "");
+    if (!stored) return "";
+    try { return decryptSecret(stored); } catch { return ""; }
+  };
+  const adminToken = await fromAdmin("tokenEnc");
+  const adminAppSecret = await fromAdmin("appSecretEnc");
+  const adminPhone = String(admin.phoneNumberId || "");
+  const envToken = process.env.WHATSAPP_TOKEN || "";
+  const envPhone = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
+  const useAdmin = Boolean(adminToken && adminPhone);
+  const useEnv = Boolean(envToken && envPhone);
+  const real = useAdmin || useEnv;
+  return {
+    mode: real ? "real" : "simulation",
+    phoneNumberId: useAdmin ? adminPhone : envPhone,
+    wabaId: String(admin.wabaId || process.env.WHATSAPP_WABA_ID || ""),
+    appId: String(admin.appId || process.env.WHATSAPP_APP_ID || ""),
+    graphVersion: String(admin.graphVersion || "v21.0"),
+    appUrl: String(admin.appUrl || appUrl),
+    verifyToken: String(admin.verifyToken || process.env.WHATSAPP_VERIFY_TOKEN || ""),
+    token: useAdmin ? adminToken : envToken,
+    appSecret: useAdmin ? adminAppSecret : (process.env.WHATSAPP_APP_SECRET || ""),
+    hasToken: real,
+    hasAppSecret: Boolean(useAdmin ? adminAppSecret : process.env.WHATSAPP_APP_SECRET),
+    source: useAdmin ? "admin_config" : useEnv ? "env" : "simulation",
+    webhookVerifiedAt: isoOfField(admin.webhookVerifiedAt)
+  };
+}
+
+function isoOfField(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object") {
+    const ts = v as { toDate?: () => Date; seconds?: number };
+    try {
+      if (typeof ts.toDate === "function") return ts.toDate().toISOString();
+      if (typeof ts.seconds === "number") return new Date(ts.seconds * 1000).toISOString();
+    } catch { /* ignore */ }
+  }
+  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -189,16 +271,17 @@ interface WaSendResult {
 
 async function waSendText(toDigits: string, body: string): Promise<WaSendResult> {
   const to = toDigits.replace(/^0/, "213");
-  if (!isCloudApiConfigured()) {
+  const rt = await getWaAdminConfig();
+  if (rt.mode !== "real" || !rt.token || !rt.phoneNumberId) {
     // Mode simulation : la chaîne complète reste testable sans compte Meta.
     return { ok: true, simulated: true, waMessageId: `sim_${crypto.randomUUID()}` };
   }
   try {
-    const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+    const url = `https://graph.facebook.com/${rt.graphVersion}/${rt.phoneNumberId}/messages`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Authorization": `Bearer ${rt.token}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -364,7 +447,7 @@ const PROCESS_MIN_INTERVAL_MS = 60 * 1000; // garde-fou global
 export async function processWhatsAppQueue(force: boolean): Promise<WaProcessSummary> {
   const summary: WaProcessSummary = {
     cartsSent: 0, remindersSent: 0, orderConfirmsSent: 0, statusNotificationsSent: 0,
-    skippedQuietHours: 0, errors: [], cloudApi: isCloudApiConfigured()
+    skippedQuietHours: 0, errors: [], cloudApi: (await getWaAdminConfig()).mode === "real"
   };
   if (!force && Date.now() - lastProcessAt < PROCESS_MIN_INTERVAL_MS) return summary;
   lastProcessAt = Date.now();
@@ -803,8 +886,9 @@ function clientText(v: unknown, max: number): string {
 
 export function registerWhatsAppRoutes(app: express.Express): void {
   // État public (aucun secret) : Cloud API configurée ou simulation.
-  app.get("/api/whatsapp/status", (_req, res) => {
-    res.json({ cloudApi: isCloudApiConfigured(), baseUrl: waBaseUrl() });
+  app.get("/api/whatsapp/status", async (_req, res) => {
+    const rt = await getWaAdminConfig();
+    res.json({ cloudApi: rt.mode === "real", mode: rt.mode, source: rt.source, baseUrl: waBaseUrl() });
   });
 
   // Ordonnanceur — appelé par le cron Vercel (GET), par la capture storefront
@@ -922,11 +1006,15 @@ export function registerWhatsAppRoutes(app: express.Express): void {
 
   // ---- Webhook Meta Cloud API ----------------------------------------------
   // Vérification (abonnement du webhook dans Meta App Dashboard)
-  app.get("/api/webhooks/whatsapp", (req, res) => {
+  app.get("/api/webhooks/whatsapp", async (req, res) => {
     const mode = clientText(req.query["hub.mode"], 20);
     const token = clientText(req.query["hub.verify_token"], 100);
     const challenge = clientText(req.query["hub.challenge"], 200);
-    if (mode === "subscribe" && token && token === String(process.env.WHATSAPP_VERIFY_TOKEN || "")) {
+    const rt = await getWaAdminConfig();
+    if (mode === "subscribe" && token && rt.verifyToken && token === rt.verifyToken) {
+      // Marquer le webhook comme vérifié (indicateur panneau admin)
+      setDoc(doc(db, "platform_settings", "whatsapp"), { webhookVerifiedAt: new Date().toISOString() }, { merge: true }).catch(() => undefined);
+      waRuntimeCache = null;
       res.status(200).send(challenge);
       return;
     }
@@ -938,7 +1026,8 @@ export function registerWhatsAppRoutes(app: express.Express): void {
   app.post("/api/webhooks/whatsapp", async (req, res) => {
     try {
       const rawBody = (req as { rawBody?: Buffer }).rawBody;
-      const appSecret = String(process.env.WHATSAPP_APP_SECRET || "");
+      const rt = await getWaAdminConfig();
+      const appSecret = rt.appSecret;
       if (appSecret) {
         const sig = String(req.headers["x-hub-signature-256"] || "");
         if (!sig) { res.sendStatus(401); return; }

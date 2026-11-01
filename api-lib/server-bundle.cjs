@@ -29,6 +29,885 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// firebase-applet-config.json
+var firebase_applet_config_default;
+var init_firebase_applet_config = __esm({
+  "firebase-applet-config.json"() {
+    firebase_applet_config_default = {
+      projectId: "e-nova-119f6",
+      appId: "1:795929637617:web:a29219d699b5708c04af50",
+      apiKey: "AIzaSyAPba-JHcnm3oJhfOK49UIliaif4d346Is",
+      authDomain: "e-nova-119f6.firebaseapp.com",
+      firestoreDatabaseId: "(default)",
+      storageBucket: "e-nova-119f6.firebasestorage.app",
+      messagingSenderId: "795929637617",
+      measurementId: "",
+      oAuthClientId: "795929637617-n73fckb96f8vukthadehpr95oufm5s9m.apps.googleusercontent.com",
+      recaptchaSiteKey: ""
+    };
+  }
+});
+
+// src/lib/firebase-backend.ts
+var import_app, import_firestore, import_fs, import_path, rawConfig, firebaseConfig, app, db;
+var init_firebase_backend = __esm({
+  "src/lib/firebase-backend.ts"() {
+    import_app = require("firebase/app");
+    import_firestore = require("firebase/firestore");
+    import_fs = __toESM(require("fs"));
+    import_path = __toESM(require("path"));
+    init_firebase_applet_config();
+    rawConfig = firebase_applet_config_default ?? {};
+    try {
+      const configPath = import_path.default.resolve(process.cwd(), "firebase-applet-config.json");
+      if (import_fs.default.existsSync(configPath)) {
+        rawConfig = JSON.parse(import_fs.default.readFileSync(configPath, "utf8"));
+      }
+    } catch (e) {
+      console.warn("Failed to load firebase-applet-config.json:", e);
+    }
+    firebaseConfig = {
+      apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || rawConfig.apiKey || "COLLER_ICI",
+      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN || rawConfig.authDomain || "e-nova-119f6.firebaseapp.com",
+      projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId || "e-nova-119f6",
+      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || rawConfig.storageBucket || "e-nova-119f6.firebasestorage.app",
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || rawConfig.messagingSenderId || "COLLER_ICI",
+      appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || rawConfig.appId || "COLLER_ICI",
+      firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || rawConfig.firestoreDatabaseId || "(default)"
+    };
+    app = (0, import_app.initializeApp)(firebaseConfig);
+    db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)" ? (0, import_firestore.initializeFirestore)(
+      app,
+      {
+        experimentalForceLongPolling: true
+      },
+      firebaseConfig.firestoreDatabaseId
+    ) : (0, import_firestore.initializeFirestore)(
+      app,
+      {
+        experimentalForceLongPolling: true
+      }
+    );
+  }
+});
+
+// src/routes/adminApi.ts
+var adminApi_exports = {};
+__export(adminApi_exports, {
+  adminApiGuard: () => adminApiGuard,
+  default: () => adminApi_default,
+  isoOf: () => isoOf,
+  logAdminAudit: () => logAdminAudit,
+  recomputeStatsExcludingTest: () => recomputeStatsExcludingTest
+});
+function rateLimit(key, windowMs, max) {
+  const now = Date.now();
+  const arr = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  if (arr.length >= max) {
+    rateBuckets.set(key, arr);
+    return false;
+  }
+  arr.push(now);
+  rateBuckets.set(key, arr);
+  if (rateBuckets.size > 5e3) rateBuckets.clear();
+  return true;
+}
+async function verifyFirebaseIdToken(idToken) {
+  try {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseConfig.apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken })
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const u = j.users?.[0];
+    if (!u || !u.localId) return null;
+    let claims = {};
+    try {
+      claims = u.customAttributes ? JSON.parse(u.customAttributes) : {};
+    } catch {
+      claims = {};
+    }
+    return { uid: u.localId, email: (u.email || "").toLowerCase(), claims, disabled: u.disabled === true };
+  } catch {
+    return null;
+  }
+}
+function tokenFromRequest(req) {
+  const auth = req.headers.authorization || "";
+  if (auth.toLowerCase().startsWith("bearer ")) {
+    return { kind: "bearer", value: auth.slice(7).trim() };
+  }
+  const cookie = req.cookies?.admin_jwt;
+  if (cookie) return { kind: "admin_jwt", value: cookie };
+  return null;
+}
+async function resolveAdmin(req) {
+  const token = tokenFromRequest(req);
+  if (!token) return null;
+  if (token.kind === "admin_jwt") {
+    try {
+      const payload = import_jsonwebtoken2.default.verify(token.value, JWT_SECRET2);
+      if (!payload.admin_id) return null;
+      try {
+        const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "admin_users", payload.admin_id));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.is_active === false) return null;
+          const role2 = normalizeRole(data.role || payload.role);
+          return { id: payload.admin_id, email: (data.email || "").toLowerCase(), role: role2, via: "admin_session" };
+        }
+      } catch {
+      }
+      const role = normalizeRole(payload.role);
+      return { id: payload.admin_id, email: "", role, via: "admin_session" };
+    } catch {
+      return null;
+    }
+  }
+  const fb = await verifyFirebaseIdToken(token.value);
+  if (!fb || fb.disabled) return null;
+  const hasClaim = fb.claims.superAdmin === true;
+  const inList = SUPER_ADMIN_EMAILS.includes(fb.email);
+  if (!hasClaim && !inList) return null;
+  return { id: fb.uid, email: fb.email, role: "super_admin", via: hasClaim ? "firebase_claim" : "super_admin_emails" };
+}
+function normalizeRole(role) {
+  return role === "support" || role === "finance" || role === "readonly" ? role : "super_admin";
+}
+function can(role, module2) {
+  return ROLE_PERMISSIONS[role].includes(module2);
+}
+function adminApiGuard(module2 = null) {
+  return async (req, res, next) => {
+    if (!rateLimit(`admin:${req.ip || "unknown"}`, 6e4, 120)) {
+      res.status(429).json({ error: "Trop de requ\xEAtes." });
+      return;
+    }
+    const admin = await resolveAdmin(req);
+    if (!admin) {
+      res.status(403).json({ error: "Acc\xE8s refus\xE9." });
+      return;
+    }
+    if (module2 && !can(admin.role, module2)) {
+      res.status(403).json({ error: "Permission insuffisante pour ce module." });
+      return;
+    }
+    req.admin = admin;
+    next();
+  };
+}
+function sanitizeForAudit(value, depth = 0) {
+  if (depth > 4) return "[\u2026]";
+  if (value === null || value === void 0) return null;
+  if (typeof value === "string") return value.length > 300 ? value.slice(0, 300) + "\u2026" : value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.slice(0, 20).map((v) => sanitizeForAudit(v, depth + 1));
+  if (typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = SECRET_KEYS.test(k) ? "\xAB masqu\xE9 \xBB" : sanitizeForAudit(v, depth + 1);
+    }
+    return out;
+  }
+  return String(value);
+}
+async function logAdminAudit(params) {
+  try {
+    await (0, import_firestore3.addDoc)((0, import_firestore3.collection)(db, "admin_audit"), {
+      at: (/* @__PURE__ */ new Date()).toISOString(),
+      actorId: params.actor.id,
+      actorEmail: params.actor.email || "inconnu",
+      actorRole: params.actor.role,
+      action: String(params.action).slice(0, 80),
+      target: params.target ? String(params.target).slice(0, 160) : "",
+      before: params.before === void 0 ? null : sanitizeForAudit(params.before),
+      after: params.after === void 0 ? null : sanitizeForAudit(params.after),
+      ip: params.req?.ip || "",
+      userAgent: String(params.req?.headers["user-agent"] || "").slice(0, 200)
+    });
+  } catch (e) {
+    console.warn("admin_audit write failed:", e);
+  }
+}
+function presenceMetaFromBody(body) {
+  const tz = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      return "";
+    }
+  })();
+  return {
+    device: String(body.device || "").slice(0, 40),
+    os: String(body.os || "").slice(0, 40),
+    country: typeof body.country === "string" ? body.country.slice(0, 40) : tz.split("/")[0] || "",
+    city: typeof body.city === "string" ? body.city.slice(0, 60) : (tz.split("/")[1] || "").replace(/_/g, " "),
+    page: String(body.page || "").slice(0, 120),
+    storeName: String(body.storeName || "").slice(0, 80)
+  };
+}
+function dayKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+async function docsInRange(coll, field, fromIso, toIso) {
+  const out = /* @__PURE__ */ new Map();
+  const run = async (gte, lt) => {
+    try {
+      const clamps = lt === null || lt === void 0 ? [(0, import_firestore3.where)(field, ">=", gte)] : [(0, import_firestore3.where)(field, ">=", gte), (0, import_firestore3.where)(field, "<", lt)];
+      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, coll), ...clamps));
+      snap.forEach((d) => out.set(d.id, d.data()));
+    } catch {
+    }
+  };
+  await run(fromIso, toIso);
+  await run(import_firestore3.Timestamp.fromDate(new Date(fromIso)), toIso ? import_firestore3.Timestamp.fromDate(new Date(toIso)) : null);
+  return Array.from(out.entries()).map(([id, data]) => ({ id, data }));
+}
+function isoOf(value) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const ts = value;
+    try {
+      if (typeof ts.toDate === "function") return ts.toDate().toISOString();
+      if (typeof ts.seconds === "number") return new Date(ts.seconds * 1e3).toISOString();
+      if (typeof ts._seconds === "number") return new Date(ts._seconds * 1e3).toISOString();
+    } catch {
+    }
+  }
+  return "";
+}
+async function recomputeStatsExcludingTest(days, months = 12) {
+  const today = /* @__PURE__ */ new Date();
+  const dailyByDay = /* @__PURE__ */ new Map();
+  const bump = (key, field, by = 1) => {
+    const cur = dailyByDay.get(key) || { signups: 0, orders: 0, gmv: 0, revenue: 0, carts: 0, cartsRecovered: 0, waMessages: 0, testSignups: 0, testOrders: 0, testRevenue: 0 };
+    cur[field] += by;
+    dailyByDay.set(key, cur);
+  };
+  const allTenants = await docsInRange("tenants", "createdAt", "1970-01-01T00:00:00.000Z", null);
+  const testIds = /* @__PURE__ */ new Set();
+  for (const d of allTenants) if (isTestTenantData(d.data)) testIds.add(d.id);
+  {
+    const fromIso = new Date(today.getTime() - days * 864e5).toISOString();
+    for (const d of allTenants) {
+      const iso = isoOf(d.data.createdAt);
+      if (!iso) continue;
+      if (testIds.has(d.id)) {
+        if (iso >= fromIso) bump(iso.slice(0, 10), "testSignups");
+        continue;
+      }
+      if (iso >= fromIso) bump(iso.slice(0, 10), "signups");
+    }
+  }
+  {
+    const fromIso = new Date(today.getTime() - days * 864e5).toISOString();
+    const recent = allTenants.slice(0, 200);
+    await Promise.all(recent.map(async (t) => {
+      try {
+        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants", t.id, "orders"), (0, import_firestore3.limit)(1e3)));
+        for (const o of snap.docs) {
+          const od = o.data();
+          const iso = isoOf(od.createdAt);
+          if (!iso || iso < fromIso) continue;
+          const isTest = testIds.has(t.id);
+          bump(iso.slice(0, 10), isTest ? "testOrders" : "orders");
+          if (!isTest) bump(iso.slice(0, 10), "gmv", Number(od.total) || 0);
+        }
+      } catch {
+      }
+    }));
+  }
+  {
+    const todayMidnight = new Date(today);
+    todayMidnight.setUTCHours(0, 0, 0, 0);
+    const rangeFrom = new Date(todayMidnight.getTime() - (days - 1) * 864e5).toISOString();
+    const rangeTo = new Date(todayMidnight.getTime() + 864e5).toISOString();
+    for (const d of await docsInRange("payments", "createdAt", rangeFrom, rangeTo)) {
+      const v = d.data;
+      if (v.status !== "completed" && v.status !== "validated" && v.status !== "valid\xE9") continue;
+      const iso = isoOf(v.createdAt);
+      if (!iso) continue;
+      if (testIds.has(String(v.tenantId || ""))) bump(iso.slice(0, 10), "testRevenue", Number(v.amountDA) || 0);
+      else bump(iso.slice(0, 10), "revenue", Number(v.amountDA) || 0);
+    }
+  }
+  {
+    const fromIso = new Date(today.getTime() - days * 864e5).toISOString();
+    const countCart = (data) => {
+      const iso = isoOf(data.createdAt);
+      if (!iso || iso < fromIso) return;
+      bump(iso.slice(0, 10), "carts");
+      if (data.status === "recovered" || data.recovered === true) bump(iso.slice(0, 10), "cartsRecovered");
+    };
+    for (const d of await docsInRange("abandoned_carts", "createdAt", fromIso, null)) {
+      countCart(d.data);
+    }
+    await Promise.all(allTenants.slice(0, 200).map(async (t) => {
+      try {
+        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants", t.id, "abandoned_carts"), (0, import_firestore3.limit)(500)));
+        for (const c of snap.docs) countCart(c.data());
+      } catch {
+      }
+    }));
+    for (const d of await docsInRange("whatsapp_messages", "sentAt", fromIso, null)) {
+      const iso = isoOf(d.data.sentAt);
+      if (iso) bump(iso.slice(0, 10), "waMessages");
+    }
+  }
+  const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+  for (const [date, stats] of dailyByDay) {
+    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "platform_stats", "daily_" + date), { date, ...stats, updatedAt: nowIso3 }, { merge: true });
+  }
+  const monthly = /* @__PURE__ */ new Map();
+  const monthlyOffsets = [];
+  for (let offset = 0; offset < months * 31 + 31; offset += 1) monthlyOffsets.push(offset);
+  const monthlySnaps = /* @__PURE__ */ new Map();
+  for (let i = 0; i < monthlyOffsets.length; i += 30) {
+    const chunk = monthlyOffsets.slice(i, i + 30);
+    const reads = await Promise.all(chunk.map(async (offset) => {
+      const day = new Date(today.getTime() - offset * 864e5).toISOString().slice(0, 10);
+      try {
+        const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "platform_stats", "daily_" + day));
+        return snap.exists() ? [day, snap.data()] : null;
+      } catch {
+        return null;
+      }
+    }));
+    for (const r of reads) if (r) monthlySnaps.set(r[0], r[1]);
+  }
+  for (const [day, v] of monthlySnaps) {
+    const key = day.slice(0, 7);
+    const cur = monthly.get(key) || { signups: 0, orders: 0, gmv: 0, revenue: 0, testSignups: 0, testRevenue: 0 };
+    cur.signups += Number(v.signups) || 0;
+    cur.orders += Number(v.orders) || 0;
+    cur.gmv += Number(v.gmv) || 0;
+    cur.revenue += Number(v.revenue) || 0;
+    cur.testSignups += Number(v.testSignups) || 0;
+    cur.testRevenue += Number(v.testRevenue) || 0;
+    monthly.set(key, cur);
+  }
+  for (const [month, stats] of monthly) {
+    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "platform_stats", "monthly_" + month), { month, ...stats, updatedAt: nowIso3 }, { merge: true });
+  }
+  const oneYearAgo = new Date(today.getTime() - 365 * 864e5).toISOString();
+  const [storesActive, paymentsYear, cartsAbandoned, cartsRecovered, waMessages, orderCounts] = await Promise.all([
+    (async () => {
+      try {
+        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("status", "==", "active")));
+        let clean = 0;
+        snap.forEach((d) => {
+          if (!testIds.has(d.id)) clean += 1;
+        });
+        return clean;
+      } catch {
+        return 0;
+      }
+    })(),
+    (async () => {
+      let cleanRev = 0, cleanCount = 0, allRev = 0, allCount = 0;
+      for (const d of await docsInRange("payments", "createdAt", oneYearAgo, (/* @__PURE__ */ new Date()).toISOString())) {
+        const v = d.data;
+        if (v.status !== "completed" && v.status !== "validated" && v.status !== "valid\xE9") continue;
+        allRev += Number(v.amountDA) || 0;
+        allCount += 1;
+        if (!testIds.has(String(v.tenantId || ""))) {
+          cleanRev += Number(v.amountDA) || 0;
+          cleanCount += 1;
+        }
+      }
+      return { cleanRev, cleanCount, allRev, allCount };
+    })(),
+    (async () => {
+      let total = 0;
+      for (const d of await docsInRange("abandoned_carts", "createdAt", "1970-01-01T00:00:00.000Z", null)) total += 1;
+      await Promise.all(allTenants.slice(0, 200).map(async (t) => {
+        try {
+          total += (await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants", t.id, "abandoned_carts"), (0, import_firestore3.limit)(500)))).size;
+        } catch {
+        }
+      }));
+      return total;
+    })(),
+    (async () => {
+      let total = 0;
+      for (const d of await docsInRange("abandoned_carts", "createdAt", "1970-01-01T00:00:00.000Z", null)) {
+        if (d.data.status === "recovered" || d.data.recovered === true) total += 1;
+      }
+      await Promise.all(allTenants.slice(0, 200).map(async (t) => {
+        try {
+          const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants", t.id, "abandoned_carts"), (0, import_firestore3.limit)(500)));
+          snap.forEach((c) => {
+            const v = c.data();
+            if (v.status === "recovered" || v.recovered === true) total += 1;
+          });
+        } catch {
+        }
+      }));
+      return total;
+    })(),
+    docsInRange("whatsapp_messages", "sentAt", "1970-01-01T00:00:00.000Z", (/* @__PURE__ */ new Date()).toISOString()).then((r) => r.length),
+    (async () => {
+      let clean = 0, all = 0;
+      await Promise.all(allTenants.slice(0, 200).map(async (t) => {
+        try {
+          const n = (await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants", t.id, "orders"), (0, import_firestore3.limit)(1e3)))).size;
+          all += n;
+          if (!testIds.has(t.id)) clean += n;
+        } catch {
+        }
+      }));
+      let rootOrders = 0;
+      try {
+        rootOrders = (await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "orders"), (0, import_firestore3.limit)(1e3)))).size;
+      } catch {
+      }
+      return { clean: clean + rootOrders, all: all + rootOrders };
+    })()
+  ]);
+  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "platform_counters", "global"), {
+    membersTotal: allTenants.length - testIds.size,
+    membersTotalAll: allTenants.length,
+    testMembers: testIds.size,
+    storesActive,
+    ordersTotal: orderCounts.clean,
+    ordersTotalAll: orderCounts.all,
+    revenueTotal: paymentsYear.cleanRev,
+    revenueTotalAll: paymentsYear.allRev,
+    paymentsValidated: paymentsYear.cleanCount,
+    cartsAbandonedTotal: cartsAbandoned,
+    cartsRecoveredTotal: cartsRecovered,
+    waMessagesTotal: waMessages,
+    updatedAt: nowIso3
+  }, { merge: true });
+  return { daysWritten: dailyByDay.size, monthsWritten: monthly.size };
+}
+var import_express2, import_jsonwebtoken2, import_firestore3, router2, JWT_SECRET2, ROLE_PERMISSIONS, SUPER_ADMIN_EMAILS, rateBuckets, SECRET_KEYS, isTestTenantData, adminApi_default;
+var init_adminApi = __esm({
+  "src/routes/adminApi.ts"() {
+    import_express2 = __toESM(require("express"));
+    import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
+    import_firestore3 = require("firebase/firestore");
+    init_firebase_backend();
+    router2 = import_express2.default.Router();
+    JWT_SECRET2 = process.env.JWT_SECRET || "fallback_secret_in_dev_only";
+    ROLE_PERMISSIONS = {
+      super_admin: ["dashboard", "members", "stores", "billing", "payments", "stats", "themes", "extensions", "integrations", "settings", "notifications", "audit", "health", "media"],
+      support: ["dashboard", "members", "stores", "notifications", "audit"],
+      finance: ["dashboard", "billing", "payments", "stats", "audit"],
+      readonly: ["dashboard", "members", "stores", "stats"]
+    };
+    SUPER_ADMIN_EMAILS = (process.env.SUPER_ADMIN_EMAILS || "ecomto360@gmail.com,nabsterzero@gmail.com").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+    rateBuckets = /* @__PURE__ */ new Map();
+    SECRET_KEYS = /password|passwd|secret|token|api[-_]?key|private|credential|authorization|cookie/i;
+    router2.post("/heartbeat", async (req, res) => {
+      const body = req.body || {};
+      const token = tokenFromRequest(req);
+      if (!token) {
+        res.status(401).json({ error: "Non authentifi\xE9." });
+        return;
+      }
+      let uid = "";
+      let email = "";
+      let storeName = presenceMetaFromBody(body).storeName;
+      if (token.kind === "admin_jwt") {
+        const admin = await resolveAdmin(req);
+        if (!admin) {
+          res.status(403).json({ error: "Session admin invalide." });
+          return;
+        }
+        uid = admin.id;
+        email = admin.email;
+      } else {
+        const fb = await verifyFirebaseIdToken(token.value);
+        if (!fb || fb.disabled) {
+          res.status(403).json({ error: "Token invalide." });
+          return;
+        }
+        uid = fb.uid;
+        email = fb.email;
+        try {
+          const tSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", uid));
+          if (tSnap.exists() && tSnap.data().status === "suspended") {
+            await (0, import_firestore3.deleteDoc)((0, import_firestore3.doc)(db, "user_presence", uid)).catch(() => void 0);
+            res.status(403).json({ error: "suspended", reason: String(tSnap.data().suspendReason || "") });
+            return;
+          }
+        } catch {
+        }
+      }
+      if (!rateLimit(`hb:${uid}`, 45e3, 1)) {
+        res.status(204).end();
+        return;
+      }
+      const meta = presenceMetaFromBody(body);
+      const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+      try {
+        const ref = (0, import_firestore3.doc)(db, "user_presence", uid);
+        const snap = await (0, import_firestore3.getDoc)(ref);
+        const existing = snap.exists() ? snap.data() : null;
+        const shouldRefreshLogin = !existing?.lastLoginAt || Date.now() - new Date(existing.lastLoginAt).getTime() > 24 * 3600 * 1e3;
+        await (0, import_firestore3.setDoc)(ref, {
+          uid,
+          email,
+          lastSeenAt: nowIso3,
+          ...storeName ? { storeName } : {},
+          ...meta.device ? { device: meta.device } : {},
+          ...meta.os ? { os: meta.os } : {},
+          ...meta.country ? { country: meta.country } : {},
+          ...meta.city ? { city: meta.city } : {},
+          ...meta.page ? { lastPage: meta.page } : {},
+          ...shouldRefreshLogin ? { lastLoginAt: nowIso3 } : {}
+        }, { merge: true });
+      } catch (e) {
+        console.warn("presence write failed:", e);
+      }
+      res.status(204).end();
+    });
+    router2.get("/me", adminApiGuard(null), (req, res) => {
+      const admin = req.admin;
+      res.json({
+        ok: true,
+        admin: { id: admin.id, email: admin.email, role: admin.role, via: admin.via },
+        permissions: ROLE_PERMISSIONS[admin.role]
+      });
+    });
+    isTestTenantData = (data) => {
+      if (data.isTest === true) return true;
+      const email = String(data.ownerEmail || "").toLowerCase();
+      return email.endsWith("@dztest.com") || email.endsWith("@test.com") || email.endsWith("@example.com");
+    };
+    router2.post("/stats/recompute", adminApiGuard("settings"), async (req, res) => {
+      try {
+        const body = req.body || {};
+        const days = Math.min(120, Math.max(7, Number(body.days) || 30));
+        const months = Math.min(24, Math.max(12, Number(body.months) || 12));
+        const result = await recomputeStatsExcludingTest(days, months);
+        const admin = req.admin;
+        await logAdminAudit({ actor: admin, action: "stats.recompute", target: `days=${days}`, after: result, req });
+        res.json({ ok: true, ...result });
+      } catch (e) {
+        console.error("stats recompute error:", e);
+        res.status(500).json({ error: "\xC9chec du recalcul.", detail: String(e?.message || e).slice(0, 200) });
+      }
+    });
+    router2.get("/overview", adminApiGuard("dashboard"), async (req, res) => {
+      try {
+        const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+        const includeTest = req.query.includeTest === "1";
+        const now = Date.now();
+        const countersSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "platform_counters", "global")).catch(() => null);
+        const counters = countersSnap?.exists() ? countersSnap.data() : {};
+        const daily = [];
+        {
+          const keys = [];
+          for (let offset = days - 1; offset >= 0; offset -= 1) keys.push(dayKey(new Date(now - offset * 864e5)));
+          const byKey = /* @__PURE__ */ new Map();
+          try {
+            const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)(
+              (0, import_firestore3.collection)(db, "platform_stats"),
+              (0, import_firestore3.where)("__name__", ">=", "daily_" + keys[0]),
+              (0, import_firestore3.where)("__name__", "<=", "daily_" + keys[keys.length - 1] + "\uF8FF")
+            ));
+            snap.forEach((d) => {
+              byKey.set(String(d.id).slice(6), d.data());
+            });
+          } catch {
+          }
+          for (const key of keys) daily.push({ date: key, ...byKey.get(key) || {} });
+        }
+        const monthly = [];
+        {
+          const monthKeys = [];
+          for (let offset = 11; offset >= 0; offset -= 1) {
+            const d = /* @__PURE__ */ new Date();
+            d.setMonth(d.getMonth() - offset, 1);
+            monthKeys.push(d.toISOString().slice(0, 7));
+          }
+          const byMonth = /* @__PURE__ */ new Map();
+          for (let i = 0; i < monthKeys.length; i += 6) {
+            const chunk = monthKeys.slice(i, i + 6);
+            const reads = await Promise.all(chunk.map(async (key) => {
+              try {
+                const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "platform_stats", "monthly_" + key));
+                return snap.exists() ? [key, snap.data()] : null;
+              } catch {
+                return null;
+              }
+            }));
+            for (const r of reads) if (r) byMonth.set(r[0], r[1]);
+          }
+          for (const key of monthKeys) monthly.push({ month: key, ...byMonth.get(key) || {} });
+        }
+        let onlineNow = 0;
+        let active30d = 0;
+        try {
+          const twoMinAgo = new Date(now - 2 * 6e4).toISOString();
+          const monthAgo = new Date(now - 30 * 864e5).toISOString();
+          const [snap, snap30] = await Promise.all([
+            (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "user_presence"), (0, import_firestore3.where)("lastSeenAt", ">", twoMinAgo), (0, import_firestore3.limit)(200))),
+            (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "user_presence"), (0, import_firestore3.where)("lastSeenAt", ">", monthAgo), (0, import_firestore3.limit)(1e3)))
+          ]);
+          onlineNow = snap.size;
+          active30d = snap30.size;
+        } catch {
+        }
+        const sum = (field) => daily.reduce((acc, d) => acc + (Number(d[field]) || 0), 0);
+        const signupsPeriod = sum("signups");
+        const signupsToday = Number(daily[daily.length - 1]?.signups) || 0;
+        const signupsWeek = daily.slice(-7).reduce((acc, d) => acc + (Number(d.signups) || 0), 0);
+        const revenueMonth = monthly[monthly.length - 1] ? Number(monthly[monthly.length - 1].revenue) || 0 : 0;
+        const testIdSet = /* @__PURE__ */ new Set();
+        const latestSignups = [];
+        let paySnap = [];
+        try {
+          const [allSnap, latestSnap, paySnapQ] = await Promise.all([
+            (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.limit)(500))),
+            (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.orderBy)("createdAt", "desc"), (0, import_firestore3.limit)(20))),
+            (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "payments"), (0, import_firestore3.orderBy)("createdAt", "desc"), (0, import_firestore3.limit)(20)))
+          ]);
+          paySnap = paySnapQ.docs.map((d) => ({ id: d.id, data: d.data() }));
+          allSnap.forEach((d) => {
+            if (isTestTenantData(d.data())) testIdSet.add(d.id);
+          });
+          const snap = latestSnap;
+          snap.forEach((d) => {
+            if (!includeTest && testIdSet.has(d.id)) return;
+            if (latestSignups.length >= 5) return;
+            const v = d.data();
+            latestSignups.push({
+              id: d.id,
+              storeName: String(v.storeName || ""),
+              ownerEmail: String(v.ownerEmail || ""),
+              createdAt: typeof v.createdAt === "string" ? v.createdAt : "",
+              plan: String(v.plan || "")
+            });
+          });
+        } catch {
+        }
+        const latestPayments = [];
+        try {
+          const snap = { forEach: (cb) => paySnap.forEach(cb) };
+          snap.forEach((d) => {
+            if (!includeTest && testIdSet.has(String(d.data.tenantId || ""))) return;
+            if (latestPayments.length >= 5) return;
+            const v = d.data;
+            latestPayments.push({
+              id: d.id,
+              storeName: String(v.storeName || ""),
+              amountDA: Number(v.amountDA) || 0,
+              status: String(v.status || ""),
+              method: String(v.paymentMethod || ""),
+              createdAt: typeof v.createdAt === "string" ? v.createdAt : ""
+            });
+          });
+        } catch {
+        }
+        const alerts = [];
+        try {
+          const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "payments"), (0, import_firestore3.where)("status", "==", "pending"), (0, import_firestore3.limit)(5)));
+          snap.forEach((d) => {
+            const v = d.data();
+            alerts.push({ type: "payment_pending", label: String(v.storeName || "Boutique"), detail: `${Number(v.amountDA) || 0} DZD en attente de validation` });
+          });
+        } catch {
+        }
+        const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+        const in7dIso = new Date(now + 7 * 864e5).toISOString();
+        let expiringCount = 0;
+        let expiredCount = 0;
+        try {
+          const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("planExpiresAt", ">", nowIso3), (0, import_firestore3.where)("planExpiresAt", "<", in7dIso), (0, import_firestore3.limit)(20)));
+          if (includeTest) expiringCount = snap.size;
+          else snap.forEach((d) => {
+            if (!testIdSet.has(d.id)) expiringCount += 1;
+          });
+          const snapExpired = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("planExpiresAt", "<", nowIso3), (0, import_firestore3.limit)(500)));
+          snapExpired.forEach((d) => {
+            if (includeTest || !testIdSet.has(d.id)) expiredCount += 1;
+          });
+        } catch {
+        }
+        if (expiringCount > 0) alerts.push({ type: "subs_expiring", label: `${expiringCount} abonnement(s)`, detail: "Expirent dans les 7 prochains jours" });
+        if (expiredCount > 0) alerts.push({ type: "subs_expired", label: `${expiredCount} abonnement(s) expir\xE9(s)`, detail: "Sans plan actif actuellement" });
+        if (!counters.updatedAt) alerts.push({ type: "stats_never_computed", label: "Statistiques jamais calcul\xE9es", detail: "Lancer \xAB Recalculer les statistiques \xBB" });
+        let activeSubs = 0;
+        try {
+          const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("planExpiresAt", ">", nowIso3), (0, import_firestore3.limit)(1e3)));
+          snap.forEach((d) => {
+            if (includeTest || !testIdSet.has(d.id)) activeSubs += 1;
+          });
+        } catch {
+        }
+        const testSum = (field) => daily.reduce((acc, d) => acc + (Number(d[field]) || 0), 0);
+        const monthlyTestRevenue = monthly[monthly.length - 1] ? Number(monthly[monthly.length - 1].testRevenue) || 0 : 0;
+        const todayTest = Number(daily[daily.length - 1]?.testSignups) || 0;
+        const weekTest = daily.slice(-7).reduce((acc, d) => acc + (Number(d.testSignups) || 0), 0);
+        res.json({
+          ok: true,
+          periodDays: days,
+          includeTest,
+          hasTestData: testIdSet.size > 0,
+          kpis: {
+            membersTotal: Number(includeTest ? counters.membersTotalAll : counters.membersTotal) || 0,
+            membersActive30d: active30d,
+            onlineNow,
+            signupsToday: signupsToday + (includeTest ? todayTest : 0),
+            signupsWeek: signupsWeek + (includeTest ? weekTest : 0),
+            signupsPeriod: signupsPeriod + (includeTest ? testSum("testSignups") : 0),
+            storesActive: Number(counters.storesActive) || 0,
+            revenueMonth: revenueMonth + (includeTest ? monthlyTestRevenue : 0),
+            activeSubscriptions: activeSubs,
+            expiredSubscriptions: expiredCount,
+            ordersTotal: Number(includeTest ? counters.ordersTotalAll : counters.ordersTotal) || 0,
+            gmvPeriod: sum("gmv"),
+            ordersPeriod: sum("orders") + (includeTest ? testSum("testOrders") : 0),
+            cartsAbandonedTotal: Number(counters.cartsAbandonedTotal) || 0,
+            cartsRecoveredTotal: Number(counters.cartsRecoveredTotal) || 0,
+            waMessagesTotal: Number(counters.waMessagesTotal) || 0,
+            paymentsPending: alerts.filter((a) => a.type === "payment_pending").length
+          },
+          series: { daily, monthly },
+          latestSignups,
+          latestPayments,
+          alerts,
+          statsUpdatedAt: String(counters.updatedAt || "")
+        });
+      } catch (e) {
+        console.error("admin overview error:", e);
+        res.status(500).json({ error: "Erreur du tableau de bord admin." });
+      }
+    });
+    router2.get("/audit", adminApiGuard("audit"), async (req, res) => {
+      try {
+        const maxLimit = Math.min(200, Math.max(10, Number(req.query.limit) || 50));
+        const actionFilter = String(req.query.action || "").trim().toLowerCase();
+        const actorFilter = String(req.query.actor || "").trim().toLowerCase();
+        const targetFilter = String(req.query.target || "").trim().toLowerCase();
+        const fromFilter = String(req.query.from || "").slice(0, 10);
+        const toFilter = String(req.query.to || "").slice(0, 10);
+        const before = String(req.query.before || "");
+        const hasFilter = !!(actionFilter || actorFilter || targetFilter || fromFilter || toFilter);
+        let q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "admin_audit"), (0, import_firestore3.orderBy)("at", "desc"), (0, import_firestore3.limit)(hasFilter ? 200 : maxLimit));
+        if (before) {
+          q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "admin_audit"), (0, import_firestore3.orderBy)("at", "desc"), (0, import_firestore3.startAfter)(before), (0, import_firestore3.limit)(hasFilter ? 200 : maxLimit));
+        }
+        const snap = await (0, import_firestore3.getDocs)(q);
+        const entries = [];
+        snap.forEach((d) => {
+          const v = d.data();
+          const at = String(v.at || "");
+          if (actionFilter && !String(v.action || "").toLowerCase().includes(actionFilter)) return;
+          if (actorFilter && !String(v.actorEmail || "").toLowerCase().includes(actorFilter)) return;
+          if (targetFilter && !String(v.target || "").toLowerCase().includes(targetFilter)) return;
+          if (fromFilter && at.slice(0, 10) < fromFilter) return;
+          if (toFilter && at.slice(0, 10) > toFilter) return;
+          entries.push({ id: d.id, ...v });
+        });
+        const filtered = hasFilter ? entries.slice(0, maxLimit) : entries;
+        res.json({
+          ok: true,
+          entries: filtered,
+          nextBefore: filtered.length === maxLimit && snap.size === maxLimit ? String(filtered[filtered.length - 1].at || "") : ""
+        });
+      } catch (e) {
+        res.status(500).json({ error: "Erreur du journal d'audit." });
+      }
+    });
+    router2.get("/presence", adminApiGuard("dashboard"), async (req, res) => {
+      try {
+        const twoMinAgo = new Date(Date.now() - 2 * 6e4).toISOString();
+        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "user_presence"), (0, import_firestore3.where)("lastSeenAt", ">", twoMinAgo), (0, import_firestore3.limit)(100)));
+        const users = [];
+        snap.forEach((d) => {
+          const v = d.data();
+          users.push({
+            uid: d.id,
+            email: String(v.email || ""),
+            storeName: String(v.storeName || ""),
+            device: String(v.device || ""),
+            country: String(v.country || ""),
+            city: String(v.city || ""),
+            lastSeenAt: String(v.lastSeenAt || "")
+          });
+        });
+        res.json({ ok: true, online: users.length, users });
+      } catch {
+        res.json({ ok: true, online: 0, users: [] });
+      }
+    });
+    adminApi_default = router2;
+  }
+});
+
+// src/data/landingData.ts
+var ALGERIAN_WILAYAS;
+var init_landingData = __esm({
+  "src/data/landingData.ts"() {
+    ALGERIAN_WILAYAS = [
+      { code: 1, name: "01 - Adrar", arName: "\u0623\u062F\u0631\u0627\u0631", homeDeliveryPrice: 900, deskDeliveryPrice: 600 },
+      { code: 2, name: "02 - Chlef", arName: "\u0627\u0644\u0634\u0644\u0641", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 3, name: "03 - Laghouat", arName: "\u0627\u0644\u0623\u063A\u0648\u0627\u0637", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
+      { code: 4, name: "04 - Oum El Bouaghi", arName: "\u0623\u0645 \u0627\u0644\u0628\u0648\u0627\u0642\u064A", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 5, name: "05 - Batna", arName: "\u0628\u0627\u062A\u0646\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 6, name: "06 - B\xE9ja\xEFa", arName: "\u0628\u062C\u0627\u064A\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 7, name: "07 - Biskra", arName: "\u0628\u0633\u0643\u0631\u0629", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
+      { code: 8, name: "08 - B\xE9char", arName: "\u0628\u0634\u0627\u0631", homeDeliveryPrice: 900, deskDeliveryPrice: 600 },
+      { code: 9, name: "09 - Blida", arName: "\u0627\u0644\u0628\u0644\u064A\u062F\u0629", homeDeliveryPrice: 500, deskDeliveryPrice: 350 },
+      { code: 10, name: "10 - Bouira", arName: "\u0627\u0644\u0628\u0648\u064A\u0631\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 11, name: "11 - Tamanrasset", arName: "\u062A\u0645\u0646\u0631\u0627\u0633\u062A", homeDeliveryPrice: 1200, deskDeliveryPrice: 800 },
+      { code: 12, name: "12 - T\xE9bessa", arName: "\u062A\u0628\u0633\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 13, name: "13 - Tlemcen", arName: "\u062A\u0644\u0645\u0633\u0627\u0646", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 14, name: "14 - Tiaret", arName: "\u062A\u064A\u0627\u0631\u062A", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 15, name: "15 - Tizi Ouzou", arName: "\u062A\u064A\u0632\u064A \u0648\u0632\u0648", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 16, name: "16 - Alger", arName: "\u0627\u0644\u062C\u0632\u0627\u0626\u0631 \u0627\u0644\u0639\u0627\u0635\u0645\u0629", homeDeliveryPrice: 400, deskDeliveryPrice: 300 },
+      { code: 17, name: "17 - Djelfa", arName: "\u0627\u0644\u062C\u0644\u0641\u0629", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
+      { code: 18, name: "18 - Jijel", arName: "\u062C\u064A\u062C\u0644", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 19, name: "19 - S\xE9tif", arName: "\u0633\u0637\u064A\u0641", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 20, name: "20 - Sa\xEFda", arName: "\u0633\u0639\u064A\u062F\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 21, name: "21 - Skikda", arName: "\u0633\u0643\u064A\u0643\u062F\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 22, name: "22 - Sidi Bel Abb\xE8s", arName: "\u0633\u064A\u062F\u064A \u0628\u0644\u0639\u0628\u0627\u0633", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 23, name: "23 - Annaba", arName: "\u0639\u0646\u0627\u0628\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 24, name: "24 - Guelma", arName: "\u0642\u0627\u0644\u0645\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 25, name: "25 - Constantine", arName: "\u0642\u0633\u0646\u0637\u064A\u0646\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 26, name: "26 - M\xE9d\xE9a", arName: "\u0627\u0644\u0645\u062F\u064A\u0629", homeDeliveryPrice: 550, deskDeliveryPrice: 350 },
+      { code: 27, name: "27 - Mostaganem", arName: "\u0645\u0633\u062A\u063A\u0627\u0646\u0645", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 28, name: "28 - M'Sila", arName: "\u0627\u0644\u0645\u0633\u064A\u0644\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 29, name: "29 - Mascara", arName: "\u0645\u0639\u0633\u0643\u0631", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 30, name: "30 - Ouargla", arName: "\u0648\u0631\u0642\u0644\u0629", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
+      { code: 31, name: "31 - Oran", arName: "\u0648\u0647\u0631\u0627\u0646", homeDeliveryPrice: 500, deskDeliveryPrice: 350 },
+      { code: 32, name: "32 - El Bayadh", arName: "\u0627\u0644\u0628\u064A\u0636", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
+      { code: 33, name: "33 - Illizi", arName: "\u0625\u0644\u064A\u0632\u064A", homeDeliveryPrice: 1200, deskDeliveryPrice: 800 },
+      { code: 34, name: "34 - Bordj Bou Arreridj", arName: "\u0628\u0631\u062C \u0628\u0648\u0639\u0631\u064A\u0631\u064A\u062C", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 35, name: "35 - Boumerd\xE8s", arName: "\u0628\u0648\u0645\u0631\u062F\u0627\u0633", homeDeliveryPrice: 450, deskDeliveryPrice: 300 },
+      { code: 36, name: "36 - El Tarf", arName: "\u0627\u0644\u0637\u0627\u0631\u0641", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 37, name: "37 - Tindouf", arName: "\u062A\u0646\u062F\u0648\u0641", homeDeliveryPrice: 1200, deskDeliveryPrice: 800 },
+      { code: 38, name: "38 - Tissemsilt", arName: "\u062A\u064A\u0633\u0645\u0633\u064A\u0644\u062A", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 39, name: "39 - El Oued", arName: "\u0627\u0644\u0648\u0627\u062F\u064A", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
+      { code: 40, name: "40 - Khenchela", arName: "\u062E\u0646\u0634\u0644\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 41, name: "41 - Souk Ahras", arName: "\u0633\u0648\u0642 \u0623\u0647\u0631\u0627\u0633", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
+      { code: 42, name: "42 - Tipaza", arName: "\u062A\u064A\u0628\u0627\u0632\u0629", homeDeliveryPrice: 450, deskDeliveryPrice: 300 },
+      { code: 43, name: "43 - Mila", arName: "\u0645\u064A\u0644\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 44, name: "44 - A\xEFn Defla", arName: "\u0639\u064A\u0646 \u0627\u0644\u062F\u0641\u0644\u0649", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 45, name: "45 - Na\xE2ma", arName: "\u0627\u0644\u0646\u0639\u0627\u0645\u0629", homeDeliveryPrice: 800, deskDeliveryPrice: 550 },
+      { code: 46, name: "46 - A\xEFn T\xE9mouchent", arName: "\u0639\u064A\u0646 \u062A\u0645\u0648\u0634\u0646\u062A", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 47, name: "47 - Gharda\xEFa", arName: "\u063A\u0631\u062F\u0627\u064A\u0629", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
+      { code: 48, name: "48 - Relizane", arName: "\u063A\u0644\u064A\u0632\u0627\u0646", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
+      { code: 49, name: "49 - Timimoun", arName: "\u062A\u064A\u0645\u064A\u0645\u0648\u0646", homeDeliveryPrice: 950, deskDeliveryPrice: 650 },
+      { code: 50, name: "50 - Bordj Badji Mokhtar", arName: "\u0628\u0631\u062C \u0628\u0627\u062C\u064A \u0645\u062E\u062A\u0627\u0631", homeDeliveryPrice: 1300, deskDeliveryPrice: 900 },
+      { code: 51, name: "51 - Ouled Djellal", arName: "\u0623\u0648\u0644\u0627\u062F \u062C\u0644\u0627\u0644", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
+      { code: 52, name: "52 - B\xE9ni Abb\xE8s", arName: "\u0628\u0646\u064A \u0639\u0628\u0627\u0633", homeDeliveryPrice: 950, deskDeliveryPrice: 650 },
+      { code: 53, name: "53 - In Salah", arName: "\u0639\u064A\u0646 \u0635\u0627\u0644\u062D", homeDeliveryPrice: 1100, deskDeliveryPrice: 750 },
+      { code: 54, name: "54 - In Guezzam", arName: "\u0639\u064A\u0646 \u0642\u0632\u0627\u0645", homeDeliveryPrice: 1300, deskDeliveryPrice: 900 },
+      { code: 55, name: "55 - Touggourt", arName: "\u062A\u0642\u0631\u062A", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
+      { code: 56, name: "56 - Djanet", arName: "\u062C\u0627\u0646\u062A", homeDeliveryPrice: 1300, deskDeliveryPrice: 900 },
+      { code: 57, name: "57 - El M'Ghair", arName: "\u0627\u0644\u0645\u063A\u064A\u0631", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
+      { code: 58, name: "58 - El Meniaa", arName: "\u0627\u0644\u0645\u0646\u064A\u0639\u0629", homeDeliveryPrice: 850, deskDeliveryPrice: 600 }
+    ];
+  }
+});
+
 // src/lib/date.ts
 var ALGIERS_TIMEZONE, parseDate, formatDateTime, formatDate, formatTime, getAlgiersParts, formatOrderDateTime;
 var init_date = __esm({
@@ -203,73 +1082,6 @@ var init_date = __esm({
   }
 });
 
-// src/data/landingData.ts
-var ALGERIAN_WILAYAS;
-var init_landingData = __esm({
-  "src/data/landingData.ts"() {
-    ALGERIAN_WILAYAS = [
-      { code: 1, name: "01 - Adrar", arName: "\u0623\u062F\u0631\u0627\u0631", homeDeliveryPrice: 900, deskDeliveryPrice: 600 },
-      { code: 2, name: "02 - Chlef", arName: "\u0627\u0644\u0634\u0644\u0641", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 3, name: "03 - Laghouat", arName: "\u0627\u0644\u0623\u063A\u0648\u0627\u0637", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
-      { code: 4, name: "04 - Oum El Bouaghi", arName: "\u0623\u0645 \u0627\u0644\u0628\u0648\u0627\u0642\u064A", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 5, name: "05 - Batna", arName: "\u0628\u0627\u062A\u0646\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 6, name: "06 - B\xE9ja\xEFa", arName: "\u0628\u062C\u0627\u064A\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 7, name: "07 - Biskra", arName: "\u0628\u0633\u0643\u0631\u0629", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
-      { code: 8, name: "08 - B\xE9char", arName: "\u0628\u0634\u0627\u0631", homeDeliveryPrice: 900, deskDeliveryPrice: 600 },
-      { code: 9, name: "09 - Blida", arName: "\u0627\u0644\u0628\u0644\u064A\u062F\u0629", homeDeliveryPrice: 500, deskDeliveryPrice: 350 },
-      { code: 10, name: "10 - Bouira", arName: "\u0627\u0644\u0628\u0648\u064A\u0631\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 11, name: "11 - Tamanrasset", arName: "\u062A\u0645\u0646\u0631\u0627\u0633\u062A", homeDeliveryPrice: 1200, deskDeliveryPrice: 800 },
-      { code: 12, name: "12 - T\xE9bessa", arName: "\u062A\u0628\u0633\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 13, name: "13 - Tlemcen", arName: "\u062A\u0644\u0645\u0633\u0627\u0646", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 14, name: "14 - Tiaret", arName: "\u062A\u064A\u0627\u0631\u062A", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 15, name: "15 - Tizi Ouzou", arName: "\u062A\u064A\u0632\u064A \u0648\u0632\u0648", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 16, name: "16 - Alger", arName: "\u0627\u0644\u062C\u0632\u0627\u0626\u0631 \u0627\u0644\u0639\u0627\u0635\u0645\u0629", homeDeliveryPrice: 400, deskDeliveryPrice: 300 },
-      { code: 17, name: "17 - Djelfa", arName: "\u0627\u0644\u062C\u0644\u0641\u0629", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
-      { code: 18, name: "18 - Jijel", arName: "\u062C\u064A\u062C\u0644", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 19, name: "19 - S\xE9tif", arName: "\u0633\u0637\u064A\u0641", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 20, name: "20 - Sa\xEFda", arName: "\u0633\u0639\u064A\u062F\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 21, name: "21 - Skikda", arName: "\u0633\u0643\u064A\u0643\u062F\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 22, name: "22 - Sidi Bel Abb\xE8s", arName: "\u0633\u064A\u062F\u064A \u0628\u0644\u0639\u0628\u0627\u0633", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 23, name: "23 - Annaba", arName: "\u0639\u0646\u0627\u0628\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 24, name: "24 - Guelma", arName: "\u0642\u0627\u0644\u0645\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 25, name: "25 - Constantine", arName: "\u0642\u0633\u0646\u0637\u064A\u0646\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 26, name: "26 - M\xE9d\xE9a", arName: "\u0627\u0644\u0645\u062F\u064A\u0629", homeDeliveryPrice: 550, deskDeliveryPrice: 350 },
-      { code: 27, name: "27 - Mostaganem", arName: "\u0645\u0633\u062A\u063A\u0627\u0646\u0645", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 28, name: "28 - M'Sila", arName: "\u0627\u0644\u0645\u0633\u064A\u0644\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 29, name: "29 - Mascara", arName: "\u0645\u0639\u0633\u0643\u0631", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 30, name: "30 - Ouargla", arName: "\u0648\u0631\u0642\u0644\u0629", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
-      { code: 31, name: "31 - Oran", arName: "\u0648\u0647\u0631\u0627\u0646", homeDeliveryPrice: 500, deskDeliveryPrice: 350 },
-      { code: 32, name: "32 - El Bayadh", arName: "\u0627\u0644\u0628\u064A\u0636", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
-      { code: 33, name: "33 - Illizi", arName: "\u0625\u0644\u064A\u0632\u064A", homeDeliveryPrice: 1200, deskDeliveryPrice: 800 },
-      { code: 34, name: "34 - Bordj Bou Arreridj", arName: "\u0628\u0631\u062C \u0628\u0648\u0639\u0631\u064A\u0631\u064A\u062C", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 35, name: "35 - Boumerd\xE8s", arName: "\u0628\u0648\u0645\u0631\u062F\u0627\u0633", homeDeliveryPrice: 450, deskDeliveryPrice: 300 },
-      { code: 36, name: "36 - El Tarf", arName: "\u0627\u0644\u0637\u0627\u0631\u0641", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 37, name: "37 - Tindouf", arName: "\u062A\u0646\u062F\u0648\u0641", homeDeliveryPrice: 1200, deskDeliveryPrice: 800 },
-      { code: 38, name: "38 - Tissemsilt", arName: "\u062A\u064A\u0633\u0645\u0633\u064A\u0644\u062A", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 39, name: "39 - El Oued", arName: "\u0627\u0644\u0648\u0627\u062F\u064A", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
-      { code: 40, name: "40 - Khenchela", arName: "\u062E\u0646\u0634\u0644\u0629", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 41, name: "41 - Souk Ahras", arName: "\u0633\u0648\u0642 \u0623\u0647\u0631\u0627\u0633", homeDeliveryPrice: 650, deskDeliveryPrice: 450 },
-      { code: 42, name: "42 - Tipaza", arName: "\u062A\u064A\u0628\u0627\u0632\u0629", homeDeliveryPrice: 450, deskDeliveryPrice: 300 },
-      { code: 43, name: "43 - Mila", arName: "\u0645\u064A\u0644\u0629", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 44, name: "44 - A\xEFn Defla", arName: "\u0639\u064A\u0646 \u0627\u0644\u062F\u0641\u0644\u0649", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 45, name: "45 - Na\xE2ma", arName: "\u0627\u0644\u0646\u0639\u0627\u0645\u0629", homeDeliveryPrice: 800, deskDeliveryPrice: 550 },
-      { code: 46, name: "46 - A\xEFn T\xE9mouchent", arName: "\u0639\u064A\u0646 \u062A\u0645\u0648\u0634\u0646\u062A", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 47, name: "47 - Gharda\xEFa", arName: "\u063A\u0631\u062F\u0627\u064A\u0629", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
-      { code: 48, name: "48 - Relizane", arName: "\u063A\u0644\u064A\u0632\u0627\u0646", homeDeliveryPrice: 600, deskDeliveryPrice: 400 },
-      { code: 49, name: "49 - Timimoun", arName: "\u062A\u064A\u0645\u064A\u0645\u0648\u0646", homeDeliveryPrice: 950, deskDeliveryPrice: 650 },
-      { code: 50, name: "50 - Bordj Badji Mokhtar", arName: "\u0628\u0631\u062C \u0628\u0627\u062C\u064A \u0645\u062E\u062A\u0627\u0631", homeDeliveryPrice: 1300, deskDeliveryPrice: 900 },
-      { code: 51, name: "51 - Ouled Djellal", arName: "\u0623\u0648\u0644\u0627\u062F \u062C\u0644\u0627\u0644", homeDeliveryPrice: 700, deskDeliveryPrice: 500 },
-      { code: 52, name: "52 - B\xE9ni Abb\xE8s", arName: "\u0628\u0646\u064A \u0639\u0628\u0627\u0633", homeDeliveryPrice: 950, deskDeliveryPrice: 650 },
-      { code: 53, name: "53 - In Salah", arName: "\u0639\u064A\u0646 \u0635\u0627\u0644\u062D", homeDeliveryPrice: 1100, deskDeliveryPrice: 750 },
-      { code: 54, name: "54 - In Guezzam", arName: "\u0639\u064A\u0646 \u0642\u0632\u0627\u0645", homeDeliveryPrice: 1300, deskDeliveryPrice: 900 },
-      { code: 55, name: "55 - Touggourt", arName: "\u062A\u0642\u0631\u062A", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
-      { code: 56, name: "56 - Djanet", arName: "\u062C\u0627\u0646\u062A", homeDeliveryPrice: 1300, deskDeliveryPrice: 900 },
-      { code: 57, name: "57 - El M'Ghair", arName: "\u0627\u0644\u0645\u063A\u064A\u0631", homeDeliveryPrice: 750, deskDeliveryPrice: 500 },
-      { code: 58, name: "58 - El Meniaa", arName: "\u0627\u0644\u0645\u0646\u064A\u0639\u0629", homeDeliveryPrice: 850, deskDeliveryPrice: 600 }
-    ];
-  }
-});
-
 // src/lib/analyticsService.ts
 var analyticsService_exports = {};
 __export(analyticsService_exports, {
@@ -396,20 +1208,20 @@ function normalizePhone(rawPhone) {
 }
 function getWilayaArabicName(wilayaInput) {
   if (!wilayaInput) return "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F";
-  const str = String(wilayaInput).trim();
-  const codeMatch = str.match(/^0?(\d{1,2})/);
+  const str3 = String(wilayaInput).trim();
+  const codeMatch = str3.match(/^0?(\d{1,2})/);
   if (codeMatch) {
     const codeNum = parseInt(codeMatch[1], 10);
     const found = ALGERIAN_WILAYAS.find((w) => w.code === codeNum);
     if (found) return found.arName;
   }
-  const strLower = str.toLowerCase();
+  const strLower = str3.toLowerCase();
   for (const w of ALGERIAN_WILAYAS) {
-    if (w.arName.includes(str) || str.includes(w.arName)) return w.arName;
+    if (w.arName.includes(str3) || str3.includes(w.arName)) return w.arName;
     const cleanFr = w.name.replace(/^\d+\s*-\s*/, "").toLowerCase();
     if (strLower.includes(cleanFr) || cleanFr.includes(strLower)) return w.arName;
   }
-  return str;
+  return str3;
 }
 function calculateVariation(current, previous) {
   if (previous === 0) {
@@ -862,7 +1674,7 @@ __export(server_exports, {
   getApp: () => getApp
 });
 module.exports = __toCommonJS(server_exports);
-var import_express3 = __toESM(require("express"));
+var import_express5 = __toESM(require("express"));
 var import_path2 = __toESM(require("path"));
 var import_vite = require("vite");
 var import_cookie_parser = __toESM(require("cookie-parser"));
@@ -872,61 +1684,7 @@ var import_express = __toESM(require("express"));
 var import_bcryptjs = __toESM(require("bcryptjs"));
 var import_crypto = __toESM(require("crypto"));
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
-
-// src/lib/firebase-backend.ts
-var import_app = require("firebase/app");
-var import_firestore = require("firebase/firestore");
-var import_fs = __toESM(require("fs"));
-var import_path = __toESM(require("path"));
-
-// firebase-applet-config.json
-var firebase_applet_config_default = {
-  projectId: "e-nova-119f6",
-  appId: "1:795929637617:web:a29219d699b5708c04af50",
-  apiKey: "AIzaSyAPba-JHcnm3oJhfOK49UIliaif4d346Is",
-  authDomain: "e-nova-119f6.firebaseapp.com",
-  firestoreDatabaseId: "(default)",
-  storageBucket: "e-nova-119f6.firebasestorage.app",
-  messagingSenderId: "795929637617",
-  measurementId: "",
-  oAuthClientId: "795929637617-n73fckb96f8vukthadehpr95oufm5s9m.apps.googleusercontent.com",
-  recaptchaSiteKey: ""
-};
-
-// src/lib/firebase-backend.ts
-var rawConfig = firebase_applet_config_default ?? {};
-try {
-  const configPath = import_path.default.resolve(process.cwd(), "firebase-applet-config.json");
-  if (import_fs.default.existsSync(configPath)) {
-    rawConfig = JSON.parse(import_fs.default.readFileSync(configPath, "utf8"));
-  }
-} catch (e) {
-  console.warn("Failed to load firebase-applet-config.json:", e);
-}
-var firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || rawConfig.apiKey || "COLLER_ICI",
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN || rawConfig.authDomain || "e-nova-119f6.firebaseapp.com",
-  projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId || "e-nova-119f6",
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || rawConfig.storageBucket || "e-nova-119f6.firebasestorage.app",
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || rawConfig.messagingSenderId || "COLLER_ICI",
-  appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || rawConfig.appId || "COLLER_ICI",
-  firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || rawConfig.firestoreDatabaseId || "(default)"
-};
-var app = (0, import_app.initializeApp)(firebaseConfig);
-var db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)" ? (0, import_firestore.initializeFirestore)(
-  app,
-  {
-    experimentalForceLongPolling: true
-  },
-  firebaseConfig.firestoreDatabaseId
-) : (0, import_firestore.initializeFirestore)(
-  app,
-  {
-    experimentalForceLongPolling: true
-  }
-);
-
-// src/routes/adminAuth.ts
+init_firebase_backend();
 var import_firestore2 = require("firebase/firestore");
 var router = import_express.default.Router();
 var JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_in_dev_only";
@@ -1112,595 +1870,2595 @@ router.post("/logout", (req, res) => {
 });
 var adminAuth_default = router;
 
-// src/routes/adminApi.ts
-var import_express2 = __toESM(require("express"));
-var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
-var import_firestore3 = require("firebase/firestore");
-var router2 = import_express2.default.Router();
-var JWT_SECRET2 = process.env.JWT_SECRET || "fallback_secret_in_dev_only";
-var ROLE_PERMISSIONS = {
-  super_admin: ["dashboard", "members", "stores", "billing", "payments", "stats", "themes", "extensions", "integrations", "settings", "notifications", "audit", "health", "media"],
-  support: ["dashboard", "members", "stores", "notifications", "audit"],
-  finance: ["dashboard", "billing", "payments", "stats", "audit"],
-  readonly: ["dashboard", "members", "stores", "stats"]
-};
-var SUPER_ADMIN_EMAILS = (process.env.SUPER_ADMIN_EMAILS || "ecomto360@gmail.com,nabsterzero@gmail.com").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-var rateBuckets = /* @__PURE__ */ new Map();
-function rateLimit(key, windowMs, max) {
-  const now = Date.now();
-  const arr = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
-  if (arr.length >= max) {
-    rateBuckets.set(key, arr);
-    return false;
-  }
-  arr.push(now);
-  rateBuckets.set(key, arr);
-  if (rateBuckets.size > 5e3) rateBuckets.clear();
-  return true;
+// server.ts
+init_adminApi();
+
+// src/routes/adminModules.ts
+var import_express3 = __toESM(require("express"));
+var import_firestore4 = require("firebase/firestore");
+init_firebase_backend();
+init_adminApi();
+var router3 = import_express3.default.Router();
+var adminOf = (req) => req.admin;
+var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
+var str = (v) => typeof v === "string" ? v : v == null ? "" : String(v);
+var num = (v) => typeof v === "number" ? v : Number(v) || 0;
+var SYSTEM_IDENTITY = { id: "system", email: "system@e-nova", role: "super_admin", via: "admin_session" };
+function isTestTenant(data) {
+  if (data.isTest === true) return true;
+  const email = str(data.ownerEmail).toLowerCase();
+  return email.endsWith("@dztest.com") || email.endsWith("@test.com") || email.endsWith("@example.com");
 }
-async function verifyFirebaseIdToken(idToken) {
+async function loadTenantsBounded(max = 400) {
+  const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants"), (0, import_firestore4.orderBy)("createdAt", "desc"), (0, import_firestore4.limit)(max)));
+  return snap.docs.map((d) => ({ id: d.id, data: d.data() || {} }));
+}
+async function presenceOf(uid) {
   try {
-    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseConfig.apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken })
-    });
-    if (!res.ok) return null;
-    const j = await res.json();
-    const u = j.users?.[0];
-    if (!u || !u.localId) return null;
-    let claims = {};
-    try {
-      claims = u.customAttributes ? JSON.parse(u.customAttributes) : {};
-    } catch {
-      claims = {};
-    }
-    return { uid: u.localId, email: (u.email || "").toLowerCase(), claims, disabled: u.disabled === true };
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "user_presence", uid));
+    if (!snap.exists()) return { lastSeenAt: "", lastLoginAt: "", online: false };
+    const d = snap.data();
+    const seen = isoOf(d.lastSeenAt);
+    return {
+      lastSeenAt: seen,
+      lastLoginAt: isoOf(d.lastLoginAt),
+      online: !!seen && Date.now() - Date.parse(seen) < 12e4,
+      device: str(d.device) || void 0,
+      country: str(d.country) || void 0
+    };
   } catch {
-    return null;
+    return { lastSeenAt: "", lastLoginAt: "", online: false };
   }
 }
-function tokenFromRequest(req) {
-  const auth = req.headers.authorization || "";
-  if (auth.toLowerCase().startsWith("bearer ")) {
-    return { kind: "bearer", value: auth.slice(7).trim() };
-  }
-  const cookie = req.cookies?.admin_jwt;
-  if (cookie) return { kind: "admin_jwt", value: cookie };
-  return null;
-}
-async function resolveAdmin(req) {
-  const token = tokenFromRequest(req);
-  if (!token) return null;
-  if (token.kind === "admin_jwt") {
-    try {
-      const payload = import_jsonwebtoken2.default.verify(token.value, JWT_SECRET2);
-      if (!payload.admin_id) return null;
-      try {
-        const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "admin_users", payload.admin_id));
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.is_active === false) return null;
-          const role2 = normalizeRole(data.role || payload.role);
-          return { id: payload.admin_id, email: (data.email || "").toLowerCase(), role: role2, via: "admin_session" };
-        }
-      } catch {
-      }
-      const role = normalizeRole(payload.role);
-      return { id: payload.admin_id, email: "", role, via: "admin_session" };
-    } catch {
-      return null;
-    }
-  }
-  const fb = await verifyFirebaseIdToken(token.value);
-  if (!fb || fb.disabled) return null;
-  const hasClaim = fb.claims.superAdmin === true;
-  const inList = SUPER_ADMIN_EMAILS.includes(fb.email);
-  if (!hasClaim && !inList) return null;
-  return { id: fb.uid, email: fb.email, role: "super_admin", via: hasClaim ? "firebase_claim" : "super_admin_emails" };
-}
-function normalizeRole(role) {
-  return role === "support" || role === "finance" || role === "readonly" ? role : "super_admin";
-}
-function can(role, module2) {
-  return ROLE_PERMISSIONS[role].includes(module2);
-}
-function adminApiGuard(module2 = null) {
-  return async (req, res, next) => {
-    if (!rateLimit(`admin:${req.ip || "unknown"}`, 6e4, 60)) {
-      res.status(429).json({ error: "Trop de requ\xEAtes." });
-      return;
-    }
-    const admin = await resolveAdmin(req);
-    if (!admin) {
-      res.status(403).json({ error: "Acc\xE8s refus\xE9." });
-      return;
-    }
-    if (module2 && !can(admin.role, module2)) {
-      res.status(403).json({ error: "Permission insuffisante pour ce module." });
-      return;
-    }
-    req.admin = admin;
-    next();
+function tenantRow(t, presence) {
+  return {
+    id: t.id,
+    storeName: str(t.data.storeName) || str(t.data.name) || "\u2014",
+    ownerEmail: str(t.data.ownerEmail).toLowerCase(),
+    phone: str(t.data.phone || t.data.ownerPhone || ""),
+    slug: str(t.data.slug),
+    plan: str(t.data.plan || "\u2014"),
+    status: str(t.data.status || "active"),
+    createdAt: isoOf(t.data.createdAt),
+    planExpiresAt: isoOf(t.data.planExpiresAt),
+    lastLoginAt: presence.lastLoginAt,
+    lastSeenAt: presence.lastSeenAt,
+    online: presence.online,
+    isTest: isTestTenant(t.data),
+    admin_notes: str(t.data.admin_notes)
   };
 }
-var SECRET_KEYS = /password|passwd|secret|token|api[-_]?key|private|credential|authorization|cookie/i;
-function sanitizeForAudit(value, depth = 0) {
-  if (depth > 4) return "[\u2026]";
-  if (value === null || value === void 0) return null;
-  if (typeof value === "string") return value.length > 300 ? value.slice(0, 300) + "\u2026" : value;
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (Array.isArray(value)) return value.slice(0, 20).map((v) => sanitizeForAudit(v, depth + 1));
-  if (typeof value === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) {
-      out[k] = SECRET_KEYS.test(k) ? "\xAB masqu\xE9 \xBB" : sanitizeForAudit(v, depth + 1);
-    }
-    return out;
-  }
-  return String(value);
+function toCsv(headers, rows) {
+  const esc = (v) => {
+    const s = String(v ?? "").replace(/"/g, '""');
+    return /[";\n]/.test(s) ? `"${s}"` : s;
+  };
+  return "\uFEFF" + [headers.map(esc).join(";"), ...rows.map((r) => r.map(esc).join(";"))].join("\r\n");
 }
-async function logAdminAudit(params) {
+var csvResponse = (res, filename, csv) => {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(csv);
+};
+router3.get("/members", adminApiGuard("members"), async (req, res) => {
   try {
-    await (0, import_firestore3.addDoc)((0, import_firestore3.collection)(db, "admin_audit"), {
-      at: (/* @__PURE__ */ new Date()).toISOString(),
-      actorId: params.actor.id,
-      actorEmail: params.actor.email || "inconnu",
-      actorRole: params.actor.role,
-      action: String(params.action).slice(0, 80),
-      target: params.target ? String(params.target).slice(0, 160) : "",
-      before: params.before === void 0 ? null : sanitizeForAudit(params.before),
-      after: params.after === void 0 ? null : sanitizeForAudit(params.after),
-      ip: params.req?.ip || "",
-      userAgent: String(params.req?.headers["user-agent"] || "").slice(0, 200)
+    const { search = "", status = "", plan = "", sort = "createdAt", includeTest = "1" } = req.query;
+    const tenants = await loadTenantsBounded();
+    const withPresence = await Promise.all(tenants.map(async (t) => tenantRow(t, await presenceOf(t.id))));
+    let rows = includeTest === "0" ? withPresence.filter((r) => !r.isTest) : withPresence;
+    const q = search.trim().toLowerCase();
+    if (q) rows = rows.filter((r) => r.storeName.toLowerCase().includes(q) || r.ownerEmail.includes(q) || r.phone.includes(q) || r.slug.toLowerCase().includes(q));
+    if (status) rows = rows.filter((r) => status === "online" ? r.online : r.status === status);
+    if (plan) rows = rows.filter((r) => r.plan === plan);
+    const sorters = {
+      createdAt: (a, b) => b.createdAt.localeCompare(a.createdAt),
+      storeName: (a, b) => a.storeName.localeCompare(b.storeName),
+      planExpiresAt: (a, b) => a.planExpiresAt.localeCompare(b.planExpiresAt),
+      lastLoginAt: (a, b) => b.lastLoginAt.localeCompare(a.lastLoginAt)
+    };
+    rows.sort(sorters[sort] || sorters.createdAt);
+    if (req.query.format === "csv") {
+      return csvResponse(res, "membres-e-nova.csv", toCsv(
+        ["Nom boutique", "Email", "Telephone", "Slug", "Plan", "Statut", "Inscription", "Expiration", "Derniere connexion", "En ligne", "Test"],
+        rows.map((r) => [r.storeName, r.ownerEmail, r.phone, r.slug, r.plan, r.status, r.createdAt, r.planExpiresAt, r.lastLoginAt, r.online ? "oui" : "non", r.isTest ? "oui" : "non"])
+      ));
+    }
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(5, parseInt(String(req.query.pageSize || "20"), 10) || 20));
+    res.json({ total: rows.length, page, pageSize, pages: Math.max(1, Math.ceil(rows.length / pageSize)), rows: rows.slice((page - 1) * pageSize, page * pageSize) });
+  } catch (e) {
+    console.error("GET /members", e);
+    res.status(500).json({ error: "Erreur lors du chargement des membres." });
+  }
+});
+router3.get("/members/:id", adminApiGuard("members"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Membre introuvable." });
+    const data = snap.data();
+    const presence = await presenceOf(req.params.id);
+    const [paySnap, ordSnap, prodSnap, auditSnap] = await Promise.all([
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "payments"), (0, import_firestore4.where)("tenantId", "==", req.params.id), (0, import_firestore4.limit)(100))).catch(() => null),
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants", req.params.id, "orders"), (0, import_firestore4.limit)(500))).catch(() => null),
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants", req.params.id, "products"), (0, import_firestore4.limit)(500))).catch(() => null),
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "admin_audit"), (0, import_firestore4.orderBy)("at", "desc"), (0, import_firestore4.limit)(200))).catch(() => null)
+    ]);
+    const payments = (paySnap ? paySnap.docs : []).map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => str(b.createdAt).localeCompare(str(a.createdAt)));
+    const activity = (auditSnap ? auditSnap.docs : []).map((d) => ({ id: d.id, ...d.data() })).filter((a) => str(a.target).includes(req.params.id)).slice(0, 15);
+    res.json({
+      member: tenantRow({ id: req.params.id, data }, presence),
+      store: { slug: str(data.slug), theme: str(data.theme || ""), settings: str(data.settings ? "configur\xE9" : "") },
+      counts: { payments: payments.length, orders: ordSnap ? ordSnap.size : 0, products: prodSnap ? prodSnap.size : 0 },
+      payments,
+      activity,
+      presence
     });
   } catch (e) {
-    console.warn("admin_audit write failed:", e);
+    console.error("GET /members/:id", e);
+    res.status(500).json({ error: "Erreur lors du chargement de la fiche membre." });
+  }
+});
+router3.patch("/members/:id", adminApiGuard("members"), async (req, res) => {
+  try {
+    const allowed = ["storeName", "phone", "admin_notes", "ownerEmail"];
+    const patch = {};
+    for (const k of allowed) if (k in (req.body || {})) patch[k] = str(req.body[k]).slice(0, k === "admin_notes" ? 2e3 : 200);
+    if (!Object.keys(patch).length) return res.status(400).json({ error: "Aucun champ modifiable fourni." });
+    const before = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!before.exists()) return res.status(404).json({ error: "Membre introuvable." });
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id), patch);
+    await logAdminAudit({ actor: adminOf(req), action: "member.update", target: req.params.id, before: before.data(), after: patch, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PATCH /members/:id", e);
+    res.status(500).json({ error: "Erreur lors de la mise \xE0 jour." });
+  }
+});
+router3.post("/members/:id/suspend", adminApiGuard("members"), async (req, res) => {
+  try {
+    const reason = str(req.body?.reason).slice(0, 300);
+    const before = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!before.exists()) return res.status(404).json({ error: "Membre introuvable." });
+    const patch = { status: "suspended", suspendedAt: nowIso(), suspendReason: reason };
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id), patch);
+    await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "user_presence", req.params.id)).catch(() => void 0);
+    await logAdminAudit({ actor: adminOf(req), action: "member.suspend", target: req.params.id, before: { status: str(before.data().status) }, after: patch, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("POST suspend", e);
+    res.status(500).json({ error: "Erreur lors de la suspension." });
+  }
+});
+router3.post("/members/:id/reactivate", adminApiGuard("members"), async (req, res) => {
+  try {
+    const before = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!before.exists()) return res.status(404).json({ error: "Membre introuvable." });
+    const patch = { status: "active", suspendedAt: null, suspendReason: null };
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id), patch);
+    await logAdminAudit({ actor: adminOf(req), action: "member.reactivate", target: req.params.id, before: { status: str(before.data().status) }, after: patch, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("POST reactivate", e);
+    res.status(500).json({ error: "Erreur lors de la r\xE9activation." });
+  }
+});
+router3.post("/members/:id/reset-password", adminApiGuard("members"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Membre introuvable." });
+    const email = str(snap.data().ownerEmail).toLowerCase();
+    const apiKey = String(firebaseConfig.apiKey || "");
+    if (!apiKey) return res.status(500).json({ error: "Cl\xE9 API Firebase indisponible c\xF4t\xE9 serveur." });
+    const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestType: "PASSWORD_RESET", email })
+    });
+    if (!r.ok) return res.status(502).json({ error: "Firebase a refus\xE9 l'envoi de l'email de r\xE9initialisation." });
+    await logAdminAudit({ actor: adminOf(req), action: "member.reset_password_email", target: req.params.id, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("POST reset-password", e);
+    res.status(500).json({ error: "Erreur lors de l'envoi de l'email de r\xE9initialisation." });
+  }
+});
+router3.delete("/members/:id", adminApiGuard("members"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Membre introuvable." });
+    const data = snap.data();
+    const del = async (col, doc0, sub, max = 200) => {
+      try {
+        const s = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, col, doc0, sub), (0, import_firestore4.limit)(max)));
+        await Promise.all(s.docs.map((d) => (0, import_firestore4.deleteDoc)(d.ref)));
+        return s.size;
+      } catch {
+        return 0;
+      }
+    };
+    const counts = {
+      orders: await del("tenants", req.params.id, "orders"),
+      products: await del("tenants", req.params.id, "products"),
+      carts: await del("tenants", req.params.id, "abandoned_carts"),
+      settings: await del("tenants", req.params.id, "settings", 20)
+    };
+    let payDeleted = 0;
+    try {
+      const pays = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "payments"), (0, import_firestore4.where)("tenantId", "==", req.params.id), (0, import_firestore4.limit)(200)));
+      await Promise.all(pays.docs.map((d) => (0, import_firestore4.deleteDoc)(d.ref)));
+      payDeleted = pays.size;
+    } catch {
+    }
+    await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "user_presence", req.params.id)).catch(() => void 0);
+    await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    await logAdminAudit({ actor: adminOf(req), action: "member.delete", target: req.params.id, before: { storeName: str(data.storeName), ownerEmail: str(data.ownerEmail) }, after: { ...counts, payments: payDeleted }, req });
+    res.json({ ok: true, deleted: { ...counts, payments: payDeleted } });
+  } catch (e) {
+    console.error("DELETE /members/:id", e);
+    res.status(500).json({ error: "Erreur lors de la suppression." });
+  }
+});
+router3.get("/members/:id/support-view", adminApiGuard("members"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Membre introuvable." });
+    const data = snap.data();
+    const safe = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (/pass|secret|token|key/i.test(k)) continue;
+      safe[k] = v;
+    }
+    const [prods, ords] = await Promise.all([
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants", req.params.id, "products"), (0, import_firestore4.limit)(50))).catch(() => null),
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants", req.params.id, "orders"), (0, import_firestore4.orderBy)("createdAt", "desc"), (0, import_firestore4.limit)(20))).catch(() => null)
+    ]);
+    await logAdminAudit({ actor: adminOf(req), action: "member.support_view", target: req.params.id, req });
+    res.json({
+      member: tenantRow({ id: req.params.id, data }, await presenceOf(req.params.id)),
+      settings: safe,
+      products: prods ? prods.docs.map((d) => ({ id: d.id, name: str(d.data().name), price: num(d.data().price) })) : [],
+      orders: ords ? ords.docs.map((d) => ({ id: d.id, ...d.data() })) : []
+    });
+  } catch (e) {
+    console.error("support-view", e);
+    res.status(500).json({ error: "Erreur lors de l'ouverture de la vue support." });
+  }
+});
+router3.get("/stores", adminApiGuard("stores"), async (req, res) => {
+  try {
+    const { search = "", status = "" } = req.query;
+    const tenants = await loadTenantsBounded();
+    const rows = tenants.map((t) => {
+      const d = t.data;
+      return {
+        id: t.id,
+        name: str(d.storeName) || "\u2014",
+        slug: str(d.slug),
+        owner: str(d.ownerEmail).toLowerCase(),
+        plan: str(d.plan || "\u2014"),
+        status: str(d.status || "active"),
+        theme: str(d.theme || "d\xE9faut"),
+        createdAt: isoOf(d.createdAt),
+        isTest: isTestTenant(d)
+      };
+    });
+    let list = rows;
+    const q = search.trim().toLowerCase();
+    if (q) list = list.filter((r) => r.name.toLowerCase().includes(q) || r.slug.includes(q) || r.owner.includes(q));
+    if (status) list = list.filter((r) => r.status === status);
+    if (req.query.format === "csv") {
+      return csvResponse(res, "boutiques-e-nova.csv", toCsv(["Boutique", "Slug", "Proprietaire", "Plan", "Theme", "Statut", "Creee le"], list.map((r) => [r.name, r.slug, r.owner, r.plan, r.theme, r.status, r.createdAt])));
+    }
+    res.json({ total: list.length, rows: list });
+  } catch (e) {
+    console.error("GET /stores", e);
+    res.status(500).json({ error: "Erreur lors du chargement des boutiques." });
+  }
+});
+router3.post("/stores/:id/slug", adminApiGuard("stores"), async (req, res) => {
+  try {
+    const slug = str(req.body?.slug).trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 60);
+    if (!slug || slug.length < 3) return res.status(400).json({ error: "Slug invalide (3 caract\xE8res minimum)." });
+    const reserved = await reservedSlugs();
+    if (reserved.includes(slug)) return res.status(400).json({ error: "Ce slug est r\xE9serv\xE9 par la plateforme." });
+    const dup = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants"), (0, import_firestore4.where)("slug", "==", slug), (0, import_firestore4.limit)(2)));
+    if (dup.size > 0 && dup.docs[0].id !== req.params.id) return res.status(400).json({ error: "Ce slug est d\xE9j\xE0 utilis\xE9 par une autre boutique." });
+    const before = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!before.exists()) return res.status(404).json({ error: "Boutique introuvable." });
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id), { slug });
+    await logAdminAudit({ actor: adminOf(req), action: "store.slug_change", target: req.params.id, before: { slug: str(before.data().slug) }, after: { slug }, req });
+    res.json({ ok: true, slug });
+  } catch (e) {
+    console.error("POST slug", e);
+    res.status(500).json({ error: "Erreur lors du changement de slug." });
+  }
+});
+async function reservedSlugs() {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "platform_settings", "general"));
+    const d = snap.data();
+    return Array.isArray(d?.reservedSlugs) ? d.reservedSlugs.map(String) : ["admin", "api", "login", "register", "store", "dashboard", "legal"];
+  } catch {
+    return ["admin", "api", "login", "register", "store", "dashboard", "legal"];
   }
 }
-function presenceMetaFromBody(body) {
-  const tz = (() => {
+var DEFAULT_PLANS = [
+  { name: "Gratuit", priceMonthly: 0, currency: "DZD", trialDays: 0, maxProducts: 10, allowedThemes: ["classique"], allowedExtensions: [], waQuota: 0, active: true, sortOrder: 0 },
+  { name: "Starter", priceMonthly: 2500, currency: "DZD", trialDays: 7, maxProducts: 50, allowedThemes: ["classique", "moderne"], allowedExtensions: ["whatsapp"], waQuota: 100, active: true, sortOrder: 1 },
+  { name: "Business", priceMonthly: 4500, currency: "DZD", trialDays: 14, maxProducts: 200, allowedThemes: ["classique", "moderne", "luxe"], allowedExtensions: ["whatsapp", "pixels"], waQuota: 500, active: true, sortOrder: 2 },
+  { name: "Pro", priceMonthly: 7500, currency: "DZD", trialDays: 14, maxProducts: 1e3, allowedThemes: ["*"], allowedExtensions: ["*"], waQuota: 2e3, active: true, sortOrder: 3 }
+];
+var slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+async function listPlans() {
+  const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "plans"), (0, import_firestore4.orderBy)("sortOrder", "asc"), (0, import_firestore4.limit)(50)));
+  if (!snap.empty) return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  await Promise.all(DEFAULT_PLANS.map((p) => (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "plans", slugify(p.name)), { ...p }, { merge: true })));
+  return DEFAULT_PLANS.map((p) => ({ id: slugify(p.name), ...p }));
+}
+router3.get("/plans", adminApiGuard("billing"), async (_req, res) => {
+  try {
+    res.json({ plans: await listPlans() });
+  } catch (e) {
+    console.error("GET /plans", e);
+    res.status(500).json({ error: "Erreur plans." });
+  }
+});
+router3.post("/plans", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const name = str(b.name).trim().slice(0, 60);
+    if (!name) return res.status(400).json({ error: "Nom du plan requis." });
+    const plan = {
+      name,
+      priceMonthly: Math.max(0, num(b.priceMonthly)),
+      currency: "DZD",
+      trialDays: Math.max(0, Math.min(90, num(b.trialDays))),
+      maxProducts: Math.max(1, num(b.maxProducts) || 50),
+      allowedThemes: Array.isArray(b.allowedThemes) ? b.allowedThemes.map(String) : ["classique"],
+      allowedExtensions: Array.isArray(b.allowedExtensions) ? b.allowedExtensions.map(String) : [],
+      waQuota: Math.max(0, num(b.waQuota)),
+      active: b.active !== false,
+      sortOrder: num(b.sortOrder)
+    };
+    const id = slugify(name);
+    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "plans", id), plan, { merge: true });
+    await logAdminAudit({ actor: adminOf(req), action: "plan.create", target: id, after: plan, req });
+    res.json({ ok: true, id });
+  } catch (e) {
+    console.error("POST /plans", e);
+    res.status(500).json({ error: "Erreur cr\xE9ation plan." });
+  }
+});
+router3.patch("/plans/:id", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const before = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "plans", req.params.id));
+    if (!before.exists()) return res.status(404).json({ error: "Plan introuvable." });
+    const b = req.body || {};
+    const patch = {};
+    if ("name" in b) patch.name = str(b.name).slice(0, 60);
+    if ("priceMonthly" in b) patch.priceMonthly = Math.max(0, num(b.priceMonthly));
+    if ("trialDays" in b) patch.trialDays = Math.max(0, Math.min(90, num(b.trialDays)));
+    if ("maxProducts" in b) patch.maxProducts = Math.max(1, num(b.maxProducts) || 50);
+    if ("allowedThemes" in b) patch.allowedThemes = Array.isArray(b.allowedThemes) ? b.allowedThemes.map(String) : [];
+    if ("allowedExtensions" in b) patch.allowedExtensions = Array.isArray(b.allowedExtensions) ? b.allowedExtensions.map(String) : [];
+    if ("waQuota" in b) patch.waQuota = Math.max(0, num(b.waQuota));
+    if ("active" in b) patch.active = b.active === true;
+    if ("sortOrder" in b) patch.sortOrder = num(b.sortOrder);
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "plans", req.params.id), patch);
+    await logAdminAudit({ actor: adminOf(req), action: "plan.update", target: req.params.id, before: before.data(), after: patch, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PATCH /plans", e);
+    res.status(500).json({ error: "Erreur mise \xE0 jour plan." });
+  }
+});
+router3.delete("/plans/:id", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const inUse = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants"), (0, import_firestore4.where)("plan", "==", req.params.id), (0, import_firestore4.limit)(1)));
+    if (inUse.size > 0) return res.status(400).json({ error: "Plan utilis\xE9 par des boutiques : d\xE9sactivez-le plut\xF4t que le supprimer." });
+    await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "plans", req.params.id));
+    await logAdminAudit({ actor: adminOf(req), action: "plan.delete", target: req.params.id, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /plans", e);
+    res.status(500).json({ error: "Erreur suppression plan." });
+  }
+});
+router3.get("/subscriptions", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const { state = "", plan = "", search = "" } = req.query;
+    const [tenants, plans] = await Promise.all([loadTenantsBounded(), listPlans()]);
+    const planName = (p) => plans.find((x) => x.id === p || x.name.toLowerCase() === p.toLowerCase())?.name || p;
+    const now = Date.now();
+    let rows = tenants.map((t) => {
+      const d = t.data;
+      const exp = isoOf(d.planExpiresAt);
+      const status = str(d.status || "active");
+      const state2 = status === "suspended" ? "suspendu" : status === "cancelled" ? "annul\xE9" : exp && Date.parse(exp) < now ? "expir\xE9" : "actif";
+      return {
+        id: t.id,
+        storeName: str(d.storeName) || "\u2014",
+        ownerEmail: str(d.ownerEmail).toLowerCase(),
+        plan: str(d.plan || "\u2014"),
+        planLabel: planName(str(d.plan || "")),
+        planExpiresAt: exp,
+        state: state2,
+        status,
+        isTest: isTestTenant(d),
+        daysLeft: exp ? Math.ceil((Date.parse(exp) - now) / 864e5) : null
+      };
+    });
+    const q = search.trim().toLowerCase();
+    if (q) rows = rows.filter((r) => r.storeName.toLowerCase().includes(q) || r.ownerEmail.includes(q));
+    if (plan) rows = rows.filter((r) => r.plan === plan);
+    if (state) rows = rows.filter((r) => r.state === state);
+    if (req.query.format === "csv") {
+      return csvResponse(res, "abonnements-e-nova.csv", toCsv(["Boutique", "Email", "Plan", "Expiration", "Jours restants", "Etat"], rows.map((r) => [r.storeName, r.ownerEmail, r.planLabel, r.planExpiresAt, r.daysLeft ?? "", r.state])));
+    }
+    res.json({ total: rows.length, rows: rows.sort((a, b) => (b.planExpiresAt || "").localeCompare(a.planExpiresAt || "")) });
+  } catch (e) {
+    console.error("GET /subscriptions", e);
+    res.status(500).json({ error: "Erreur abonnements." });
+  }
+});
+router3.post("/subscriptions/:id/extend", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(3650, num(req.body?.days) || 30));
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Abonnement introuvable." });
+    const d = snap.data();
+    const current = isoOf(d.planExpiresAt);
+    const base = current && Date.parse(current) > Date.now() ? Date.parse(current) : Date.now();
+    const planExpiresAt = new Date(base + days * 864e5).toISOString();
+    const patch = { planExpiresAt, status: "active", suspendedAt: null, suspendReason: null };
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id), patch);
+    await logAdminAudit({ actor: adminOf(req), action: "subscription.extend", target: req.params.id, before: { planExpiresAt: current }, after: { planExpiresAt, days }, req });
+    res.json({ ok: true, planExpiresAt });
+  } catch (e) {
+    console.error("extend", e);
+    res.status(500).json({ error: "Erreur prolongation." });
+  }
+});
+router3.post("/subscriptions/:id/plan", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const planId = str(req.body?.planId);
+    const plans = await listPlans();
+    if (!plans.find((p) => p.id === planId)) return res.status(400).json({ error: "Plan inconnu." });
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Abonnement introuvable." });
+    const d = snap.data();
+    const before = { plan: str(d.plan), planExpiresAt: isoOf(d.planExpiresAt) };
+    const patch = { plan: planId };
+    if (req.body?.resetExpiry === true) patch.planExpiresAt = new Date(Date.now() + 30 * 864e5).toISOString();
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id), patch);
+    await logAdminAudit({ actor: adminOf(req), action: "subscription.plan_change", target: req.params.id, before, after: patch, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("plan change", e);
+    res.status(500).json({ error: "Erreur changement de plan." });
+  }
+});
+router3.post("/subscriptions/:id/cancel", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const before = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id));
+    if (!before.exists()) return res.status(404).json({ error: "Abonnement introuvable." });
+    const patch = { status: "cancelled", cancelledAt: nowIso() };
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "tenants", req.params.id), patch);
+    await logAdminAudit({ actor: adminOf(req), action: "subscription.cancel", target: req.params.id, before: { status: str(before.data().status) }, after: patch, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("cancel", e);
+    res.status(500).json({ error: "Erreur annulation." });
+  }
+});
+async function loadPaymentsBounded(max = 500) {
+  const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "payments"), (0, import_firestore4.orderBy)("createdAt", "desc"), (0, import_firestore4.limit)(max)));
+  return snap.docs.map((d) => {
+    const x = d.data();
+    return {
+      id: d.id,
+      tenantId: str(x.tenantId),
+      storeName: str(x.storeName),
+      email: str(x.email || x.ownerEmail).toLowerCase(),
+      amountDA: num(x.amountDA),
+      paymentMethod: str(x.paymentMethod || x.method),
+      status: str(x.status),
+      createdAt: isoOf(x.createdAt),
+      note: str(x.note || x.notes),
+      proofUrl: str(x.proofUrl || x.receiptUrl || x.url)
+    };
+  });
+}
+router3.get("/payments", adminApiGuard("payments"), async (req, res) => {
+  try {
+    const { status = "", method = "", search = "" } = req.query;
+    let rows = await loadPaymentsBounded();
+    const q = search.trim().toLowerCase();
+    if (q) rows = rows.filter((p) => p.storeName.toLowerCase().includes(q) || p.email.includes(q) || p.id.toLowerCase().includes(q));
+    if (status) rows = rows.filter((p) => p.status === status);
+    if (method) rows = rows.filter((p) => p.paymentMethod.toLowerCase().includes(method.toLowerCase()));
+    if (req.query.format === "csv") {
+      return csvResponse(res, "paiements-e-nova.csv", toCsv(["Date", "Boutique", "Email", "Montant DA", "Methode", "Statut", "Note"], rows.map((p) => [p.createdAt, p.storeName, p.email, p.amountDA, p.paymentMethod, p.status, p.note])));
+    }
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(5, parseInt(String(req.query.pageSize || "20"), 10) || 20));
+    const manual = rows.filter((p) => p.status === "pending" && /ccp|baridi|virement|manual/i.test(p.paymentMethod)).length;
+    res.json({ total: rows.length, pendingManual: manual, page, pageSize, pages: Math.max(1, Math.ceil(rows.length / pageSize)), rows: rows.slice((page - 1) * pageSize, page * pageSize) });
+  } catch (e) {
+    console.error("GET /payments", e);
+    res.status(500).json({ error: "Erreur paiements." });
+  }
+});
+async function nextInvoiceNumber() {
+  const year = (/* @__PURE__ */ new Date()).getUTCFullYear();
+  const ref = (0, import_firestore4.doc)(db, "platform_counters", "invoice_seq");
+  let value = 1;
+  await (0, import_firestore4.runTransaction)(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists() ? num(snap.data()[String(year)]) : 0;
+    value = cur + 1;
+    tx.set(ref, { [String(year)]: value }, { merge: true });
+  });
+  return `INV-${year}-${String(value).padStart(4, "0")}`;
+}
+var PAYMENT_VALIDATED = ["completed", "validated", "valid\xE9", "valide"];
+router3.post("/payments/:id/validate", adminApiGuard("payments"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "payments", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Paiement introuvable." });
+    const pay = snap.data();
+    if (PAYMENT_VALIDATED.includes(str(pay.status))) return res.status(400).json({ error: "Ce paiement est d\xE9j\xE0 valid\xE9." });
+    const extendDays = Math.max(1, Math.min(365, num(req.body?.extendDays) || 30));
+    const planId = str(req.body?.planId || pay.plan || "");
+    const note = str(req.body?.note).slice(0, 300);
+    const now = nowIso();
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "payments", req.params.id), { status: "completed", validatedAt: now, validatedBy: adminOf(req).email, validationNote: note });
+    let planExpiresAt = "";
+    if (pay.tenantId) {
+      const tRef = (0, import_firestore4.doc)(db, "tenants", str(pay.tenantId));
+      const tSnap = await (0, import_firestore4.getDoc)(tRef);
+      if (tSnap.exists()) {
+        const d = tSnap.data();
+        const current = isoOf(d.planExpiresAt);
+        const base = current && Date.parse(current) > Date.now() ? Date.parse(current) : Date.now();
+        planExpiresAt = new Date(base + extendDays * 864e5).toISOString();
+        const patch = { planExpiresAt, status: "active", suspendedAt: null, suspendReason: null };
+        if (planId) patch.plan = planId;
+        await (0, import_firestore4.updateDoc)(tRef, patch);
+      }
+    }
+    const number = await nextInvoiceNumber();
+    const invoice = {
+      number,
+      paymentId: req.params.id,
+      tenantId: str(pay.tenantId),
+      storeName: str(pay.storeName),
+      email: str(pay.email || ""),
+      amountDA: num(pay.amountDA),
+      plan: planId,
+      durationDays: extendDays,
+      date: now,
+      createdBy: adminOf(req).email
+    };
+    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "invoices", number), invoice);
+    await logAdminAudit({ actor: adminOf(req), action: "payment.validate", target: `payments/${req.params.id}`, before: { status: str(pay.status) }, after: { status: "completed", invoice: number, planExpiresAt, extendDays }, req });
+    res.json({ ok: true, planExpiresAt, invoice });
+  } catch (e) {
+    console.error("validate", e);
+    res.status(500).json({ error: "Erreur validation paiement." });
+  }
+});
+router3.post("/payments/:id/reject", adminApiGuard("payments"), async (req, res) => {
+  try {
+    const reason = str(req.body?.reason).slice(0, 500);
+    if (!reason) return res.status(400).json({ error: "Un motif est requis pour refuser un paiement." });
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "payments", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Paiement introuvable." });
+    const before = { status: str(snap.data().status) };
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "payments", req.params.id), { status: "rejected", rejectedAt: nowIso(), rejectedBy: adminOf(req).email, rejectionReason: reason });
+    await logAdminAudit({ actor: adminOf(req), action: "payment.reject", target: `payments/${req.params.id}`, before, after: { status: "rejected", reason }, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("reject", e);
+    res.status(500).json({ error: "Erreur refus paiement." });
+  }
+});
+router3.get("/payments/invoices", adminApiGuard("payments"), async (_req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "invoices"), (0, import_firestore4.orderBy)("date", "desc"), (0, import_firestore4.limit)(200)));
+    res.json({ total: snap.size, rows: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  } catch (e) {
+    console.error("invoices", e);
+    res.status(500).json({ error: "Erreur factures." });
+  }
+});
+function pdfEscape(s) {
+  return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+function latin1(s) {
+  return s.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+}
+function buildInvoicePdf(inv) {
+  const money = (n) => n.toLocaleString("fr-FR").replace(/\u202F|\u00A0/g, " ") + " DA";
+  const lines = [
+    ["E-NOVA - Facture d'abonnement", 22],
+    ["", 8],
+    [`Facture : ${str(inv.number)}`, 12],
+    [`Date : ${str(inv.date).slice(0, 10)}`, 12],
+    ["", 10],
+    [`Client : ${str(inv.storeName)}`, 12],
+    [`Email : ${str(inv.email) || "-"}`, 12],
+    ["", 10],
+    ["Detail", 13],
+    [`Abonnement ${str(inv.plan) || "standard"} - ${num(inv.durationDays)} jour(s)`, 11],
+    ["", 8],
+    [`TOTAL : ${money(num(inv.amountDA))}`, 16],
+    ["", 12],
+    ["Merci de votre confiance.", 10],
+    ["E-nova - plateforme e-commerce Algerie", 9]
+  ];
+  let y = 780;
+  let content = "";
+  for (const [text, size] of lines) {
+    if (text) content += `BT /F1 ${size} Tf 60 ${y} Td (${pdfEscape(latin1(text))}) Tj ET
+`;
+    y -= size + 10;
+  }
+  const objs = [
+    "<</Type/Catalog/Pages 2 0 R>>",
+    "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>",
+    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>",
+    `<</Length ${Buffer.byteLength(content)}>>
+stream
+${content}endstream`
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [];
+  objs.forEach((o, i) => {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${i + 1} 0 obj
+${o}
+endobj
+`;
+  });
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref
+0 ${objs.length + 1}
+0000000000 65535 f 
+` + offsets.map((o) => String(o).padStart(10, "0") + " 00000 n \n").join("");
+  pdf += `trailer
+<</Size ${objs.length + 1}/Root 1 0 R>>
+startxref
+${xref}
+%%EOF`;
+  return Buffer.from(pdf, "latin1");
+}
+router3.get("/payments/invoices/:id/pdf", adminApiGuard("payments"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "invoices", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Facture introuvable." });
+    const pdf = buildInvoicePdf(snap.data());
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.id}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    console.error("pdf", e);
+    res.status(500).json({ error: "Erreur g\xE9n\xE9ration PDF." });
+  }
+});
+router3.get("/coupons", adminApiGuard("billing"), async (_req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "coupons"), (0, import_firestore4.limit)(100)));
+    res.json({ total: snap.size, rows: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  } catch (e) {
+    console.error("coupons", e);
+    res.status(500).json({ error: "Erreur coupons." });
+  }
+});
+router3.post("/coupons", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const code = str(b.code).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
+    if (!code) return res.status(400).json({ error: "Code requis." });
+    const coupon = {
+      code,
+      percentOff: Math.min(100, Math.max(0, num(b.percentOff))),
+      amountOff: Math.max(0, num(b.amountOff)),
+      planId: str(b.planId || ""),
+      expiresAt: str(b.expiresAt || ""),
+      maxRedemptions: Math.max(0, num(b.maxRedemptions)),
+      redemptions: 0,
+      active: true,
+      note: str(b.note).slice(0, 200),
+      createdAt: nowIso()
+    };
+    if (!coupon.percentOff && !coupon.amountOff) return res.status(400).json({ error: "Remise requise (% ou montant)." });
+    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "coupons", code), coupon);
+    await logAdminAudit({ actor: adminOf(req), action: "coupon.create", target: code, after: coupon, req });
+    res.json({ ok: true, id: code });
+  } catch (e) {
+    console.error("POST coupons", e);
+    res.status(500).json({ error: "Erreur cr\xE9ation coupon." });
+  }
+});
+router3.post("/coupons/:id/toggle", adminApiGuard("billing"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "coupons", req.params.id));
+    if (!snap.exists()) return res.status(404).json({ error: "Coupon introuvable." });
+    const active = snap.data().active !== false;
+    await (0, import_firestore4.updateDoc)((0, import_firestore4.doc)(db, "coupons", req.params.id), { active: !active });
+    await logAdminAudit({ actor: adminOf(req), action: "coupon.toggle", target: req.params.id, before: { active }, after: { active: !active }, req });
+    res.json({ ok: true, active: !active });
+  } catch (e) {
+    console.error("toggle coupon", e);
+    res.status(500).json({ error: "Erreur coupon." });
+  }
+});
+router3.delete("/coupons/:id", adminApiGuard("billing"), async (req, res) => {
+  try {
+    await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "coupons", req.params.id));
+    await logAdminAudit({ actor: adminOf(req), action: "coupon.delete", target: req.params.id, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE coupon", e);
+    res.status(500).json({ error: "Erreur suppression coupon." });
+  }
+});
+router3.get("/payments/reports", adminApiGuard("payments"), async (req, res) => {
+  try {
+    const days = Math.max(7, Math.min(365, num(req.query.days) || 90));
+    const fromIso = new Date(Date.now() - days * 864e5).toISOString();
+    const [payments, plans, tenants] = await Promise.all([loadPaymentsBounded(500), listPlans(), loadTenantsBounded()]);
+    const inRange = payments.filter((p) => PAYMENT_VALIDATED.includes(p.status) && p.createdAt >= fromIso);
+    const byMonth = /* @__PURE__ */ new Map();
+    const byMethod = /* @__PURE__ */ new Map();
+    for (const p of inRange) {
+      const m = p.createdAt.slice(0, 7);
+      byMonth.set(m, (byMonth.get(m) || 0) + p.amountDA);
+      byMethod.set(p.paymentMethod || "inconnu", (byMethod.get(p.paymentMethod || "inconnu") || 0) + p.amountDA);
+    }
+    const now = Date.now();
+    const activeSubs = tenants.filter((t) => {
+      const exp = isoOf(t.data.planExpiresAt);
+      return str(t.data.status) === "active" && exp && Date.parse(exp) > now && !isTestTenant(t.data);
+    });
+    const planPrice = (p) => plans.find((x) => x.id === p || x.name.toLowerCase() === p.toLowerCase())?.priceMonthly ?? 0;
+    const mrr = activeSubs.reduce((sum, t) => sum + planPrice(str(t.data.plan)), 0);
+    const expired30 = tenants.filter((t) => {
+      const exp = isoOf(t.data.planExpiresAt);
+      return exp && Date.parse(exp) < now && Date.parse(exp) > now - 30 * 864e5 && !isTestTenant(t.data);
+    }).length;
+    const churn = activeSubs.length + expired30 > 0 ? expired30 / (activeSubs.length + expired30) * 100 : 0;
+    res.json({
+      rangeDays: days,
+      revenueTotal: inRange.reduce((s, p) => s + p.amountDA, 0),
+      paymentsCount: inRange.length,
+      byMonth: [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([month, amount]) => ({ month, amount })),
+      byMethod: [...byMethod.entries()].map(([method, amount]) => ({ method, amount })),
+      byPlan: plans.map((p) => ({ plan: p.name, subscribers: activeSubs.filter((t) => str(t.data.plan) === p.id || str(t.data.plan).toLowerCase() === p.name.toLowerCase()).length, mrr: planPrice(p.id) * activeSubs.filter((t) => str(t.data.plan) === p.id || str(t.data.plan).toLowerCase() === p.name.toLowerCase()).length })),
+      mrr,
+      activeSubs: activeSubs.length,
+      expired30,
+      churnPercent: Math.round(churn * 10) / 10
+    });
+  } catch (e) {
+    console.error("reports", e);
+    res.status(500).json({ error: "Erreur rapports." });
+  }
+});
+router3.get("/stats/insights", adminApiGuard("stats"), async (req, res) => {
+  try {
+    const days = Math.max(7, Math.min(90, num(req.query.days) || 30));
+    const fromIso = new Date(Date.now() - days * 864e5).toISOString();
+    const [tenants, plans, carts, statsSnap] = await Promise.all([
+      loadTenantsBounded(),
+      listPlans(),
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "abandoned_carts"), (0, import_firestore4.limit)(1e3))).catch(() => null),
+      (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "platform_stats"), (0, import_firestore4.limit)(120)))
+    ]);
+    const clean = tenants.filter((t) => !isTestTenant(t.data));
+    const planDistribution = plans.map((p) => ({
+      plan: p.name,
+      count: clean.filter((t) => str(t.data.plan) === p.id || str(t.data.plan).toLowerCase() === p.name.toLowerCase()).length
+    }));
+    const topStores = [];
+    const wilayas = /* @__PURE__ */ new Map();
+    for (const t of clean.slice(0, 40)) {
+      try {
+        const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants", t.id, "orders"), (0, import_firestore4.limit)(500)));
+        if (!snap.size) continue;
+        let gmv = 0;
+        for (const o of snap.docs) {
+          const od = o.data();
+          const iso = isoOf(od.createdAt);
+          if (!iso || iso < fromIso) continue;
+          gmv += num(od.total);
+          const w = str(od.wilaya);
+          if (w) wilayas.set(w, (wilayas.get(w) || 0) + 1);
+        }
+        topStores.push({ name: str(t.data.storeName) || t.id, orders: snap.size, gmv });
+      } catch {
+      }
+    }
+    topStores.sort((a, b) => b.orders - a.orders);
+    const cartsList = carts ? carts.docs.map((d) => d.data()) : [];
+    const cartsInRange = cartsList.filter((c) => {
+      const iso = isoOf(c.createdAt);
+      return iso && iso >= fromIso;
+    });
+    const recovered = cartsInRange.filter((c) => c.status === "recovered" || c.recovered === true).length;
+    const waSeries = [];
+    for (const d of statsSnap.docs) {
+      if (!d.id.startsWith("daily_")) continue;
+      const data = d.data();
+      if (str(data.date) >= fromIso.slice(0, 10)) waSeries.push({ date: str(data.date), value: num(data.waMessages) });
+    }
+    waSeries.sort((a, b) => a.date.localeCompare(b.date));
+    const active30 = clean.filter((t) => {
+      const seen = isoOf(t.data.lastOrderAt || t.data.createdAt);
+      return seen && Date.now() - Date.parse(seen) < 30 * 864e5;
+    }).length;
+    res.json({
+      days,
+      planDistribution,
+      topStores: topStores.slice(0, 10),
+      topWilayas: [...wilayas.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([w, c]) => ({ wilaya: w, orders: c })),
+      carts: { total: cartsInRange.length, recovered, conversionPercent: cartsInRange.length ? Math.round(recovered / cartsInRange.length * 1e3) / 10 : 0 },
+      waSeries,
+      retention: { activeStores: active30, totalStores: clean.length, percent: clean.length ? Math.round(active30 / clean.length * 1e3) / 10 : 0 }
+    });
+  } catch (e) {
+    console.error("insights", e);
+    res.status(500).json({ error: "Erreur statistiques." });
+  }
+});
+router3.post("/test-data/purge", adminApiGuard("settings"), async (req, res) => {
+  try {
+    if (req.body?.confirm !== true) return res.status(400).json({ error: "Confirmation requise." });
+    const tenants = await loadTenantsBounded();
+    const testTenants = tenants.filter((t) => isTestTenant(t.data));
+    let paymentsDeleted = 0;
+    for (const t of testTenants) {
+      try {
+        const pays = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "payments"), (0, import_firestore4.where)("tenantId", "==", t.id), (0, import_firestore4.limit)(200)));
+        await Promise.all(pays.docs.map((d) => (0, import_firestore4.deleteDoc)(d.ref)));
+        paymentsDeleted += pays.size;
+      } catch {
+      }
+      for (const sub of ["orders", "products", "abandoned_carts", "settings"]) {
+        try {
+          const s = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "tenants", t.id, sub), (0, import_firestore4.limit)(200)));
+          await Promise.all(s.docs.map((d) => (0, import_firestore4.deleteDoc)(d.ref)));
+        } catch {
+        }
+      }
+      await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "user_presence", t.id)).catch(() => void 0);
+      await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "tenants", t.id));
+    }
+    const { recomputeStatsExcludingTest: recomputeStatsExcludingTest2 } = await Promise.resolve().then(() => (init_adminApi(), adminApi_exports));
+    const stats = await recomputeStatsExcludingTest2(120, 24);
+    await logAdminAudit({ actor: adminOf(req), action: "test_data.purge", target: "platform", after: { tenantsDeleted: testTenants.length, paymentsDeleted, ...stats }, req });
+    res.json({ ok: true, tenantsDeleted: testTenants.length, paymentsDeleted, stats });
+  } catch (e) {
+    console.error("purge", e);
+    res.status(500).json({ error: "Erreur purge donn\xE9es de test." });
+  }
+});
+async function runDailyJobs() {
+  const now = nowIso();
+  const nowMs = Date.now();
+  let reminders = 0, suspended = 0, announcements = 0;
+  try {
+    const generalSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "platform_settings", "general"));
+    const general = generalSnap.data() || {};
+    const graceDays = Math.max(0, Math.min(90, num(general.graceDays) || 7));
+    const tenants = await loadTenantsBounded();
+    for (const t of tenants) {
+      if (isTestTenant(t.data)) continue;
+      const d = t.data;
+      const exp = isoOf(d.planExpiresAt);
+      if (!exp) continue;
+      const daysLeft = Math.ceil((Date.parse(exp) - nowMs) / 864e5);
+      const stage = daysLeft <= 1 ? "1j" : daysLeft <= 3 ? "3j" : daysLeft <= 7 ? "7j" : "";
+      const tRef = (0, import_firestore4.doc)(db, "tenants", t.id);
+      if (stage && str(d.status) === "active" && str(d.reminderStage) !== stage) {
+        await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "announcements"), {
+          audience: "member",
+          memberId: t.id,
+          memberEmail: str(d.ownerEmail).toLowerCase(),
+          title: "Votre abonnement expire bient\xF4t",
+          body: `Votre abonnement e-nova expire dans ${daysLeft} jour(s) (${exp.slice(0, 10)}). Renouvelez-le pour garder votre boutique en ligne.`,
+          createdAt: now,
+          createdBy: "system",
+          source: "subscription_reminder",
+          sendAt: now,
+          sentAt: now,
+          channels: ["dashboard"]
+        }).catch(() => void 0);
+        await (0, import_firestore4.updateDoc)(tRef, { reminderStage: stage, remindedAt: now }).catch(() => void 0);
+        reminders += 1;
+      }
+      if (Date.parse(exp) < nowMs - graceDays * 864e5 && str(d.status) === "active") {
+        await (0, import_firestore4.updateDoc)(tRef, { status: "suspended", suspendedAt: now, suspendReason: "expired_grace" }).catch(() => void 0);
+        await (0, import_firestore4.deleteDoc)((0, import_firestore4.doc)(db, "user_presence", t.id)).catch(() => void 0);
+        await logAdminAudit({ actor: SYSTEM_IDENTITY, action: "subscription.auto_suspend", target: t.id, before: { planExpiresAt: exp }, after: { status: "suspended", reason: "expired_grace", graceDays } });
+        suspended += 1;
+      }
+    }
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      const ann = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "announcements"), (0, import_firestore4.where)("sentAt", "==", ""), (0, import_firestore4.limit)(50)));
+      for (const a of ann.docs) {
+        const data = a.data();
+        if (str(data.sendAt) && str(data.sendAt) <= now) {
+          await (0, import_firestore4.updateDoc)(a.ref, { sentAt: now }).catch(() => void 0);
+          announcements += 1;
+        }
+      }
+    } catch {
+    }
+    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "platform_settings", "cron_daily"), { lastRunAt: now, reminders, suspended, announcements }, { merge: true }).catch(() => void 0);
+  } catch (e) {
+    console.error("runDailyJobs", e);
+  }
+  return { reminders, suspended, announcements };
+}
+var adminModules_default = router3;
+
+// src/routes/adminPlatform.ts
+var import_express4 = __toESM(require("express"));
+var import_nodemailer = __toESM(require("nodemailer"));
+var import_firestore6 = require("firebase/firestore");
+init_firebase_backend();
+init_adminApi();
+
+// src/lib/secretBox.ts
+var import_crypto2 = __toESM(require("crypto"));
+function deriveKey() {
+  const raw = process.env.ENCRYPTION_KEY || "";
+  if (!raw) throw new Error("ENCRYPTION_KEY non d\xE9finie : impossible de chiffrer/d\xE9chiffrer les secrets.");
+  if (/^[0-9a-f]{64}$/i.test(raw)) return Buffer.from(raw, "hex");
+  try {
+    const b64 = Buffer.from(raw, "base64");
+    if (b64.length === 32) return b64;
+  } catch {
+  }
+  return import_crypto2.default.scryptSync(raw, "e-nova-encryption-v1", 32);
+}
+function hasEncryptionKey() {
+  return Boolean(process.env.ENCRYPTION_KEY);
+}
+function encryptSecret(plain) {
+  const iv = import_crypto2.default.randomBytes(12);
+  const cipher = import_crypto2.default.createCipheriv("aes-256-gcm", deriveKey(), iv);
+  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), enc.toString("base64url")].join(":");
+}
+function decryptSecret(stored) {
+  if (!stored.startsWith("v1:")) return stored;
+  const parts = stored.split(":");
+  if (parts.length !== 4) throw new Error("Secret chiffr\xE9 invalide.");
+  const decipher = import_crypto2.default.createDecipheriv("aes-256-gcm", deriveKey(), Buffer.from(parts[1], "base64url"));
+  decipher.setAuthTag(Buffer.from(parts[2], "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(parts[3], "base64url")), decipher.final()]).toString("utf8");
+}
+
+// src/lib/whatsappServer.ts
+var import_crypto3 = __toESM(require("crypto"));
+init_firebase_backend();
+var import_firestore5 = require("firebase/firestore");
+init_landingData();
+
+// src/lib/whatsappDefaults.ts
+var WA_DEFAULT_MESSAGE_AR = "\u0645\u0631\u062D\u0628\u0627\u064B {nom} \u{1F44B}\n\u0644\u0642\u062F \u0628\u062F\u0623\u062A \u0637\u0644\u0628\u0627\u064B \u0641\u064A \u0645\u062A\u062C\u0631 {boutique} :\n\u{1F4E6} {produits}\n\u{1F4B0} \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A : {total} \u062F\u062C (\u0627\u0644\u062F\u0641\u0639 \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645)\n\u{1F4CD} {wilaya}\n\n\u0647\u0644 \u062A\u0631\u064A\u062F \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 \u061F\n\u{1F517} {lien}";
+var WA_DEFAULT_MESSAGE_FR = "Bonjour {nom} \u{1F44B}\nVous avez commenc\xE9 une commande chez {boutique} :\n\u{1F4E6} {produits}\n\u{1F4B0} Total : {total} DA (paiement \xE0 la livraison)\n\u{1F4CD} {wilaya}\n\nSouhaitez-vous confirmer votre commande ?\n\u{1F517} {lien}";
+var WA_ORDER_CONFIRM_AR = "\u0645\u0631\u062D\u0628\u0627\u064B {nom} \u{1F44B}\n\u062A\u0645 \u062A\u0633\u062C\u064A\u0644 \u0637\u0644\u0628\u0643 \u0641\u064A \u0645\u062A\u062C\u0631 {boutique} \u2705\n\u{1F4E6} {produits}\n\u{1F4B0} \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A : {total} \u062F\u062C\n\u{1F4CD} {wilaya}\n\n\u064A\u0631\u062C\u0649 \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 :\n\u{1F517} {lien}";
+var WA_ORDER_CONFIRM_FR = "Bonjour {nom} \u{1F44B}\nVotre commande chez {boutique} a bien \xE9t\xE9 enregistr\xE9e \u2705\n\u{1F4E6} {produits}\n\u{1F4B0} Total : {total} DA\n\u{1F4CD} {wilaya}\n\nMerci de confirmer votre commande :\n\u{1F517} {lien}";
+var WA_ORDER_STATUS_AR = {
+  "Confirm\xE9e": "\u062A\u0645 \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 \u2705",
+  "Exp\xE9di\xE9e": "\u062A\u0645 \u0634\u062D\u0646 \u0637\u0644\u0628\u0643 \u{1F69A}",
+  "En livraison": "\u0637\u0644\u0628\u0643 \u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642 \u0625\u0644\u064A\u0643 \u{1F69A}",
+  "Au bureau de livraison": "\u0637\u0644\u0628\u0643 \u0648\u0635\u0644 \u0625\u0644\u0649 \u0645\u0643\u062A\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u{1F3E2} \u064A\u0645\u0643\u0646\u0643 \u0627\u0633\u062A\u0644\u0627\u0645\u0647 \u0627\u0644\u0622\u0646.",
+  "Livr\xE9e": "\u062A\u0645 \u062A\u0648\u0635\u064A\u0644 \u0637\u0644\u0628\u0643 \u0628\u0646\u062C\u0627\u062D \u{1F389} \u0634\u0643\u0631\u0627\u064B \u0644\u062B\u0642\u062A\u0643!",
+  "\xC9chec": "\u062A\u0639\u0630\u0631 \u062A\u0648\u0635\u064A\u0644 \u0637\u0644\u0628\u0643 \u274C \u064A\u0631\u062C\u0649 \u0627\u0644\u062A\u0648\u0627\u0635\u0644 \u0645\u0639\u0646\u0627.",
+  "Retour": "\u062A\u0645 \u0625\u0631\u062C\u0627\u0639 \u0637\u0644\u0628\u0643 \u0625\u0644\u0649 \u0627\u0644\u0645\u062A\u062C\u0631 \u21A9\uFE0F"
+};
+var WA_ORDER_STATUS_FR = {
+  "Confirm\xE9e": "Votre commande est confirm\xE9e \u2705",
+  "Exp\xE9di\xE9e": "Votre commande a \xE9t\xE9 exp\xE9di\xE9e \u{1F69A}",
+  "En livraison": "Votre commande est en cours de livraison \u{1F69A}",
+  "Au bureau de livraison": "Votre commande est arriv\xE9e au bureau de livraison \u{1F3E2} vous pouvez la r\xE9cup\xE9rer.",
+  "Livr\xE9e": "Votre commande a \xE9t\xE9 livr\xE9e avec succ\xE8s \u{1F389} merci de votre confiance !",
+  "\xC9chec": "La livraison de votre commande a \xE9chou\xE9 \u274C merci de nous contacter.",
+  "Retour": "Votre commande a \xE9t\xE9 retourn\xE9e au magasin \u21A9\uFE0F"
+};
+
+// src/lib/whatsappServer.ts
+var WA_REMINDER_MINUTES = 240;
+var DZ_TZ = "Africa/Algiers";
+var WA_NOTIFIABLE_STATUSES = [
+  "Confirm\xE9e",
+  "Exp\xE9di\xE9e",
+  "En livraison",
+  "Au bureau de livraison",
+  "Livr\xE9e",
+  "\xC9chec",
+  "Retour"
+];
+function waBaseUrl() {
+  return String(process.env.APP_URL || "https://e-nova-saas.vercel.app").replace(/\/+$/, "");
+}
+var waRuntimeCache = null;
+async function getWaAdminConfig() {
+  if (waRuntimeCache && Date.now() - waRuntimeCache.at < 3e4) return waRuntimeCache.cfg;
+  const cfg = await loadWaRuntimeConfig();
+  waRuntimeCache = { at: Date.now(), cfg };
+  return cfg;
+}
+function invalidateWaRuntimeConfig() {
+  waRuntimeCache = null;
+}
+async function loadWaRuntimeConfig() {
+  const appUrl = waBaseUrl();
+  let admin = {};
+  try {
+    const snap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "platform_settings", "whatsapp"));
+    admin = snap.data() || {};
+  } catch {
+  }
+  const fromAdmin = async (field) => {
+    const stored = String(admin[field] || "");
+    if (!stored) return "";
+    try {
+      return decryptSecret(stored);
     } catch {
       return "";
     }
-  })();
+  };
+  const adminToken = await fromAdmin("tokenEnc");
+  const adminAppSecret = await fromAdmin("appSecretEnc");
+  const adminPhone = String(admin.phoneNumberId || "");
+  const envToken = process.env.WHATSAPP_TOKEN || "";
+  const envPhone = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
+  const useAdmin = Boolean(adminToken && adminPhone);
+  const useEnv = Boolean(envToken && envPhone);
+  const real = useAdmin || useEnv;
   return {
-    device: String(body.device || "").slice(0, 40),
-    os: String(body.os || "").slice(0, 40),
-    country: typeof body.country === "string" ? body.country.slice(0, 40) : tz.split("/")[0] || "",
-    city: typeof body.city === "string" ? body.city.slice(0, 60) : (tz.split("/")[1] || "").replace(/_/g, " "),
-    page: String(body.page || "").slice(0, 120),
-    storeName: String(body.storeName || "").slice(0, 80)
+    mode: real ? "real" : "simulation",
+    phoneNumberId: useAdmin ? adminPhone : envPhone,
+    wabaId: String(admin.wabaId || process.env.WHATSAPP_WABA_ID || ""),
+    appId: String(admin.appId || process.env.WHATSAPP_APP_ID || ""),
+    graphVersion: String(admin.graphVersion || "v21.0"),
+    appUrl: String(admin.appUrl || appUrl),
+    verifyToken: String(admin.verifyToken || process.env.WHATSAPP_VERIFY_TOKEN || ""),
+    token: useAdmin ? adminToken : envToken,
+    appSecret: useAdmin ? adminAppSecret : process.env.WHATSAPP_APP_SECRET || "",
+    hasToken: real,
+    hasAppSecret: Boolean(useAdmin ? adminAppSecret : process.env.WHATSAPP_APP_SECRET),
+    source: useAdmin ? "admin_config" : useEnv ? "env" : "simulation",
+    webhookVerifiedAt: isoOfField(admin.webhookVerifiedAt)
   };
 }
-router2.post("/heartbeat", async (req, res) => {
-  const body = req.body || {};
-  const token = tokenFromRequest(req);
-  if (!token) {
-    res.status(401).json({ error: "Non authentifi\xE9." });
-    return;
-  }
-  let uid = "";
-  let email = "";
-  let storeName = presenceMetaFromBody(body).storeName;
-  if (token.kind === "admin_jwt") {
-    const admin = await resolveAdmin(req);
-    if (!admin) {
-      res.status(403).json({ error: "Session admin invalide." });
-      return;
-    }
-    uid = admin.id;
-    email = admin.email;
-  } else {
-    const fb = await verifyFirebaseIdToken(token.value);
-    if (!fb || fb.disabled) {
-      res.status(403).json({ error: "Token invalide." });
-      return;
-    }
-    uid = fb.uid;
-    email = fb.email;
-  }
-  if (!rateLimit(`hb:${uid}`, 45e3, 1)) {
-    res.status(204).end();
-    return;
-  }
-  const meta = presenceMetaFromBody(body);
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  try {
-    const ref = (0, import_firestore3.doc)(db, "user_presence", uid);
-    const snap = await (0, import_firestore3.getDoc)(ref);
-    const existing = snap.exists() ? snap.data() : null;
-    const shouldRefreshLogin = !existing?.lastLoginAt || Date.now() - new Date(existing.lastLoginAt).getTime() > 24 * 3600 * 1e3;
-    await (0, import_firestore3.setDoc)(ref, {
-      uid,
-      email,
-      lastSeenAt: nowIso,
-      ...storeName ? { storeName } : {},
-      ...meta.device ? { device: meta.device } : {},
-      ...meta.os ? { os: meta.os } : {},
-      ...meta.country ? { country: meta.country } : {},
-      ...meta.city ? { city: meta.city } : {},
-      ...meta.page ? { lastPage: meta.page } : {},
-      ...shouldRefreshLogin ? { lastLoginAt: nowIso } : {}
-    }, { merge: true });
-  } catch (e) {
-    console.warn("presence write failed:", e);
-  }
-  res.status(204).end();
-});
-router2.get("/me", adminApiGuard(null), (req, res) => {
-  const admin = req.admin;
-  res.json({
-    ok: true,
-    admin: { id: admin.id, email: admin.email, role: admin.role, via: admin.via },
-    permissions: ROLE_PERMISSIONS[admin.role]
-  });
-});
-function dayKey(d) {
-  return d.toISOString().slice(0, 10);
-}
-async function docsInRange(coll, field, fromIso, toIso) {
-  const out = /* @__PURE__ */ new Map();
-  const run = async (gte, lt) => {
-    try {
-      const clamps = lt === null || lt === void 0 ? [(0, import_firestore3.where)(field, ">=", gte)] : [(0, import_firestore3.where)(field, ">=", gte), (0, import_firestore3.where)(field, "<", lt)];
-      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, coll), ...clamps));
-      snap.forEach((d) => out.set(d.id, d.data()));
-    } catch {
-    }
-  };
-  await run(fromIso, toIso);
-  await run(import_firestore3.Timestamp.fromDate(new Date(fromIso)), toIso ? import_firestore3.Timestamp.fromDate(new Date(toIso)) : null);
-  return Array.from(out.entries()).map(([id, data]) => ({ id, data }));
-}
-function isoOf(value) {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object") {
-    const ts = value;
+function isoOfField(v) {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object") {
+    const ts = v;
     try {
       if (typeof ts.toDate === "function") return ts.toDate().toISOString();
       if (typeof ts.seconds === "number") return new Date(ts.seconds * 1e3).toISOString();
-      if (typeof ts._seconds === "number") return new Date(ts._seconds * 1e3).toISOString();
     } catch {
     }
   }
   return "";
 }
-async function sumPaymentsRange(fromIso, toIso) {
-  let count = 0;
-  let revenue = 0;
-  for (const d of await docsInRange("payments", "createdAt", fromIso, toIso)) {
-    const v = d.data;
-    if (v.status === "completed" || v.status === "validated" || v.status === "valid\xE9") {
-      count += 1;
-      revenue += Number(v.amountDA) || 0;
-    }
-  }
-  return { count, revenue };
-}
-async function recomputeStats(days) {
-  const today = /* @__PURE__ */ new Date();
-  const dailyByDay = /* @__PURE__ */ new Map();
-  const bump = (key, field, by = 1) => {
-    const cur = dailyByDay.get(key) || { signups: 0, orders: 0, gmv: 0, revenue: 0, carts: 0, cartsRecovered: 0, waMessages: 0 };
-    cur[field] += by;
-    dailyByDay.set(key, cur);
+var settingsCache = /* @__PURE__ */ new Map();
+function waDefaultSettings() {
+  return {
+    enabled: false,
+    orderConfirmations: { enabled: true },
+    abandonedCarts: {
+      enabled: false,
+      delayMinutes: 10,
+      reminderEnabled: false,
+      messageAr: WA_DEFAULT_MESSAGE_AR,
+      messageFr: WA_DEFAULT_MESSAGE_FR
+    },
+    quietHours: { enabled: false, start: "22:00", end: "08:00" },
+    language: "store",
+    scope: { mode: "all", productIds: [] },
+    consentCheckbox: false,
+    connectionStatus: "disconnected"
   };
-  {
-    const fromIso = new Date(today.getTime() - days * 864e5).toISOString();
-    for (const d of await docsInRange("tenants", "createdAt", fromIso, null)) {
-      const iso = isoOf(d.data.createdAt);
-      if (iso) bump(iso.slice(0, 10), "signups");
-    }
-  }
-  {
-    const fromIso = new Date(today.getTime() - days * 864e5).toISOString();
-    for (const d of await docsInRange("orders", "createdAt", fromIso, null)) {
-      const iso = isoOf(d.data.createdAt);
-      if (iso) {
-        bump(iso.slice(0, 10), "orders");
-        bump(iso.slice(0, 10), "gmv", Number(d.data.total) || 0);
-      }
-    }
-  }
-  const todayMidnight = new Date(today);
-  todayMidnight.setUTCHours(0, 0, 0, 0);
-  for (let offset = days - 1; offset >= 0; offset -= 1) {
-    const dayStart = new Date(todayMidnight.getTime() - offset * 864e5);
-    const fromIso = dayStart.toISOString();
-    const toIso = new Date(dayStart.getTime() + 864e5).toISOString();
-    const { count, revenue } = await sumPaymentsRange(fromIso, toIso);
-    if (count > 0) {
-      bump(fromIso.slice(0, 10), "revenue", revenue);
-    }
-  }
-  {
-    const fromIso = new Date(today.getTime() - days * 864e5).toISOString();
-    for (const d of await docsInRange("abandoned_carts", "createdAt", fromIso, null)) {
-      const iso = isoOf(d.data.createdAt);
-      if (!iso) continue;
-      bump(iso.slice(0, 10), "carts");
-      if (d.data.status === "recovered" || d.data.recovered === true) bump(iso.slice(0, 10), "cartsRecovered");
-    }
-    for (const d of await docsInRange("whatsapp_messages", "sentAt", fromIso, null)) {
-      const iso = isoOf(d.data.sentAt);
-      if (iso) bump(iso.slice(0, 10), "waMessages");
-    }
-  }
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  for (const [date, stats] of dailyByDay) {
-    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "platform_stats", "daily_" + date), { date, ...stats, updatedAt: nowIso }, { merge: true });
-  }
-  const monthly = /* @__PURE__ */ new Map();
-  for (let offset = 0; offset < 365; offset += 1) {
-    const d = new Date(today.getTime() - offset * 864e5);
-    const key = d.toISOString().slice(0, 7);
-    try {
-      const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "platform_stats", "daily_" + d.toISOString().slice(0, 10)));
-      if (snap.exists()) {
-        const v = snap.data();
-        const cur = monthly.get(key) || { signups: 0, orders: 0, gmv: 0, revenue: 0 };
-        cur.signups += Number(v.signups) || 0;
-        cur.orders += Number(v.orders) || 0;
-        cur.gmv += Number(v.gmv) || 0;
-        cur.revenue += Number(v.revenue) || 0;
-        monthly.set(key, cur);
-      }
-    } catch {
-    }
-  }
-  for (const [month, stats] of monthly) {
-    await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "platform_stats", "monthly_" + month), { month, ...stats, updatedAt: nowIso }, { merge: true });
-  }
-  const oneYearAgo = new Date(today.getTime() - 365 * 864e5).toISOString();
-  const [membersTotal, storesActive, ordersTotal, paymentsYear, cartsAbandoned, cartsRecovered, waMessages] = await Promise.all([
-    docsInRange("tenants", "createdAt", "1970-01-01T00:00:00.000Z", (/* @__PURE__ */ new Date()).toISOString()).then((r) => r.length),
-    (async () => {
-      try {
-        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("status", "==", "active")));
-        return snap.size;
-      } catch {
-        return 0;
-      }
-    })(),
-    docsInRange("orders", "createdAt", "1970-01-01T00:00:00.000Z", (/* @__PURE__ */ new Date()).toISOString()).then((r) => r.length),
-    sumPaymentsRange(oneYearAgo, (/* @__PURE__ */ new Date()).toISOString()),
-    docsInRange("abandoned_carts", "createdAt", "1970-01-01T00:00:00.000Z", (/* @__PURE__ */ new Date()).toISOString()).then((r) => r.length),
-    (async () => {
-      try {
-        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "abandoned_carts"), (0, import_firestore3.where)("status", "==", "recovered")));
-        return snap.size;
-      } catch {
-        return 0;
-      }
-    })(),
-    docsInRange("whatsapp_messages", "sentAt", "1970-01-01T00:00:00.000Z", (/* @__PURE__ */ new Date()).toISOString()).then((r) => r.length)
-  ]);
-  await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "platform_counters", "global"), {
-    membersTotal,
-    storesActive,
-    ordersTotal,
-    gmvTotal: 0,
-    revenueTotal: paymentsYear.revenue,
-    paymentsValidated: paymentsYear.count,
-    cartsAbandonedTotal: cartsAbandoned,
-    cartsRecoveredTotal: cartsRecovered,
-    waMessagesTotal: waMessages,
-    updatedAt: nowIso
-  }, { merge: true });
-  return { daysWritten: dailyByDay.size, monthsWritten: monthly.size };
 }
-router2.post("/stats/recompute", adminApiGuard("settings"), async (req, res) => {
+async function getWaSettings(tenantId) {
+  const cached = settingsCache.get(tenantId);
+  if (cached && Date.now() - cached.at < 1e4) return cached.data;
+  let data = waDefaultSettings();
   try {
-    const body = req.body || {};
-    const days = Math.min(120, Math.max(7, Number(body.days) || 30));
-    const result = await recomputeStats(days);
-    const admin = req.admin;
-    await logAdminAudit({ actor: admin, action: "stats.recompute", target: `days=${days}`, after: result, req });
-    res.json({ ok: true, ...result });
+    const snap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "whatsapp_settings", tenantId));
+    if (snap.exists()) {
+      const raw = snap.data() || {};
+      const d = waDefaultSettings();
+      data = {
+        enabled: raw.enabled === true,
+        orderConfirmations: { enabled: raw.orderConfirmations?.enabled !== false },
+        abandonedCarts: {
+          enabled: raw.abandonedCarts?.enabled === true,
+          delayMinutes: [5, 10, 30, 60].includes(raw.abandonedCarts?.delayMinutes) ? raw.abandonedCarts.delayMinutes : 10,
+          reminderEnabled: raw.abandonedCarts?.reminderEnabled === true,
+          messageAr: String(raw.abandonedCarts?.messageAr || WA_DEFAULT_MESSAGE_AR).slice(0, 1500),
+          messageFr: String(raw.abandonedCarts?.messageFr || WA_DEFAULT_MESSAGE_FR).slice(0, 1500)
+        },
+        quietHours: {
+          enabled: raw.quietHours?.enabled === true,
+          start: String(raw.quietHours?.start || "22:00").slice(0, 5),
+          end: String(raw.quietHours?.end || "08:00").slice(0, 5)
+        },
+        language: raw.language === "ar" || raw.language === "fr" ? raw.language : "store",
+        scope: {
+          mode: raw.scope?.mode === "selected" ? "selected" : "all",
+          productIds: Array.isArray(raw.scope?.productIds) ? raw.scope.productIds.map((p) => String(p).slice(0, 60)) : []
+        },
+        consentCheckbox: raw.consentCheckbox === true,
+        connectionStatus: raw.connectionStatus === "connected" || raw.connectionStatus === "pending" ? raw.connectionStatus : "disconnected"
+      };
+    }
   } catch (e) {
-    console.error("stats recompute error:", e);
-    res.status(500).json({ error: "\xC9chec du recalcul.", detail: String(e?.message || e).slice(0, 200) });
+    console.warn("getWaSettings: read failed:", e);
   }
-});
-router2.get("/overview", adminApiGuard("dashboard"), async (req, res) => {
+  settingsCache.set(tenantId, { at: Date.now(), data });
+  return data;
+}
+function dzHourMinute() {
   try {
-    const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
-    const now = Date.now();
-    const countersSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "platform_counters", "global")).catch(() => null);
-    const counters = countersSnap?.exists() ? countersSnap.data() : {};
-    const daily = [];
-    for (let offset = days - 1; offset >= 0; offset -= 1) {
-      const key = dayKey(new Date(now - offset * 864e5));
-      try {
-        const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "platform_stats", "daily_" + key));
-        if (snap.exists()) daily.push({ date: key, ...snap.data() });
-        else daily.push({ date: key });
-      } catch {
-        daily.push({ date: key });
-      }
-    }
-    const monthly = [];
-    for (let offset = 11; offset >= 0; offset -= 1) {
-      const d = /* @__PURE__ */ new Date();
-      d.setMonth(d.getMonth() - offset, 1);
-      const key = d.toISOString().slice(0, 7);
-      try {
-        const snap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "platform_stats", "monthly_" + key));
-        if (snap.exists()) monthly.push({ month: key, ...snap.data() });
-        else monthly.push({ month: key });
-      } catch {
-        monthly.push({ month: key });
-      }
-    }
-    let onlineNow = 0;
-    let active30d = 0;
-    try {
-      const twoMinAgo = new Date(now - 2 * 6e4).toISOString();
-      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "user_presence"), (0, import_firestore3.where)("lastSeenAt", ">", twoMinAgo), (0, import_firestore3.limit)(200)));
-      onlineNow = snap.size;
-      const monthAgo = new Date(now - 30 * 864e5).toISOString();
-      const snap30 = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "user_presence"), (0, import_firestore3.where)("lastSeenAt", ">", monthAgo), (0, import_firestore3.limit)(1e3)));
-      active30d = snap30.size;
-    } catch {
-    }
-    const sum = (field) => daily.reduce((acc, d) => acc + (Number(d[field]) || 0), 0);
-    const signupsPeriod = sum("signups");
-    const signupsToday = Number(daily[daily.length - 1]?.signups) || 0;
-    const signupsWeek = daily.slice(-7).reduce((acc, d) => acc + (Number(d.signups) || 0), 0);
-    const revenueMonth = monthly[monthly.length - 1] ? Number(monthly[monthly.length - 1].revenue) || 0 : 0;
-    const latestSignups = [];
-    try {
-      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.orderBy)("createdAt", "desc"), (0, import_firestore3.limit)(5)));
-      snap.forEach((d) => {
-        const v = d.data();
-        latestSignups.push({
-          id: d.id,
-          storeName: String(v.storeName || ""),
-          ownerEmail: String(v.ownerEmail || ""),
-          createdAt: typeof v.createdAt === "string" ? v.createdAt : "",
-          plan: String(v.plan || "")
-        });
-      });
-    } catch {
-    }
-    const latestPayments = [];
-    try {
-      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "payments"), (0, import_firestore3.orderBy)("createdAt", "desc"), (0, import_firestore3.limit)(5)));
-      snap.forEach((d) => {
-        const v = d.data();
-        latestPayments.push({
-          id: d.id,
-          storeName: String(v.storeName || ""),
-          amountDA: Number(v.amountDA) || 0,
-          status: String(v.status || ""),
-          method: String(v.paymentMethod || ""),
-          createdAt: typeof v.createdAt === "string" ? v.createdAt : ""
-        });
-      });
-    } catch {
-    }
-    const alerts = [];
-    try {
-      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "payments"), (0, import_firestore3.where)("status", "==", "pending"), (0, import_firestore3.limit)(5)));
-      snap.forEach((d) => {
-        const v = d.data();
-        alerts.push({ type: "payment_pending", label: String(v.storeName || "Boutique"), detail: `${Number(v.amountDA) || 0} DZD en attente de validation` });
-      });
-    } catch {
-    }
-    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const in7dIso = new Date(now + 7 * 864e5).toISOString();
-    let expiringCount = 0;
-    let expiredCount = 0;
-    try {
-      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("planExpiresAt", ">", nowIso), (0, import_firestore3.where)("planExpiresAt", "<", in7dIso), (0, import_firestore3.limit)(20)));
-      expiringCount = snap.size;
-      const snapExpired = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("planExpiresAt", "<", nowIso), (0, import_firestore3.limit)(500)));
-      expiredCount = snapExpired.size;
-    } catch {
-    }
-    if (expiringCount > 0) alerts.push({ type: "subs_expiring", label: `${expiringCount} abonnement(s)`, detail: "Expirent dans les 7 prochains jours" });
-    if (expiredCount > 0) alerts.push({ type: "subs_expired", label: `${expiredCount} abonnement(s) expir\xE9(s)`, detail: "Sans plan actif actuellement" });
-    if (!counters.updatedAt) alerts.push({ type: "stats_never_computed", label: "Statistiques jamais calcul\xE9es", detail: "Lancer \xAB Recalculer les statistiques \xBB" });
-    let activeSubs = 0;
-    try {
-      const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "tenants"), (0, import_firestore3.where)("planExpiresAt", ">", nowIso), (0, import_firestore3.limit)(1e3)));
-      activeSubs = snap.size;
-    } catch {
-    }
-    res.json({
-      ok: true,
-      periodDays: days,
-      kpis: {
-        membersTotal: Number(counters.membersTotal) || 0,
-        membersActive30d: active30d,
-        onlineNow,
-        signupsToday,
-        signupsWeek,
-        signupsPeriod,
-        storesActive: Number(counters.storesActive) || 0,
-        revenueMonth,
-        activeSubscriptions: activeSubs,
-        expiredSubscriptions: expiredCount,
-        ordersTotal: Number(counters.ordersTotal) || 0,
-        gmvPeriod: sum("gmv"),
-        ordersPeriod: sum("orders"),
-        cartsAbandonedTotal: Number(counters.cartsAbandonedTotal) || 0,
-        cartsRecoveredTotal: Number(counters.cartsRecoveredTotal) || 0,
-        waMessagesTotal: Number(counters.waMessagesTotal) || 0,
-        paymentsPending: alerts.filter((a) => a.type === "payment_pending").length
-      },
-      series: { daily, monthly },
-      latestSignups,
-      latestPayments,
-      alerts,
-      statsUpdatedAt: String(counters.updatedAt || "")
-    });
-  } catch (e) {
-    console.error("admin overview error:", e);
-    res.status(500).json({ error: "Erreur du tableau de bord admin." });
-  }
-});
-router2.get("/audit", adminApiGuard("audit"), async (req, res) => {
-  try {
-    const maxLimit = Math.min(200, Math.max(10, Number(req.query.limit) || 50));
-    const actionFilter = String(req.query.action || "").trim().toLowerCase();
-    const actorFilter = String(req.query.actor || "").trim().toLowerCase();
-    const before = String(req.query.before || "");
-    let q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "admin_audit"), (0, import_firestore3.orderBy)("at", "desc"), (0, import_firestore3.limit)(actionFilter || actorFilter ? 200 : maxLimit));
-    if (before) {
-      q = (0, import_firestore3.query)((0, import_firestore3.collection)(db, "admin_audit"), (0, import_firestore3.orderBy)("at", "desc"), (0, import_firestore3.startAfter)(before), (0, import_firestore3.limit)(actionFilter || actorFilter ? 200 : maxLimit));
-    }
-    const snap = await (0, import_firestore3.getDocs)(q);
-    const entries = [];
-    snap.forEach((d) => {
-      const v = d.data();
-      if (actionFilter && !String(v.action || "").toLowerCase().includes(actionFilter)) return;
-      if (actorFilter && !String(v.actorEmail || "").toLowerCase().includes(actorFilter)) return;
-      entries.push({ id: d.id, ...v });
-    });
-    const filtered = actionFilter || actorFilter ? entries.slice(0, maxLimit) : entries;
-    res.json({
-      ok: true,
-      entries: filtered,
-      nextBefore: filtered.length === maxLimit && snap.size === maxLimit ? String(filtered[filtered.length - 1].at || "") : ""
-    });
-  } catch (e) {
-    res.status(500).json({ error: "Erreur du journal d'audit." });
-  }
-});
-router2.get("/presence", adminApiGuard("dashboard"), async (req, res) => {
-  try {
-    const twoMinAgo = new Date(Date.now() - 2 * 6e4).toISOString();
-    const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "user_presence"), (0, import_firestore3.where)("lastSeenAt", ">", twoMinAgo), (0, import_firestore3.limit)(100)));
-    const users = [];
-    snap.forEach((d) => {
-      const v = d.data();
-      users.push({
-        uid: d.id,
-        email: String(v.email || ""),
-        storeName: String(v.storeName || ""),
-        device: String(v.device || ""),
-        country: String(v.country || ""),
-        city: String(v.city || ""),
-        lastSeenAt: String(v.lastSeenAt || "")
-      });
-    });
-    res.json({ ok: true, online: users.length, users });
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: DZ_TZ,
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false
+    }).format(/* @__PURE__ */ new Date()).split(":").map(Number);
+    return { h: parts[0] % 24, m: parts[1] || 0 };
   } catch {
-    res.json({ ok: true, online: 0, users: [] });
+    const d = /* @__PURE__ */ new Date();
+    return { h: d.getUTCHours() + 1, m: d.getUTCMinutes() };
+  }
+}
+function parseHM(v) {
+  const [h, m] = String(v || "0:0").split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+function inQuietHours(s) {
+  if (!s.quietHours.enabled || !s.quietHours.start || !s.quietHours.end) return false;
+  const now = dzHourMinute();
+  const cur = now.h * 60 + now.m;
+  const start = parseHM(s.quietHours.start);
+  const end = parseHM(s.quietHours.end);
+  if (start === end) return false;
+  return start > end ? cur >= start || cur < end : cur >= start && cur < end;
+}
+async function waSendText(toDigits, body) {
+  const to = toDigits.replace(/^0/, "213");
+  const rt = await getWaAdminConfig();
+  if (rt.mode !== "real" || !rt.token || !rt.phoneNumberId) {
+    return { ok: true, simulated: true, waMessageId: `sim_${import_crypto3.default.randomUUID()}` };
+  }
+  try {
+    const url = `https://graph.facebook.com/${rt.graphVersion}/${rt.phoneNumberId}/messages`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${rt.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "text",
+        text: { preview_url: true, body: body.slice(0, 4096) }
+      })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errObj = j.error;
+      const detail = errObj?.message ? `Meta ${errObj.code ?? ""}${errObj.error_subcode ? "/" + errObj.error_subcode : ""} ${errObj.message}`.trim() : `HTTP ${res.status} ${JSON.stringify(j).slice(0, 160)}`;
+      return { ok: false, simulated: false, waMessageId: "", error: detail };
+    }
+    const mid = j.messages?.[0]?.id || `wa_${Date.now()}`;
+    return { ok: true, simulated: false, waMessageId: mid };
+  } catch (e) {
+    return { ok: false, simulated: false, waMessageId: "", error: waErrText(e) };
+  }
+}
+function waErrText(e) {
+  if (e instanceof Error) return e.message || e.name;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e).slice(0, 200);
+  } catch {
+    return String(e);
+  }
+}
+async function logWaMessage(msg) {
+  const id = `wa_${Date.now().toString(36)}_${import_crypto3.default.randomUUID().slice(0, 8)}`;
+  const clean = {
+    sentAt: msg.sentAt || (/* @__PURE__ */ new Date()).toISOString(),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  for (const [k, v] of Object.entries(msg)) {
+    if (v !== void 0) clean[k] = v;
+  }
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "whatsapp_messages", id), clean);
+  return id;
+}
+async function findMessagesByCart(cartId, kinds) {
+  const out = [];
+  const snap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "whatsapp_messages"), (0, import_firestore5.where)("cartId", "==", cartId)));
+  snap.forEach((d) => {
+    const data = d.data() || {};
+    if (kinds.includes(String(data.kind))) out.push({ id: d.id, data });
+  });
+  return out;
+}
+async function isUnsubscribed(tenantId, phoneDigits) {
+  try {
+    const globalSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "whatsapp_unsubscribes", `global_${phoneDigits}`));
+    if (globalSnap.exists()) return true;
+    const snap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "whatsapp_unsubscribes", `${tenantId}_${phoneDigits}`));
+    return snap.exists();
+  } catch {
+    return false;
+  }
+}
+async function markUnsubscribed(tenantId, phoneDigits, source) {
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "whatsapp_unsubscribes", `${tenantId}_${phoneDigits}`), {
+    tenantId,
+    phoneDigits,
+    source,
+    stoppedAt: (/* @__PURE__ */ new Date()).toISOString()
+  }, { merge: true });
+}
+var STOP_KEYWORDS = ["stop", "STOP", "Stop", "\u0625\u064A\u0642\u0627\u0641", "\u0627\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643", "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643", "unsubscribe", "D\xC9SISTER"];
+function renderWaTemplate(tpl, vars) {
+  return tpl.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m);
+}
+function cartItemsSummary(items) {
+  const list = Array.isArray(items) ? items.slice(0, 5) : [];
+  const parts = list.map((it) => {
+    const name = String(it.name || "\u0645\u0646\u062A\u062C");
+    const qty = Number(it.quantity ?? it.qty) || 1;
+    return `${name} x${qty}`;
+  });
+  return parts.join("\u060C ") || "\u2014";
+}
+function resolveLang(settings, cartLang) {
+  if (settings.language === "ar" || settings.language === "fr") return settings.language;
+  return cartLang === "fr" ? "fr" : "ar";
+}
+function resolveTenantName(tenantData) {
+  return String(tenantData.storeName || tenantData.name || "\u0627\u0644\u0645\u062A\u062C\u0631").slice(0, 60);
+}
+function toMs(v) {
+  try {
+    if (!v) return 0;
+    if (typeof v === "object" && typeof v.toMillis === "function") {
+      return v.toMillis();
+    }
+    const t = new Date(String(v)).getTime();
+    return Number.isFinite(t) ? t : 0;
+  } catch {
+    return 0;
+  }
+}
+var lastProcessAt = 0;
+var PROCESS_MIN_INTERVAL_MS = 60 * 1e3;
+async function processWhatsAppQueue(force) {
+  const summary = {
+    cartsSent: 0,
+    remindersSent: 0,
+    orderConfirmsSent: 0,
+    statusNotificationsSent: 0,
+    skippedQuietHours: 0,
+    errors: [],
+    cloudApi: (await getWaAdminConfig()).mode === "real"
+  };
+  if (!force && Date.now() - lastProcessAt < PROCESS_MIN_INTERVAL_MS) return summary;
+  lastProcessAt = Date.now();
+  try {
+    const snap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "abandoned_carts"), (0, import_firestore5.where)("status", "==", "abandoned")));
+    for (const d of snap.docs) {
+      try {
+        const cart = d.data() || {};
+        const tenantId = String(cart.tenantId || "");
+        if (!tenantId) continue;
+        const settings = await getWaSettings(tenantId);
+        if (!settings.enabled || !settings.abandonedCarts.enabled) continue;
+        const digits = String(cart.phoneDigits || "");
+        if (!/^0[567]\d{8}$/.test(digits)) continue;
+        if (await isUnsubscribed(tenantId, digits)) continue;
+        if (settings.consentCheckbox && cart.consentChecked !== true) continue;
+        const firstProductId = String(cart.items?.[0]?.productId || "");
+        if (settings.scope.mode === "selected" && !settings.scope.productIds.includes(firstProductId)) continue;
+        try {
+          const ordersSnap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("phone", "==", digits)));
+          let hasOrder = false;
+          ordersSnap.forEach((o) => {
+            if ((o.data() || {}).userId === tenantId) hasOrder = true;
+          });
+          if (hasOrder) continue;
+        } catch {
+        }
+        const updatedAtMs = toMs(cart.updatedAt) || toMs(cart.createdAt);
+        if (!updatedAtMs) continue;
+        const dueMs = updatedAtMs + settings.abandonedCarts.delayMinutes * 6e4;
+        const sent = await findMessagesByCart(d.id, ["cart"]);
+        const reminders = await findMessagesByCart(d.id, ["cart_reminder"]);
+        if (sent.length === 0) {
+          if (Date.now() < dueMs) continue;
+          if (inQuietHours(settings)) {
+            summary.skippedQuietHours++;
+            continue;
+          }
+          const r = await sendCartMessage(d.id, cart, tenantId, settings, "cart");
+          if (r) summary.cartsSent++;
+          else summary.errors.push(`cart ${d.id}`);
+        } else if (reminders.length === 0 && settings.abandonedCarts.reminderEnabled) {
+          const sentAt = toMs(sent[0].data.sentAt);
+          if (Date.now() < sentAt + WA_REMINDER_MINUTES * 6e4) continue;
+          if (toMs(cart.waRepliedAt) > 0) continue;
+          if (inQuietHours(settings)) {
+            summary.skippedQuietHours++;
+            continue;
+          }
+          const r = await sendCartMessage(d.id, cart, tenantId, settings, "cart_reminder");
+          if (r) summary.remindersSent++;
+          else summary.errors.push(`reminder ${d.id}`);
+        }
+      } catch (e) {
+        summary.errors.push(String(e.message || e).slice(0, 120));
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`phaseA: ${String(e.message || e).slice(0, 120)}`);
+  }
+  try {
+    const snap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("status", "==", "En attente")));
+    const cutoff = Date.now() - 48 * 3600 * 1e3;
+    for (const d of snap.docs) {
+      try {
+        const order = d.data() || {};
+        if (order.waConfirmSent === true) continue;
+        const tenantId = String(order.userId || "");
+        if (!tenantId) continue;
+        const digits = String(order.phone || "").replace(/\D/g, "");
+        if (!/^0[567]\d{8}$/.test(digits) && !/^213[567]\d{8}$/.test(digits)) continue;
+        if (toMs(order.createdAt) < cutoff) continue;
+        const settings = await getWaSettings(tenantId);
+        if (!settings.enabled || !settings.orderConfirmations.enabled) continue;
+        if (await isUnsubscribed(tenantId, digits.replace(/^213/, "0"))) continue;
+        if (inQuietHours(settings)) {
+          summary.skippedQuietHours++;
+          continue;
+        }
+        const ok = await sendOrderConfirmMessage(d.id, order, tenantId, settings);
+        if (ok) summary.orderConfirmsSent++;
+        else summary.errors.push(`order ${d.id}`);
+      } catch (e) {
+        summary.errors.push(String(e.message || e).slice(0, 120));
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`phaseB: ${String(e.message || e).slice(0, 120)}`);
+  }
+  try {
+    for (const status of WA_NOTIFIABLE_STATUSES) {
+      const snap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("status", "==", status)));
+      const cutoff = Date.now() - 24 * 3600 * 1e3;
+      for (const d of snap.docs) {
+        try {
+          const order = d.data() || {};
+          if (order.waConfirmSent !== true && order.whatsappConfirmed !== true) continue;
+          if (order.waLastStatusSent === status) continue;
+          if (toMs(order.updatedAt || order.createdAt) < cutoff) continue;
+          const tenantId = String(order.userId || "");
+          if (!tenantId) continue;
+          const settings = await getWaSettings(tenantId);
+          if (!settings.enabled) continue;
+          const digits = String(order.phone || "").replace(/\D/g, "");
+          if (await isUnsubscribed(tenantId, digits.replace(/^213/, "0"))) continue;
+          if (inQuietHours(settings)) {
+            summary.skippedQuietHours++;
+            continue;
+          }
+          const lang = settings.language === "store" ? "ar" : settings.language;
+          const tplMap = lang === "fr" ? WA_ORDER_STATUS_FR : WA_ORDER_STATUS_AR;
+          const line = tplMap[status];
+          if (!line) continue;
+          const tenantSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "tenants", tenantId)).catch(() => null);
+          const tenantData = tenantSnap?.data() || {};
+          const trackUrl = `${waBaseUrl()}/track/${encodeURIComponent(String(order.reference || order.id || ""))}`;
+          const body = `${line}
+
+\u{1F4E6} ${cartItemsSummary(order.items)}
+\u{1F517} ${trackUrl}`;
+          const r = await waSendText(digits, body);
+          await logWaMessage({
+            tenantId,
+            kind: "order_status",
+            direction: "out",
+            orderId: d.id,
+            phone: digits,
+            lang,
+            body,
+            status: r.ok ? "sent" : "failed",
+            simulated: r.simulated,
+            waMessageId: r.waMessageId,
+            error: r.error
+          });
+          await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "orders", d.id), {
+            waLastStatusSent: status,
+            waLastStatusAt: (/* @__PURE__ */ new Date()).toISOString(),
+            ...r.ok ? {} : { waLastError: r.error || "" }
+          }, { merge: true });
+          await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "orders", d.id), {
+            waLastStatusSent: status,
+            waLastStatusAt: (/* @__PURE__ */ new Date()).toISOString()
+          }, { merge: true }).catch(() => {
+          });
+          if (r.ok) summary.statusNotificationsSent++;
+          else summary.errors.push(`status ${d.id}`);
+        } catch (e) {
+          summary.errors.push(String(e.message || e).slice(0, 120));
+        }
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`phaseC: ${String(e.message || e).slice(0, 120)}`);
+  }
+  return summary;
+}
+async function ensureCartToken(cartId, cart) {
+  const existing = String(cart.waToken || "");
+  if (existing) return existing;
+  const token = import_crypto3.default.randomBytes(12).toString("hex");
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId), { waToken: token }, { merge: true });
+  const tenantId = String(cart.tenantId || "");
+  if (tenantId) {
+    await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), { waToken: token }, { merge: true }).catch(() => {
+    });
+  }
+  return token;
+}
+async function sendCartMessage(cartId, cart, tenantId, settings, kind) {
+  const digits = String(cart.phoneDigits || "");
+  const lang = resolveLang(settings, cart.lang);
+  const tenantSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "tenants", tenantId)).catch(() => null);
+  const tenantData = tenantSnap?.data() || {};
+  const token = await ensureCartToken(cartId, cart);
+  const link = `${waBaseUrl()}/wa/${cartId}?t=${token}`;
+  const reminderPrefix = kind === "cart_reminder" ? lang === "fr" ? "\u23F0 Petit rappel \u2014 " : "\u23F0 \u062A\u0630\u0643\u064A\u0631 \u2014 " : "";
+  const tpl = lang === "fr" ? settings.abandonedCarts.messageFr : settings.abandonedCarts.messageAr;
+  const total = Number(cart.total) || 0;
+  const body = reminderPrefix + renderWaTemplate(tpl, {
+    nom: String(cart.client || "").split(" ")[0] || (lang === "fr" ? "cher client" : "\u0639\u0645\u064A\u0644\u0646\u0627"),
+    boutique: resolveTenantName(tenantData),
+    produits: cartItemsSummary(cart.items),
+    total: total.toLocaleString("fr-FR"),
+    wilaya: String(cart.wilaya || ""),
+    lien: link
+  });
+  const r = await waSendText(digits, body);
+  const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+  await logWaMessage({
+    tenantId,
+    kind,
+    direction: "out",
+    cartId,
+    phone: digits,
+    lang,
+    body,
+    status: r.ok ? "sent" : "failed",
+    simulated: r.simulated,
+    waMessageId: r.waMessageId,
+    error: r.error,
+    sentAt: nowIso3
+  });
+  const patch = {
+    waStatus: r.ok ? "sent" : "failed",
+    waSimulated: r.simulated,
+    waSentAt: nowIso3,
+    ...kind === "cart_reminder" ? { waReminderSentAt: nowIso3 } : {},
+    ...r.ok ? {} : { waError: r.error || "" }
+  };
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
+  });
+  return r.ok;
+}
+async function sendOrderConfirmMessage(orderId, order, tenantId, settings) {
+  const digits = String(order.phone || "").replace(/\D/g, "").replace(/^213/, "0");
+  const lang = settings.language === "store" ? order.lang === "fr" ? "fr" : "ar" : settings.language;
+  const tenantSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "tenants", tenantId)).catch(() => null);
+  const tenantData = tenantSnap?.data() || {};
+  const token = import_crypto3.default.randomBytes(12).toString("hex");
+  const link = `${waBaseUrl()}/wa/order/${orderId}?t=${token}`;
+  const tpl = lang === "fr" ? WA_ORDER_CONFIRM_FR : WA_ORDER_CONFIRM_AR;
+  const body = renderWaTemplate(tpl, {
+    nom: String(order.client || "").split(" ")[0] || (lang === "fr" ? "cher client" : "\u0639\u0645\u064A\u0644\u0646\u0627"),
+    boutique: resolveTenantName(tenantData),
+    produits: cartItemsSummary(order.items),
+    total: (Number(order.total) || 0).toLocaleString("fr-FR"),
+    wilaya: String(order.wilaya || ""),
+    lien: link
+  });
+  const r = await waSendText(digits, body);
+  const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+  await logWaMessage({
+    tenantId,
+    kind: "order_confirm",
+    direction: "out",
+    orderId,
+    phone: digits,
+    lang,
+    body,
+    status: r.ok ? "sent" : "failed",
+    simulated: r.simulated,
+    waMessageId: r.waMessageId,
+    error: r.error,
+    sentAt: nowIso3
+  });
+  const patch = {
+    waConfirmSent: r.ok === true,
+    waConfirmSimulated: r.simulated,
+    waConfirmSentAt: nowIso3,
+    waToken: token,
+    ...r.ok ? {} : { waLastError: r.error || "" }
+  };
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "orders", orderId), patch, { merge: true });
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "orders", orderId), patch, { merge: true }).catch(() => {
+  });
+  return r.ok;
+}
+async function getProductDoc(tenantId, productId) {
+  const tries = [(0, import_firestore5.doc)(db, "products", productId), (0, import_firestore5.doc)(db, "tenants", tenantId, "products", productId)];
+  for (const ref of tries) {
+    try {
+      const snap = await (0, import_firestore5.getDoc)(ref);
+      if (snap.exists()) return snap.data() || {};
+    } catch {
+    }
+  }
+  return null;
+}
+async function convertCartViaWhatsApp(cartId, acceptNewPrice) {
+  const cartSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId)).catch(() => null);
+  if (!cartSnap || !cartSnap.exists()) return { ok: false, reason: "invalid" };
+  const cart = cartSnap.data() || {};
+  const tenantId = String(cart.tenantId || "");
+  if (!tenantId) return { ok: false, reason: "invalid" };
+  if (cart.status === "recovered" && cart.orderId) {
+    return { ok: true, reason: "already", orderId: String(cart.orderId), trackingCode: String(cart.orderId) };
+  }
+  const items = Array.isArray(cart.items) ? cart.items : [];
+  const first = items[0] || {};
+  const productId = String(first.productId || "");
+  const product = productId ? await getProductDoc(tenantId, productId) : null;
+  if (productId && !product) return { ok: false, reason: "product_unavailable" };
+  if (product && String(product.status || "active") !== "active") {
+    return { ok: false, reason: "product_unavailable" };
+  }
+  const stock = product ? Number(product.stock) : NaN;
+  if (product && Number.isFinite(stock) && stock <= 0) {
+    return { ok: false, reason: "out_of_stock" };
+  }
+  const currentPrice = product ? Number(product.price) : Number(first.price) || 0;
+  const qty = Number(first.quantity ?? first.qty) || 1;
+  const wilayaStr = String(cart.wilaya || "");
+  const codeMatch = wilayaStr.match(/(\d{1,2})\s*[-–]/);
+  const wilaya = codeMatch ? ALGERIAN_WILAYAS.find((w) => w.code === Number(codeMatch[1])) : void 0;
+  const deliveryType = String(cart.deliveryType || "home") === "desk" ? "desk" : "home";
+  const currentShipping = wilaya ? deliveryType === "home" ? wilaya.homeDeliveryPrice : wilaya.deskDeliveryPrice : Number(cart.shipping) || 0;
+  const currentTotal = currentPrice * qty + currentShipping;
+  const oldTotal = Number(cart.total) || 0;
+  if (!acceptNewPrice && (currentPrice !== (Number(first.price) || 0) || currentTotal !== oldTotal)) {
+    return { ok: false, reason: "price_changed", currentPrice, currentShipping, currentTotal };
+  }
+  const generatedOrderId = `ORD-${Math.floor(Math.random() * 9e4) + 1e4}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "")}-${import_crypto3.default.randomBytes(3).toString("hex").toUpperCase()}`;
+  const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+  const productImage = String(product && (product.image || (product.images || [])[0]) || first.image || "");
+  const productName = String(product && (product.nameAr || product.name) || first.name || "Produit");
+  const orderPayload = {
+    orderNumber: generatedOrderId.substring(4, 10),
+    reference: generatedOrderId,
+    trackingCode: generatedOrderId,
+    userId: tenantId,
+    client: String(cart.client || "Client WhatsApp"),
+    phone: String(cart.phone || ""),
+    wilaya: wilayaStr,
+    commune: String(cart.commune || ""),
+    address: String(cart.address || ""),
+    itemsSummary: cartItemsSummary(items),
+    total: currentTotal,
+    status: "Confirm\xE9e",
+    paymentStatus: "Non pay\xE9",
+    paymentMethod: "COD (\u0627\u0644\u062F\u0641\u0639 \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645)",
+    deliveryType: deliveryType === "home" ? "Livraison \xE0 domicile" : "Point de relais / Stop Desk",
+    shippingMethod: deliveryType === "home" ? "Livraison \xE0 domicile" : "Point de relais / Stop Desk",
+    shippingCost: currentShipping,
+    source: "WhatsApp \u2013 panier abandonn\xE9",
+    whatsappConfirmed: true,
+    confirmedAt: nowIso3,
+    date: nowIso3,
+    image: productImage,
+    items: [{
+      productId,
+      name: productName,
+      price: currentPrice,
+      quantity: qty,
+      variants: first.variants || {},
+      image: productImage
+    }]
+  };
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "orders", generatedOrderId), {
+    ...orderPayload,
+    createdAt: (0, import_firestore5.serverTimestamp)(),
+    updatedAt: (0, import_firestore5.serverTimestamp)()
+  }, { merge: true });
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "orders", generatedOrderId), {
+    ...orderPayload,
+    createdAt: (0, import_firestore5.serverTimestamp)(),
+    updatedAt: (0, import_firestore5.serverTimestamp)()
+  }, { merge: true });
+  const patch = {
+    status: "recovered",
+    recovered: true,
+    orderId: generatedOrderId,
+    recoveredAt: nowIso3,
+    updatedAt: nowIso3,
+    waStatus: "replied",
+    waRepliedAt: nowIso3,
+    total: currentTotal
+  };
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
+  });
+  await logWaMessage({
+    tenantId,
+    kind: "incoming",
+    direction: "in",
+    cartId,
+    orderId: generatedOrderId,
+    phone: String(cart.phoneDigits || ""),
+    lang: cart.lang === "fr" ? "fr" : "ar",
+    body: "\u2705 Confirmer ma commande (bouton)",
+    status: "received",
+    sentAt: nowIso3
+  });
+  return { ok: true, orderId: generatedOrderId, trackingCode: generatedOrderId, currentTotal };
+}
+async function waCartAction(cartId, token, action, acceptNewPrice) {
+  const cartSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId)).catch(() => null);
+  if (!cartSnap || !cartSnap.exists()) return { ok: false, error: "Panier introuvable." };
+  const cart = cartSnap.data() || {};
+  if (String(cart.waToken || "") !== token) return { ok: false, error: "Lien invalide ou expir\xE9." };
+  const tenantId = String(cart.tenantId || "");
+  const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+  if (action === "confirm") {
+    return convertCartViaWhatsApp(cartId, acceptNewPrice);
+  }
+  if (action === "modify") {
+    const patch2 = { status: "contacted", waStatus: "replied", waRepliedAt: nowIso3, waMerchantTodo: true, updatedAt: nowIso3 };
+    await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId), patch2, { merge: true });
+    await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch2, { merge: true }).catch(() => {
+    });
+    await logWaMessage({
+      tenantId,
+      kind: "incoming",
+      direction: "in",
+      cartId,
+      phone: String(cart.phoneDigits || ""),
+      lang: cart.lang === "fr" ? "fr" : "ar",
+      body: "\u270F\uFE0F Modifier / Appeler (bouton)",
+      status: "received",
+      sentAt: nowIso3
+    });
+    return { ok: true };
+  }
+  const patch = { status: "refused", waStatus: "replied", waRepliedAt: nowIso3, refusedAt: nowIso3, updatedAt: nowIso3 };
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
+  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
+  });
+  await logWaMessage({
+    tenantId,
+    kind: "incoming",
+    direction: "in",
+    cartId,
+    phone: String(cart.phoneDigits || ""),
+    lang: cart.lang === "fr" ? "fr" : "ar",
+    body: "\u274C Non merci (bouton)",
+    status: "received",
+    sentAt: nowIso3
+  });
+  return { ok: true };
+}
+function clientText(v, max) {
+  return String(v ?? "").trim().slice(0, max);
+}
+function registerWhatsAppRoutes(app2) {
+  app2.get("/api/whatsapp/status", async (_req, res) => {
+    const rt = await getWaAdminConfig();
+    res.json({ cloudApi: rt.mode === "real", mode: rt.mode, source: rt.source, baseUrl: waBaseUrl() });
+  });
+  const handleProcess = async (req, res) => {
+    try {
+      const force = req.method === "POST" && clientText(req.query.force, 5) === "1";
+      const summary = await processWhatsAppQueue(force);
+      res.json({ ok: true, ...summary });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e.message || e) });
+    }
+  };
+  app2.get("/api/whatsapp/process", handleProcess);
+  app2.post("/api/whatsapp/process", handleProcess);
+  app2.post("/api/whatsapp/action", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const cartId = clientText(b.cartId, 120);
+      const token = clientText(b.token, 60);
+      const action = clientText(b.action, 20);
+      const acceptNewPrice = b.acceptNewPrice === true;
+      if (!cartId || !token || !["confirm", "modify", "decline"].includes(action)) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+      const r = await waCartAction(cartId, token, action, acceptNewPrice);
+      res.json(r);
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "action_failed", detail: String(e.message || e) });
+    }
+  });
+  app2.post("/api/whatsapp/resend", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const cartId = clientText(b.cartId, 120);
+      const token = clientText(b.token, 60);
+      if (!cartId || !token) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+      const snap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "abandoned_carts", cartId));
+      if (!snap.exists()) {
+        res.status(404).json({ ok: false, error: "not_found" });
+        return;
+      }
+      const cart = snap.data() || {};
+      if (String(cart.waToken || "") !== token) {
+        res.status(403).json({ ok: false, error: "forbidden" });
+        return;
+      }
+      const tenantId = String(cart.tenantId || "");
+      const settings = await getWaSettings(tenantId);
+      if (!settings.enabled || !settings.abandonedCarts.enabled) {
+        res.status(409).json({ ok: false, error: "extension_disabled" });
+        return;
+      }
+      if (["recovered", "refused"].includes(String(cart.status))) {
+        res.status(409).json({ ok: false, error: "cart_closed" });
+        return;
+      }
+      if (await isUnsubscribed(tenantId, String(cart.phoneDigits || ""))) {
+        res.status(409).json({ ok: false, error: "unsubscribed" });
+        return;
+      }
+      const ok = await sendCartMessage(cartId, cart, tenantId, settings, "cart");
+      res.json({ ok });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "resend_failed" });
+    }
+  });
+  app2.post("/api/whatsapp/order-action", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const orderId = clientText(b.orderId, 120);
+      const token = clientText(b.token, 60);
+      const action = clientText(b.action, 20);
+      if (!orderId || !token || !["confirm", "decline"].includes(action)) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+      let orderSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "orders", orderId)).catch(() => null);
+      let orderData = orderSnap?.exists() ? orderSnap.data() || {} : null;
+      let docId = orderId;
+      if (!orderData) {
+        const byRef = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("reference", "==", orderId))).catch(() => null);
+        if (byRef && !byRef.empty) {
+          docId = byRef.docs[0].id;
+          orderData = byRef.docs[0].data() || {};
+        }
+      }
+      if (!orderData) {
+        res.status(404).json({ ok: false, error: "not_found" });
+        return;
+      }
+      if (String(orderData.waToken || "") !== token) {
+        res.status(403).json({ ok: false, error: "forbidden" });
+        return;
+      }
+      const tenantId = String(orderData.userId || "");
+      const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
+      const newStatus = action === "confirm" ? "Confirm\xE9e" : "Annul\xE9e";
+      const patch = {
+        status: newStatus,
+        updatedAt: nowIso3,
+        ...action === "confirm" ? { whatsappConfirmed: true, confirmedAt: nowIso3 } : { refusedAt: nowIso3 }
+      };
+      await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "orders", docId), patch, { merge: true });
+      if (tenantId) {
+        await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "orders", docId), patch, { merge: true }).catch(() => {
+        });
+      }
+      await logWaMessage({
+        tenantId,
+        kind: "incoming",
+        direction: "in",
+        orderId: docId,
+        phone: String(orderData.phone || "").replace(/\D/g, ""),
+        lang: "ar",
+        body: action === "confirm" ? "\u2705 Confirmer ma commande (bouton)" : "\u274C Refuser (bouton)",
+        status: "received",
+        sentAt: nowIso3
+      });
+      res.json({ ok: true, status: newStatus, trackingCode: String(orderData.trackingCode || orderData.reference || docId) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "order_action_failed" });
+    }
+  });
+  app2.get("/api/webhooks/whatsapp", async (req, res) => {
+    const mode = clientText(req.query["hub.mode"], 20);
+    const token = clientText(req.query["hub.verify_token"], 100);
+    const challenge = clientText(req.query["hub.challenge"], 200);
+    const rt = await getWaAdminConfig();
+    if (mode === "subscribe" && token && rt.verifyToken && token === rt.verifyToken) {
+      (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "platform_settings", "whatsapp"), { webhookVerifiedAt: (/* @__PURE__ */ new Date()).toISOString() }, { merge: true }).catch(() => void 0);
+      waRuntimeCache = null;
+      res.status(200).send(challenge);
+      return;
+    }
+    res.sendStatus(403);
+  });
+  app2.post("/api/webhooks/whatsapp", async (req, res) => {
+    try {
+      const rawBody = req.rawBody;
+      const rt = await getWaAdminConfig();
+      const appSecret = rt.appSecret;
+      if (appSecret) {
+        const sig = String(req.headers["x-hub-signature-256"] || "");
+        if (!sig) {
+          res.sendStatus(401);
+          return;
+        }
+        const expected = "sha256=" + import_crypto3.default.createHmac("sha256", appSecret).update(rawBody || Buffer.from(JSON.stringify(req.body || {}))).digest("hex");
+        if (sig !== expected) {
+          res.sendStatus(401);
+          return;
+        }
+      }
+      const payload = req.body || {};
+      const entries = payload.entry || [];
+      for (const entry of entries) {
+        const changes = entry.changes || [];
+        for (const change of changes) {
+          const value = change.value || {};
+          const tenantId = String(value.metadata?.phone_number_id || "");
+          const statuses = value.statuses || [];
+          for (const st of statuses) {
+            const waMessageId = String(st.id || "");
+            const status = String(st.status || "");
+            if (!waMessageId || !["sent", "delivered", "read", "failed"].includes(status)) continue;
+            try {
+              const msgsSnap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "whatsapp_messages"), (0, import_firestore5.where)("waMessageId", "==", waMessageId)));
+              for (const m of msgsSnap.docs) {
+                const data = m.data() || {};
+                const patch = { status };
+                const tsField = status === "delivered" ? "waDeliveredAt" : status === "read" ? "waReadAt" : status === "failed" ? "waFailedAt" : null;
+                if (tsField) patch[tsField] = (/* @__PURE__ */ new Date()).toISOString();
+                const errors = st.errors || [];
+                if (errors.length) patch.error = errors[0]?.title || errors[0]?.message || "failed";
+                await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "whatsapp_messages", m.id), patch, { merge: true });
+                if (data.cartId) {
+                  const cPatch = { waStatus: status };
+                  if (tsField) cPatch[tsField] = patch[tsField];
+                  if (errors.length) cPatch.waError = patch.error;
+                  const tenantOfCart = String(data.tenantId || "");
+                  await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", String(data.cartId)), cPatch, { merge: true });
+                  if (tenantOfCart) {
+                    await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantOfCart, "abandoned_carts", String(data.cartId)), cPatch, { merge: true }).catch(() => {
+                    });
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("webhook status update failed:", e);
+            }
+          }
+          const messages = value.messages || [];
+          for (const msg of messages) {
+            const waMessageId = String(msg.id || "");
+            const from = String(msg.from || "");
+            if (!waMessageId || !from) continue;
+            const digits = from.replace(/\D/g, "").replace(/^213/, "0");
+            try {
+              const seen = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "whatsapp_messages"), (0, import_firestore5.where)("waMessageId", "==", waMessageId)));
+              if (!seen.empty) continue;
+            } catch {
+            }
+            const type = String(msg.type || "text");
+            let body = "";
+            let buttonAction = null;
+            if (type === "text") {
+              body = String(msg.text?.body || "");
+              const low = body.trim().toLowerCase();
+              if (STOP_KEYWORDS.some((k) => low === k.toLowerCase() || low.startsWith(k.toLowerCase()))) {
+                await markUnsubscribed("global", digits, "webhook_stop");
+                await logWaMessage({
+                  tenantId: tenantId || "global",
+                  kind: "incoming",
+                  direction: "in",
+                  phone: digits,
+                  lang: "ar",
+                  body: `\u{1F6AB} STOP : ${body}`,
+                  status: "received",
+                  waMessageId
+                });
+                continue;
+              }
+            } else if (type === "button") {
+              body = String(msg.button?.text || "");
+              const payload2 = String(msg.button?.payload || "");
+              if (payload2.includes("confirm") || /confirmer|تأكيد/i.test(body)) buttonAction = "confirm";
+              else if (payload2.includes("modify") || /modifier|appeler|تعديل|اتصال/i.test(body)) buttonAction = "modify";
+              else if (payload2.includes("decline") || /non merci|لا شكرا/i.test(body)) buttonAction = "decline";
+            } else if (type === "interactive") {
+              const reply = msg.interactive;
+              body = String(reply?.button_reply?.title || reply?.list_reply?.title || "");
+              const id = String(reply?.button_reply?.id || reply?.list_reply?.id || "");
+              if (id.includes("confirm") || /confirmer|تأكيد/i.test(body)) buttonAction = "confirm";
+              else if (id.includes("modify") || /modifier|appeler|تعديل/i.test(body)) buttonAction = "modify";
+              else if (id.includes("decline") || /non merci|لا شكرا/i.test(body)) buttonAction = "decline";
+            }
+            let targetCartId = "";
+            let targetToken = "";
+            let targetTenantId = "";
+            try {
+              const cartsSnap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "abandoned_carts"), (0, import_firestore5.where)("phoneDigits", "==", digits)));
+              let bestAt = 0;
+              cartsSnap.forEach((c) => {
+                const data = c.data() || {};
+                if (["recovered", "refused"].includes(String(data.status))) return;
+                const at = toMs(data.waSentAt) || toMs(data.updatedAt);
+                if (at > bestAt && data.waToken) {
+                  bestAt = at;
+                  targetCartId = c.id;
+                  targetToken = String(data.waToken);
+                  targetTenantId = String(data.tenantId || "");
+                }
+              });
+            } catch {
+            }
+            await logWaMessage({
+              tenantId: targetTenantId || tenantId || "global",
+              kind: "incoming",
+              direction: "in",
+              cartId: targetCartId || void 0,
+              phone: digits,
+              lang: "ar",
+              body: body || `[${type}]`,
+              status: "received",
+              waMessageId
+            });
+            if (buttonAction && targetCartId && targetToken) {
+              await waCartAction(targetCartId, targetToken, buttonAction, false);
+            } else {
+              if (targetCartId) {
+                const patch = { waStatus: "replied", waRepliedAt: (/* @__PURE__ */ new Date()).toISOString(), waMerchantTodo: true };
+                await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", targetCartId), patch, { merge: true }).catch(() => {
+                });
+              }
+            }
+          }
+        }
+      }
+      res.sendStatus(200);
+    } catch (e) {
+      console.warn("webhook error:", e);
+      res.sendStatus(200);
+    }
+  });
+}
+
+// src/routes/adminPlatform.ts
+var router4 = import_express4.default.Router();
+var adminOf2 = (req) => req.admin;
+var nowIso2 = () => (/* @__PURE__ */ new Date()).toISOString();
+var str2 = (v) => typeof v === "string" ? v : v == null ? "" : String(v);
+var num2 = (v) => typeof v === "number" ? v : Number(v) || 0;
+var strList = (v) => Array.isArray(v) ? v.map(String) : [];
+router4.get("/themes", adminApiGuard("themes"), async (_req, res) => {
+  try {
+    const snap = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "themes"));
+    const cfg = snap.data() || {};
+    res.json({
+      disabled: strList(cfg.disabled),
+      featured: strList(cfg.featured),
+      perPlan: cfg.perPlan && typeof cfg.perPlan === "object" ? cfg.perPlan : {},
+      updatedAt: str2(cfg.updatedAt)
+    });
+  } catch (e) {
+    console.error("GET /themes", e);
+    res.status(500).json({ error: "Erreur th\xE8mes." });
   }
 });
-var adminApi_default = router2;
+router4.put("/themes", adminApiGuard("themes"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const cfg = {
+      disabled: strList(b.disabled),
+      featured: strList(b.featured),
+      perPlan: b.perPlan && typeof b.perPlan === "object" ? b.perPlan : {},
+      updatedAt: nowIso2()
+    };
+    const before = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "themes"));
+    await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "platform_settings", "themes"), cfg, { merge: true });
+    await logAdminAudit({ actor: adminOf2(req), action: "themes.update", target: "platform_settings/themes", before: before.data() || {}, after: cfg, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PUT /themes", e);
+    res.status(500).json({ error: "Erreur mise \xE0 jour th\xE8mes." });
+  }
+});
+router4.get("/extensions", adminApiGuard("extensions"), async (_req, res) => {
+  try {
+    const snap = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "extensions"));
+    const cfg = snap.data() || {};
+    res.json({
+      disabled: strList(cfg.disabled),
+      perPlan: cfg.perPlan && typeof cfg.perPlan === "object" ? cfg.perPlan : {},
+      quotas: cfg.quotas && typeof cfg.quotas === "object" ? cfg.quotas : {},
+      updatedAt: str2(cfg.updatedAt)
+    });
+  } catch (e) {
+    console.error("GET /extensions", e);
+    res.status(500).json({ error: "Erreur extensions." });
+  }
+});
+router4.put("/extensions", adminApiGuard("extensions"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const cfg = {
+      disabled: strList(b.disabled),
+      perPlan: b.perPlan && typeof b.perPlan === "object" ? b.perPlan : {},
+      quotas: b.quotas && typeof b.quotas === "object" ? b.quotas : {},
+      updatedAt: nowIso2()
+    };
+    const before = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "extensions"));
+    await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "platform_settings", "extensions"), cfg, { merge: true });
+    await logAdminAudit({ actor: adminOf2(req), action: "extensions.update", target: "platform_settings/extensions", before: before.data() || {}, after: cfg, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PUT /extensions", e);
+    res.status(500).json({ error: "Erreur mise \xE0 jour extensions." });
+  }
+});
+router4.get("/whatsapp/config", adminApiGuard("integrations"), async (_req, res) => {
+  try {
+    const cfg = await getWaAdminConfig();
+    res.json({
+      mode: cfg.mode,
+      phoneNumberId: cfg.phoneNumberId,
+      wabaId: cfg.wabaId,
+      appId: cfg.appId,
+      graphVersion: cfg.graphVersion,
+      appUrl: cfg.appUrl,
+      verifyToken: cfg.verifyToken,
+      // nécessaire pour copier l'URL du webhook (demande explicite)
+      tokenConfigured: cfg.hasToken,
+      appSecretConfigured: cfg.hasAppSecret,
+      source: cfg.source,
+      encryptionAvailable: hasEncryptionKey(),
+      webhookVerifiedAt: cfg.webhookVerifiedAt || "",
+      webhookUrl: `${cfg.appUrl || ""}/api/whatsapp/webhook`
+    });
+  } catch (e) {
+    console.error("GET /whatsapp/config", e);
+    res.status(500).json({ error: "Erreur configuration WhatsApp." });
+  }
+});
+router4.put("/whatsapp/config", adminApiGuard("integrations"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const mode = b.mode === "real" ? "real" : "simulation";
+    if (mode === "real" && !hasEncryptionKey()) {
+      return res.status(400).json({ error: "ENCRYPTION_KEY non d\xE9finie : impossible de stocker les secrets chiffr\xE9s." });
+    }
+    const current = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "whatsapp"));
+    const cur = current.data() || {};
+    const patch = {
+      mode,
+      phoneNumberId: str2(b.phoneNumberId).trim().slice(0, 60),
+      wabaId: str2(b.wabaId).trim().slice(0, 60),
+      appId: str2(b.appId).trim().slice(0, 60),
+      graphVersion: str2(b.graphVersion).trim().slice(0, 8) || "v21.0",
+      appUrl: str2(b.appUrl).trim().replace(/\/+$/, "").slice(0, 120),
+      verifyToken: str2(b.verifyToken).trim().slice(0, 120),
+      updatedAt: nowIso2()
+    };
+    if (typeof b.token === "string" && b.token.trim()) patch.tokenEnc = encryptSecret(b.token.trim());
+    if (typeof b.appSecret === "string" && b.appSecret.trim()) patch.appSecretEnc = encryptSecret(b.appSecret.trim());
+    if (b.clearToken === true) patch.tokenEnc = "";
+    if (b.clearAppSecret === true) patch.appSecretEnc = "";
+    await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "platform_settings", "whatsapp"), patch, { merge: true });
+    invalidateWaRuntimeConfig();
+    await logAdminAudit({
+      actor: adminOf2(req),
+      action: "whatsapp.config_update",
+      target: "platform_settings/whatsapp",
+      before: { mode: str2(cur.mode), hadToken: Boolean(str2(cur.tokenEnc)) },
+      after: { mode, tokenChanged: typeof b.token === "string" && !!b.token.trim() },
+      req
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PUT /whatsapp/config", e);
+    res.status(500).json({ error: "Erreur enregistrement configuration WhatsApp." });
+  }
+});
+router4.post("/whatsapp/test-connection", adminApiGuard("integrations"), async (req, res) => {
+  try {
+    const cfg = await getWaAdminConfig();
+    if (!cfg.hasToken || !cfg.phoneNumberId) {
+      return res.status(400).json({ error: "Token ou Phone Number ID manquant : configurez l'int\xE9gration d'abord.", mode: cfg.mode });
+    }
+    const url = `https://graph.facebook.com/${cfg.graphVersion}/${cfg.phoneNumberId}?access_token=${encodeURIComponent(cfg.token)}`;
+    const r = await fetch(url, { method: "GET" });
+    const raw = await r.text();
+    await logAdminAudit({ actor: adminOf2(req), action: "whatsapp.test_connection", target: "meta", after: { httpStatus: r.status }, req });
+    res.json({ ok: r.ok, httpStatus: r.status, response: raw.slice(0, 600) });
+  } catch (e) {
+    console.error("test-connection", e);
+    res.status(502).json({ error: "Impossible de joindre l'API Meta." });
+  }
+});
+router4.post("/whatsapp/send-test", adminApiGuard("integrations"), async (req, res) => {
+  try {
+    const to = str2(req.body?.to).replace(/[^\d+]/g, "").slice(0, 20);
+    const message = str2(req.body?.message).slice(0, 500) || "Message test e-nova.";
+    const cfg = await getWaAdminConfig();
+    if (!to) return res.status(400).json({ error: "Num\xE9ro de destination requis." });
+    if (cfg.mode !== "real" || !cfg.hasToken || !cfg.phoneNumberId) {
+      return res.status(400).json({ error: "Mode r\xE9el non configur\xE9 (simulation active) : enregistrez un token valide." });
+    }
+    const url = `https://graph.facebook.com/${cfg.graphVersion}/${cfg.phoneNumberId}/messages`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.token}` },
+      body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: message } })
+    });
+    const raw = await r.text();
+    await logAdminAudit({ actor: adminOf2(req), action: "whatsapp.send_test", target: to, after: { httpStatus: r.status }, req });
+    res.json({ ok: r.ok, httpStatus: r.status, response: raw.slice(0, 600) });
+  } catch (e) {
+    console.error("send-test", e);
+    res.status(502).json({ error: "Erreur lors de l'envoi du message test." });
+  }
+});
+router4.get("/whatsapp/templates", adminApiGuard("integrations"), async (req, res) => {
+  try {
+    const snap = await (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "wa_templates"), (0, import_firestore6.orderBy)("createdAt", "desc"), (0, import_firestore6.limit)(100)));
+    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (req.query.refresh === "1") {
+      const cfg = await getWaAdminConfig();
+      if (cfg.mode === "real" && cfg.hasToken && cfg.wabaId) {
+        const r = await fetch(`https://graph.facebook.com/${cfg.graphVersion}/${cfg.wabaId}/message_templates?access_token=${encodeURIComponent(cfg.token)}`, { method: "GET" }).catch(() => null);
+        if (r && r.ok) {
+          const j = await r.json();
+          for (const t of j.data || []) {
+            const name = str2(t.name);
+            if (!name) continue;
+            await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "wa_templates", name), {
+              name,
+              category: str2(t.category),
+              language: str2(t.language),
+              status: str2(t.status) || "UNKNOWN",
+              components: t.components || [],
+              source: "meta",
+              updatedAt: nowIso2()
+            }, { merge: true }).catch(() => void 0);
+          }
+          const fresh = await (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "wa_templates"), (0, import_firestore6.orderBy)("createdAt", "desc"), (0, import_firestore6.limit)(100)));
+          rows = fresh.docs.map((d) => ({ id: d.id, ...d.data() }));
+        }
+      }
+    }
+    res.json({ total: rows.length, rows });
+  } catch (e) {
+    console.error("templates", e);
+    res.status(500).json({ error: "Erreur templates." });
+  }
+});
+router4.post("/whatsapp/templates", adminApiGuard("integrations"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const name = str2(b.name).trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 60);
+    const body = str2(b.body).slice(0, 1024);
+    if (!name || !body) return res.status(400).json({ error: "Nom et corps du message requis." });
+    const category = ["MARKETING", "UTILITY", "AUTHENTICATION"].includes(str2(b.category)) ? str2(b.category) : "UTILITY";
+    const language = /^[\w]{2,5}$/.test(str2(b.language)) ? str2(b.language) : "fr";
+    const entry = { name, category, language, body, status: "LOCAL", source: "local", createdAt: nowIso2() };
+    const cfg = await getWaAdminConfig();
+    let metaResult = null;
+    if (b.submit === true && cfg.mode === "real" && cfg.hasToken && cfg.wabaId) {
+      const r = await fetch(`https://graph.facebook.com/${cfg.graphVersion}/${cfg.wabaId}/message_templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.token}` },
+        body: JSON.stringify({ name, category, language, components: [{ type: "BODY", text: body }] })
+      }).catch(() => null);
+      if (r) {
+        const raw = await r.text();
+        metaResult = { httpStatus: r.status, response: raw.slice(0, 400) };
+        entry.status = r.ok ? "PENDING" : "SUBMISSION_FAILED";
+      }
+    }
+    await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "wa_templates", name), entry, { merge: true });
+    await logAdminAudit({ actor: adminOf2(req), action: "whatsapp.template_create", target: name, after: { category, language, submitted: b.submit === true }, req });
+    res.json({ ok: true, id: name, metaResult });
+  } catch (e) {
+    console.error("POST templates", e);
+    res.status(500).json({ error: "Erreur cr\xE9ation template." });
+  }
+});
+router4.delete("/whatsapp/templates/:id", adminApiGuard("integrations"), async (req, res) => {
+  try {
+    await (0, import_firestore6.deleteDoc)((0, import_firestore6.doc)(db, "wa_templates", req.params.id));
+    await logAdminAudit({ actor: adminOf2(req), action: "whatsapp.template_delete", target: req.params.id, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE template", e);
+    res.status(500).json({ error: "Erreur suppression template." });
+  }
+});
+router4.get("/whatsapp/usage", adminApiGuard("integrations"), async (_req, res) => {
+  try {
+    const from = new Date(Date.now() - 30 * 864e5).toISOString();
+    const [tenants, plansSnap, msgs] = await Promise.all([
+      (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "tenants"), (0, import_firestore6.limit)(300))),
+      (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "plans"), (0, import_firestore6.limit)(50))).catch(() => null),
+      (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "whatsapp_messages"), (0, import_firestore6.where)("sentAt", ">", from), (0, import_firestore6.limit)(1e3))).catch(() => null)
+    ]);
+    const quotas = /* @__PURE__ */ new Map();
+    (plansSnap ? plansSnap.docs : []).forEach((p) => quotas.set(p.id, num2(p.data().waQuota)));
+    const perTenant = /* @__PURE__ */ new Map();
+    (msgs ? msgs.docs : []).forEach((m) => {
+      const t = str2(m.data().tenantId);
+      if (t) perTenant.set(t, (perTenant.get(t) || 0) + 1);
+    });
+    const rows = tenants.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        storeName: str2(data.storeName) || d.id,
+        plan: str2(data.plan || ""),
+        sent30d: perTenant.get(d.id) || 0,
+        quota: quotas.get(str2(data.plan || "")) ?? 0
+      };
+    }).sort((a, b) => b.sent30d - a.sent30d);
+    res.json({ totalSent30d: [...perTenant.values()].reduce((a, b) => a + b, 0), rows });
+  } catch (e) {
+    console.error("usage", e);
+    res.status(500).json({ error: "Erreur usage WhatsApp." });
+  }
+});
+var SETTINGS_DEFAULTS = {
+  platformName: "E-nova",
+  supportEmail: "",
+  defaultLanguage: "fr",
+  currency: "DZD",
+  timezone: "Africa/Algiers",
+  registrationsOpen: true,
+  manualApproval: false,
+  emailVerification: false,
+  defaultTrialDays: 14,
+  maintenance: { on: false, message: "Maintenance en cours \u2014 revenez bient\xF4t." },
+  graceDays: 7,
+  reservedSlugs: ["admin", "api", "login", "register", "store", "dashboard", "legal", "settings"],
+  legalFr: "",
+  legalAr: "",
+  globalScripts: "",
+  defaultLimits: { maxProducts: 50, maxOrders: 0 }
+};
+router4.get("/settings", adminApiGuard("settings"), async (_req, res) => {
+  try {
+    const snap = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "general"));
+    const stored = snap.data() || {};
+    const settings = { ...SETTINGS_DEFAULTS, ...stored };
+    const smtpSnap = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "smtp"));
+    const smtpData = smtpSnap.data() || {};
+    res.json({
+      settings,
+      smtp: {
+        host: str2(smtpData.host),
+        port: num2(smtpData.port) || 587,
+        user: str2(smtpData.user),
+        from: str2(smtpData.from),
+        passwordConfigured: Boolean(str2(smtpData.passwordEnc)),
+        encryptionAvailable: hasEncryptionKey()
+      },
+      updatedAt: str2(stored.updatedAt)
+    });
+  } catch (e) {
+    console.error("GET /settings", e);
+    res.status(500).json({ error: "Erreur r\xE9glages." });
+  }
+});
+router4.put("/settings", adminApiGuard("settings"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const before = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "general"));
+    const patch = { updatedAt: nowIso2() };
+    if (typeof b.platformName === "string") patch.platformName = b.platformName.slice(0, 60);
+    if (typeof b.supportEmail === "string") patch.supportEmail = b.supportEmail.slice(0, 120);
+    if (b.defaultLanguage === "fr" || b.defaultLanguage === "ar") patch.defaultLanguage = b.defaultLanguage;
+    if (typeof b.registrationsOpen === "boolean") patch.registrationsOpen = b.registrationsOpen;
+    if (typeof b.manualApproval === "boolean") patch.manualApproval = b.manualApproval;
+    if (typeof b.emailVerification === "boolean") patch.emailVerification = b.emailVerification;
+    if (b.defaultTrialDays !== void 0) patch.defaultTrialDays = Math.max(0, Math.min(90, num2(b.defaultTrialDays)));
+    if (b.graceDays !== void 0) patch.graceDays = Math.max(0, Math.min(90, num2(b.graceDays)));
+    if (b.maintenance && typeof b.maintenance === "object") {
+      const m = b.maintenance;
+      patch.maintenance = { on: m.on === true, message: str2(m.message).slice(0, 300) };
+    }
+    if (Array.isArray(b.reservedSlugs)) patch.reservedSlugs = b.reservedSlugs.map((s) => str2(s).toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40)).filter(Boolean).slice(0, 100);
+    if (typeof b.legalFr === "string") patch.legalFr = b.legalFr.slice(0, 2e4);
+    if (typeof b.legalAr === "string") patch.legalAr = b.legalAr.slice(0, 2e4);
+    if (typeof b.globalScripts === "string") patch.globalScripts = b.globalScripts.slice(0, 5e3);
+    if (b.defaultLimits && typeof b.defaultLimits === "object") {
+      const dl = b.defaultLimits;
+      patch.defaultLimits = { maxProducts: Math.max(1, num2(dl.maxProducts) || 50) };
+    }
+    await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "platform_settings", "general"), patch, { merge: true });
+    await logAdminAudit({ actor: adminOf2(req), action: "settings.update", target: "platform_settings/general", before: before.data() || {}, after: patch, req });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PUT /settings", e);
+    res.status(500).json({ error: "Erreur mise \xE0 jour r\xE9glages." });
+  }
+});
+router4.put("/settings/smtp", adminApiGuard("settings"), async (req, res) => {
+  try {
+    if (!hasEncryptionKey()) return res.status(400).json({ error: "ENCRYPTION_KEY non d\xE9finie : le mot de passe SMTP ne peut pas \xEAtre chiffr\xE9." });
+    const b = req.body || {};
+    const patch = {
+      host: str2(b.host).slice(0, 120),
+      port: Math.max(1, Math.min(65535, num2(b.port) || 587)),
+      user: str2(b.user).slice(0, 120),
+      from: str2(b.from).slice(0, 120),
+      updatedAt: nowIso2()
+    };
+    if (typeof b.password === "string" && b.password) patch.passwordEnc = encryptSecret(b.password);
+    await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "platform_settings", "smtp"), patch, { merge: true });
+    await logAdminAudit({ actor: adminOf2(req), action: "settings.smtp_update", target: "platform_settings/smtp", after: { host: patch.host, port: patch.port } });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PUT smtp", e);
+    res.status(500).json({ error: "Erreur SMTP." });
+  }
+});
+async function getSmtpTransportConfig() {
+  try {
+    const snap = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "smtp"));
+    const d = snap.data() || {};
+    const host = str2(d.host);
+    const passEnc = str2(d.passwordEnc);
+    if (!host || !passEnc) return null;
+    return { host, port: num2(d.port) || 587, user: str2(d.user), pass: decryptSecret(passEnc), from: str2(d.from) || str2(d.user) };
+  } catch {
+    return null;
+  }
+}
+router4.post("/settings/smtp-test", adminApiGuard("settings"), async (req, res) => {
+  try {
+    const to = str2(req.body?.to).slice(0, 120);
+    if (!to) return res.status(400).json({ error: "Destinataire requis." });
+    const cfg = await getSmtpTransportConfig();
+    if (!cfg) return res.status(400).json({ error: "SMTP non configur\xE9." });
+    const transport = import_nodemailer.default.createTransport({ host: cfg.host, port: cfg.port, secure: cfg.port === 465, auth: { user: cfg.user, pass: cfg.pass } });
+    const info = await transport.sendMail({ from: cfg.from, to, subject: "E-nova \u2014 email de test", text: "Ceci est un email de test envoy\xE9 depuis le panneau super admin." });
+    await logAdminAudit({ actor: adminOf2(req), action: "settings.smtp_test", target: to, after: { messageId: info.messageId } });
+    res.json({ ok: true, messageId: info.messageId });
+  } catch (e) {
+    console.error("smtp-test", e);
+    res.status(502).json({ error: "\xC9chec de l'envoi : " + String(e.message || e).slice(0, 200) });
+  }
+});
+router4.get("/settings/export", adminApiGuard("settings"), async (_req, res) => {
+  try {
+    const docs = {};
+    for (const id of ["general", "themes", "extensions", "whatsapp", "smtp"]) {
+      const snap = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", id));
+      if (snap.exists()) docs[id] = snap.data();
+    }
+    const plans = await (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "plans"), (0, import_firestore6.limit)(50)));
+    docs.plans = plans.docs.map((d) => ({ id: d.id, ...d.data() }));
+    res.setHeader("Content-Disposition", "attachment; filename=e-nova-configuration.json");
+    res.json({ exportedAt: nowIso2(), version: 1, platform_settings: docs });
+  } catch (e) {
+    console.error("export", e);
+    res.status(500).json({ error: "Erreur export." });
+  }
+});
+router4.post("/settings/import", adminApiGuard("settings"), async (req, res) => {
+  try {
+    const data = req.body || {};
+    const ps = data.platform_settings;
+    if (!ps || typeof ps !== "object") return res.status(400).json({ error: "Fichier de configuration invalide." });
+    let imported = 0;
+    for (const [id, content] of Object.entries(ps)) {
+      if (!/^[a-z_]+$/.test(id)) continue;
+      await (0, import_firestore6.setDoc)((0, import_firestore6.doc)(db, "platform_settings", id), content, { merge: true });
+      imported += 1;
+    }
+    await logAdminAudit({ actor: adminOf2(req), action: "settings.import", target: "platform_settings", after: { imported } });
+    res.json({ ok: true, imported });
+  } catch (e) {
+    console.error("import", e);
+    res.status(500).json({ error: "Erreur import." });
+  }
+});
+router4.get("/notifications", adminApiGuard("notifications"), async (_req, res) => {
+  try {
+    const snap = await (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "announcements"), (0, import_firestore6.orderBy)("createdAt", "desc"), (0, import_firestore6.limit)(100)));
+    res.json({ total: snap.size, rows: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  } catch (e) {
+    console.error("GET /notifications", e);
+    res.status(500).json({ error: "Erreur notifications." });
+  }
+});
+router4.post("/notifications/send", adminApiGuard("notifications"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const title = str2(b.title).slice(0, 120);
+    const body = str2(b.body).slice(0, 2e3);
+    const audience = ["all", "plan", "member"].includes(str2(b.audience)) ? str2(b.audience) : "all";
+    const sendEmail = b.email === true;
+    if (!title || !body) return res.status(400).json({ error: "Titre et message requis." });
+    let recipients = 0;
+    let planId = "";
+    let memberId = "";
+    let memberEmail = "";
+    if (audience === "plan") {
+      planId = str2(b.planId);
+      if (!planId) return res.status(400).json({ error: "Plan requis pour cette audience." });
+      const snap = await (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "tenants"), (0, import_firestore6.where)("plan", "==", planId), (0, import_firestore6.limit)(500)));
+      recipients = snap.size;
+    } else if (audience === "member") {
+      memberId = str2(b.memberId);
+      if (!memberId) return res.status(400).json({ error: "Membre requis pour cette audience." });
+      const snap = await (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "tenants", memberId));
+      if (!snap.exists()) return res.status(404).json({ error: "Membre introuvable." });
+      memberEmail = str2(snap.data().ownerEmail).toLowerCase();
+      recipients = 1;
+    } else {
+      const snap = await (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "tenants"), (0, import_firestore6.limit)(500)));
+      recipients = snap.size;
+    }
+    const scheduled = !!str2(b.sendAt);
+    const announcement = {
+      audience,
+      planId,
+      memberId,
+      memberEmail,
+      title,
+      body,
+      channels: sendEmail ? ["dashboard", "email"] : ["dashboard"],
+      sendAt: str2(b.sendAt) || nowIso2(),
+      sentAt: scheduled ? "" : nowIso2(),
+      createdAt: nowIso2(),
+      createdBy: adminOf2(req).email,
+      recipients
+    };
+    await (0, import_firestore6.setDoc)((0, import_firestore6.doc)((0, import_firestore6.collection)(db, "announcements")), announcement);
+    let emailSent = 0;
+    if (sendEmail && !scheduled) {
+      const smtp = await getSmtpTransportConfig();
+      if (smtp) {
+        const emails = [];
+        if (audience === "member" && memberEmail) emails.push(memberEmail);
+        else {
+          const snap = await (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "tenants"), audience === "plan" ? (0, import_firestore6.where)("plan", "==", planId) : (0, import_firestore6.where)("status", "==", "active"), (0, import_firestore6.limit)(300)));
+          snap.forEach((d) => {
+            const e = str2(d.data().ownerEmail).toLowerCase();
+            if (e) emails.push(e);
+          });
+        }
+        const transport = import_nodemailer.default.createTransport({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, auth: { user: smtp.user, pass: smtp.pass } });
+        for (const email of emails.slice(0, 100)) {
+          try {
+            await transport.sendMail({ from: smtp.from, to: email, subject: title, text: body });
+            emailSent += 1;
+          } catch {
+          }
+        }
+      }
+    }
+    await logAdminAudit({ actor: adminOf2(req), action: "notification.send", target: `audience=${audience}${planId ? ":" + planId : ""}${memberId ? ":" + memberId : ""}`, after: { title, recipients, scheduled, emailSent } });
+    res.json({ ok: true, recipients, emailSent, scheduled });
+  } catch (e) {
+    console.error("send notification", e);
+    res.status(500).json({ error: "Erreur envoi notification." });
+  }
+});
+router4.delete("/notifications/:id", adminApiGuard("notifications"), async (req, res) => {
+  try {
+    await (0, import_firestore6.deleteDoc)((0, import_firestore6.doc)(db, "announcements", req.params.id));
+    await logAdminAudit({ actor: adminOf2(req), action: "notification.delete", target: req.params.id });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE notification", e);
+    res.status(500).json({ error: "Erreur suppression." });
+  }
+});
+router4.get("/health", adminApiGuard("health"), async (_req, res) => {
+  try {
+    const started = Date.now();
+    const [counters, cronDaily, cronWa, errors] = await Promise.all([
+      (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_counters", "global")).catch(() => null),
+      (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "cron_daily")).catch(() => null),
+      (0, import_firestore6.getDoc)((0, import_firestore6.doc)(db, "platform_settings", "cron_last")).catch(() => null),
+      (0, import_firestore6.getDocs)((0, import_firestore6.query)((0, import_firestore6.collection)(db, "platform_errors"), (0, import_firestore6.orderBy)("at", "desc"), (0, import_firestore6.limit)(10))).catch(() => null)
+    ]);
+    const waCfg = await getWaAdminConfig();
+    const smtp = await getSmtpTransportConfig();
+    res.json({
+      ok: true,
+      version: {
+        bundleId: process.env.ENOVA_BUNDLE_ID || "",
+        commit: process.env.VERCEL_GIT_COMMIT_SHA || "",
+        region: process.env.VERCEL_REGION || "",
+        node: process.version,
+        env: process.env.NODE_ENV || ""
+      },
+      firestore: { ok: !!counters, latencyMs: Date.now() - started, updatedAt: str2(counters?.data()?.updatedAt || "") },
+      whatsapp: { mode: waCfg.mode, configured: waCfg.hasToken, webhookVerifiedAt: waCfg.webhookVerifiedAt || "", source: waCfg.source },
+      smtp: { configured: !!smtp },
+      cron: {
+        daily: cronDaily?.data() || {},
+        whatsapp: cronWa?.data() || {}
+      },
+      recentErrors: (errors ? errors.docs : []).map((d) => ({ id: d.id, ...d.data() })),
+      serverTime: nowIso2()
+    });
+  } catch (e) {
+    console.error("health", e);
+    res.status(500).json({ error: "Erreur sant\xE9 syst\xE8me." });
+  }
+});
+router4.post("/jobs/run", adminApiGuard("health"), async (req, res) => {
+  try {
+    const jobs = await runDailyJobs();
+    await logAdminAudit({ actor: adminOf2(req), action: "jobs.run_daily", target: "cron", after: jobs });
+    res.json({ ok: true, jobs });
+  } catch (e) {
+    console.error("jobs/run", e);
+    res.status(500).json({ error: "Erreur ex\xE9cution jobs." });
+  }
+});
+var adminPlatform_default = router4;
 
 // server.ts
 var import_multer = __toESM(require("multer"));
-var import_crypto3 = __toESM(require("crypto"));
-var import_nodemailer = __toESM(require("nodemailer"));
-var import_firestore5 = require("firebase/firestore");
+var import_crypto4 = __toESM(require("crypto"));
+var import_nodemailer2 = __toESM(require("nodemailer"));
+init_firebase_backend();
+var import_firestore7 = require("firebase/firestore");
 var import_cloudinary = require("cloudinary");
 var import_stream = require("stream");
 
@@ -1841,974 +4599,6 @@ Connectez-vous \xE0 votre tableau de bord pour traiter la commande.`;
 
 // server.ts
 init_date();
-
-// src/lib/whatsappServer.ts
-var import_crypto2 = __toESM(require("crypto"));
-var import_firestore4 = require("firebase/firestore");
-init_landingData();
-
-// src/lib/whatsappDefaults.ts
-var WA_DEFAULT_MESSAGE_AR = "\u0645\u0631\u062D\u0628\u0627\u064B {nom} \u{1F44B}\n\u0644\u0642\u062F \u0628\u062F\u0623\u062A \u0637\u0644\u0628\u0627\u064B \u0641\u064A \u0645\u062A\u062C\u0631 {boutique} :\n\u{1F4E6} {produits}\n\u{1F4B0} \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A : {total} \u062F\u062C (\u0627\u0644\u062F\u0641\u0639 \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645)\n\u{1F4CD} {wilaya}\n\n\u0647\u0644 \u062A\u0631\u064A\u062F \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 \u061F\n\u{1F517} {lien}";
-var WA_DEFAULT_MESSAGE_FR = "Bonjour {nom} \u{1F44B}\nVous avez commenc\xE9 une commande chez {boutique} :\n\u{1F4E6} {produits}\n\u{1F4B0} Total : {total} DA (paiement \xE0 la livraison)\n\u{1F4CD} {wilaya}\n\nSouhaitez-vous confirmer votre commande ?\n\u{1F517} {lien}";
-var WA_ORDER_CONFIRM_AR = "\u0645\u0631\u062D\u0628\u0627\u064B {nom} \u{1F44B}\n\u062A\u0645 \u062A\u0633\u062C\u064A\u0644 \u0637\u0644\u0628\u0643 \u0641\u064A \u0645\u062A\u062C\u0631 {boutique} \u2705\n\u{1F4E6} {produits}\n\u{1F4B0} \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A : {total} \u062F\u062C\n\u{1F4CD} {wilaya}\n\n\u064A\u0631\u062C\u0649 \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 :\n\u{1F517} {lien}";
-var WA_ORDER_CONFIRM_FR = "Bonjour {nom} \u{1F44B}\nVotre commande chez {boutique} a bien \xE9t\xE9 enregistr\xE9e \u2705\n\u{1F4E6} {produits}\n\u{1F4B0} Total : {total} DA\n\u{1F4CD} {wilaya}\n\nMerci de confirmer votre commande :\n\u{1F517} {lien}";
-var WA_ORDER_STATUS_AR = {
-  "Confirm\xE9e": "\u062A\u0645 \u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 \u2705",
-  "Exp\xE9di\xE9e": "\u062A\u0645 \u0634\u062D\u0646 \u0637\u0644\u0628\u0643 \u{1F69A}",
-  "En livraison": "\u0637\u0644\u0628\u0643 \u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642 \u0625\u0644\u064A\u0643 \u{1F69A}",
-  "Au bureau de livraison": "\u0637\u0644\u0628\u0643 \u0648\u0635\u0644 \u0625\u0644\u0649 \u0645\u0643\u062A\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u{1F3E2} \u064A\u0645\u0643\u0646\u0643 \u0627\u0633\u062A\u0644\u0627\u0645\u0647 \u0627\u0644\u0622\u0646.",
-  "Livr\xE9e": "\u062A\u0645 \u062A\u0648\u0635\u064A\u0644 \u0637\u0644\u0628\u0643 \u0628\u0646\u062C\u0627\u062D \u{1F389} \u0634\u0643\u0631\u0627\u064B \u0644\u062B\u0642\u062A\u0643!",
-  "\xC9chec": "\u062A\u0639\u0630\u0631 \u062A\u0648\u0635\u064A\u0644 \u0637\u0644\u0628\u0643 \u274C \u064A\u0631\u062C\u0649 \u0627\u0644\u062A\u0648\u0627\u0635\u0644 \u0645\u0639\u0646\u0627.",
-  "Retour": "\u062A\u0645 \u0625\u0631\u062C\u0627\u0639 \u0637\u0644\u0628\u0643 \u0625\u0644\u0649 \u0627\u0644\u0645\u062A\u062C\u0631 \u21A9\uFE0F"
-};
-var WA_ORDER_STATUS_FR = {
-  "Confirm\xE9e": "Votre commande est confirm\xE9e \u2705",
-  "Exp\xE9di\xE9e": "Votre commande a \xE9t\xE9 exp\xE9di\xE9e \u{1F69A}",
-  "En livraison": "Votre commande est en cours de livraison \u{1F69A}",
-  "Au bureau de livraison": "Votre commande est arriv\xE9e au bureau de livraison \u{1F3E2} vous pouvez la r\xE9cup\xE9rer.",
-  "Livr\xE9e": "Votre commande a \xE9t\xE9 livr\xE9e avec succ\xE8s \u{1F389} merci de votre confiance !",
-  "\xC9chec": "La livraison de votre commande a \xE9chou\xE9 \u274C merci de nous contacter.",
-  "Retour": "Votre commande a \xE9t\xE9 retourn\xE9e au magasin \u21A9\uFE0F"
-};
-
-// src/lib/whatsappServer.ts
-var WA_REMINDER_MINUTES = 240;
-var DZ_TZ = "Africa/Algiers";
-var WA_NOTIFIABLE_STATUSES = [
-  "Confirm\xE9e",
-  "Exp\xE9di\xE9e",
-  "En livraison",
-  "Au bureau de livraison",
-  "Livr\xE9e",
-  "\xC9chec",
-  "Retour"
-];
-function isCloudApiConfigured() {
-  return Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
-}
-function waBaseUrl() {
-  return String(process.env.APP_URL || "https://e-nova-saas.vercel.app").replace(/\/+$/, "");
-}
-var settingsCache = /* @__PURE__ */ new Map();
-function waDefaultSettings() {
-  return {
-    enabled: false,
-    orderConfirmations: { enabled: true },
-    abandonedCarts: {
-      enabled: false,
-      delayMinutes: 10,
-      reminderEnabled: false,
-      messageAr: WA_DEFAULT_MESSAGE_AR,
-      messageFr: WA_DEFAULT_MESSAGE_FR
-    },
-    quietHours: { enabled: false, start: "22:00", end: "08:00" },
-    language: "store",
-    scope: { mode: "all", productIds: [] },
-    consentCheckbox: false,
-    connectionStatus: "disconnected"
-  };
-}
-async function getWaSettings(tenantId) {
-  const cached = settingsCache.get(tenantId);
-  if (cached && Date.now() - cached.at < 1e4) return cached.data;
-  let data = waDefaultSettings();
-  try {
-    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "whatsapp_settings", tenantId));
-    if (snap.exists()) {
-      const raw = snap.data() || {};
-      const d = waDefaultSettings();
-      data = {
-        enabled: raw.enabled === true,
-        orderConfirmations: { enabled: raw.orderConfirmations?.enabled !== false },
-        abandonedCarts: {
-          enabled: raw.abandonedCarts?.enabled === true,
-          delayMinutes: [5, 10, 30, 60].includes(raw.abandonedCarts?.delayMinutes) ? raw.abandonedCarts.delayMinutes : 10,
-          reminderEnabled: raw.abandonedCarts?.reminderEnabled === true,
-          messageAr: String(raw.abandonedCarts?.messageAr || WA_DEFAULT_MESSAGE_AR).slice(0, 1500),
-          messageFr: String(raw.abandonedCarts?.messageFr || WA_DEFAULT_MESSAGE_FR).slice(0, 1500)
-        },
-        quietHours: {
-          enabled: raw.quietHours?.enabled === true,
-          start: String(raw.quietHours?.start || "22:00").slice(0, 5),
-          end: String(raw.quietHours?.end || "08:00").slice(0, 5)
-        },
-        language: raw.language === "ar" || raw.language === "fr" ? raw.language : "store",
-        scope: {
-          mode: raw.scope?.mode === "selected" ? "selected" : "all",
-          productIds: Array.isArray(raw.scope?.productIds) ? raw.scope.productIds.map((p) => String(p).slice(0, 60)) : []
-        },
-        consentCheckbox: raw.consentCheckbox === true,
-        connectionStatus: raw.connectionStatus === "connected" || raw.connectionStatus === "pending" ? raw.connectionStatus : "disconnected"
-      };
-    }
-  } catch (e) {
-    console.warn("getWaSettings: read failed:", e);
-  }
-  settingsCache.set(tenantId, { at: Date.now(), data });
-  return data;
-}
-function dzHourMinute() {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: DZ_TZ,
-      hour: "numeric",
-      minute: "numeric",
-      hour12: false
-    }).format(/* @__PURE__ */ new Date()).split(":").map(Number);
-    return { h: parts[0] % 24, m: parts[1] || 0 };
-  } catch {
-    const d = /* @__PURE__ */ new Date();
-    return { h: d.getUTCHours() + 1, m: d.getUTCMinutes() };
-  }
-}
-function parseHM(v) {
-  const [h, m] = String(v || "0:0").split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-function inQuietHours(s) {
-  if (!s.quietHours.enabled || !s.quietHours.start || !s.quietHours.end) return false;
-  const now = dzHourMinute();
-  const cur = now.h * 60 + now.m;
-  const start = parseHM(s.quietHours.start);
-  const end = parseHM(s.quietHours.end);
-  if (start === end) return false;
-  return start > end ? cur >= start || cur < end : cur >= start && cur < end;
-}
-async function waSendText(toDigits, body) {
-  const to = toDigits.replace(/^0/, "213");
-  if (!isCloudApiConfigured()) {
-    return { ok: true, simulated: true, waMessageId: `sim_${import_crypto2.default.randomUUID()}` };
-  }
-  try {
-    const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to,
-        type: "text",
-        text: { preview_url: true, body: body.slice(0, 4096) }
-      })
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const errObj = j.error;
-      const detail = errObj?.message ? `Meta ${errObj.code ?? ""}${errObj.error_subcode ? "/" + errObj.error_subcode : ""} ${errObj.message}`.trim() : `HTTP ${res.status} ${JSON.stringify(j).slice(0, 160)}`;
-      return { ok: false, simulated: false, waMessageId: "", error: detail };
-    }
-    const mid = j.messages?.[0]?.id || `wa_${Date.now()}`;
-    return { ok: true, simulated: false, waMessageId: mid };
-  } catch (e) {
-    return { ok: false, simulated: false, waMessageId: "", error: waErrText(e) };
-  }
-}
-function waErrText(e) {
-  if (e instanceof Error) return e.message || e.name;
-  if (typeof e === "string") return e;
-  try {
-    return JSON.stringify(e).slice(0, 200);
-  } catch {
-    return String(e);
-  }
-}
-async function logWaMessage(msg) {
-  const id = `wa_${Date.now().toString(36)}_${import_crypto2.default.randomUUID().slice(0, 8)}`;
-  const clean = {
-    sentAt: msg.sentAt || (/* @__PURE__ */ new Date()).toISOString(),
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  for (const [k, v] of Object.entries(msg)) {
-    if (v !== void 0) clean[k] = v;
-  }
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "whatsapp_messages", id), clean);
-  return id;
-}
-async function findMessagesByCart(cartId, kinds) {
-  const out = [];
-  const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "whatsapp_messages"), (0, import_firestore4.where)("cartId", "==", cartId)));
-  snap.forEach((d) => {
-    const data = d.data() || {};
-    if (kinds.includes(String(data.kind))) out.push({ id: d.id, data });
-  });
-  return out;
-}
-async function isUnsubscribed(tenantId, phoneDigits) {
-  try {
-    const globalSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "whatsapp_unsubscribes", `global_${phoneDigits}`));
-    if (globalSnap.exists()) return true;
-    const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "whatsapp_unsubscribes", `${tenantId}_${phoneDigits}`));
-    return snap.exists();
-  } catch {
-    return false;
-  }
-}
-async function markUnsubscribed(tenantId, phoneDigits, source) {
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "whatsapp_unsubscribes", `${tenantId}_${phoneDigits}`), {
-    tenantId,
-    phoneDigits,
-    source,
-    stoppedAt: (/* @__PURE__ */ new Date()).toISOString()
-  }, { merge: true });
-}
-var STOP_KEYWORDS = ["stop", "STOP", "Stop", "\u0625\u064A\u0642\u0627\u0641", "\u0627\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643", "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643", "unsubscribe", "D\xC9SISTER"];
-function renderWaTemplate(tpl, vars) {
-  return tpl.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m);
-}
-function cartItemsSummary(items) {
-  const list = Array.isArray(items) ? items.slice(0, 5) : [];
-  const parts = list.map((it) => {
-    const name = String(it.name || "\u0645\u0646\u062A\u062C");
-    const qty = Number(it.quantity ?? it.qty) || 1;
-    return `${name} x${qty}`;
-  });
-  return parts.join("\u060C ") || "\u2014";
-}
-function resolveLang(settings, cartLang) {
-  if (settings.language === "ar" || settings.language === "fr") return settings.language;
-  return cartLang === "fr" ? "fr" : "ar";
-}
-function resolveTenantName(tenantData) {
-  return String(tenantData.storeName || tenantData.name || "\u0627\u0644\u0645\u062A\u062C\u0631").slice(0, 60);
-}
-function toMs(v) {
-  try {
-    if (!v) return 0;
-    if (typeof v === "object" && typeof v.toMillis === "function") {
-      return v.toMillis();
-    }
-    const t = new Date(String(v)).getTime();
-    return Number.isFinite(t) ? t : 0;
-  } catch {
-    return 0;
-  }
-}
-var lastProcessAt = 0;
-var PROCESS_MIN_INTERVAL_MS = 60 * 1e3;
-async function processWhatsAppQueue(force) {
-  const summary = {
-    cartsSent: 0,
-    remindersSent: 0,
-    orderConfirmsSent: 0,
-    statusNotificationsSent: 0,
-    skippedQuietHours: 0,
-    errors: [],
-    cloudApi: isCloudApiConfigured()
-  };
-  if (!force && Date.now() - lastProcessAt < PROCESS_MIN_INTERVAL_MS) return summary;
-  lastProcessAt = Date.now();
-  try {
-    const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "abandoned_carts"), (0, import_firestore4.where)("status", "==", "abandoned")));
-    for (const d of snap.docs) {
-      try {
-        const cart = d.data() || {};
-        const tenantId = String(cart.tenantId || "");
-        if (!tenantId) continue;
-        const settings = await getWaSettings(tenantId);
-        if (!settings.enabled || !settings.abandonedCarts.enabled) continue;
-        const digits = String(cart.phoneDigits || "");
-        if (!/^0[567]\d{8}$/.test(digits)) continue;
-        if (await isUnsubscribed(tenantId, digits)) continue;
-        if (settings.consentCheckbox && cart.consentChecked !== true) continue;
-        const firstProductId = String(cart.items?.[0]?.productId || "");
-        if (settings.scope.mode === "selected" && !settings.scope.productIds.includes(firstProductId)) continue;
-        try {
-          const ordersSnap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("phone", "==", digits)));
-          let hasOrder = false;
-          ordersSnap.forEach((o) => {
-            if ((o.data() || {}).userId === tenantId) hasOrder = true;
-          });
-          if (hasOrder) continue;
-        } catch {
-        }
-        const updatedAtMs = toMs(cart.updatedAt) || toMs(cart.createdAt);
-        if (!updatedAtMs) continue;
-        const dueMs = updatedAtMs + settings.abandonedCarts.delayMinutes * 6e4;
-        const sent = await findMessagesByCart(d.id, ["cart"]);
-        const reminders = await findMessagesByCart(d.id, ["cart_reminder"]);
-        if (sent.length === 0) {
-          if (Date.now() < dueMs) continue;
-          if (inQuietHours(settings)) {
-            summary.skippedQuietHours++;
-            continue;
-          }
-          const r = await sendCartMessage(d.id, cart, tenantId, settings, "cart");
-          if (r) summary.cartsSent++;
-          else summary.errors.push(`cart ${d.id}`);
-        } else if (reminders.length === 0 && settings.abandonedCarts.reminderEnabled) {
-          const sentAt = toMs(sent[0].data.sentAt);
-          if (Date.now() < sentAt + WA_REMINDER_MINUTES * 6e4) continue;
-          if (toMs(cart.waRepliedAt) > 0) continue;
-          if (inQuietHours(settings)) {
-            summary.skippedQuietHours++;
-            continue;
-          }
-          const r = await sendCartMessage(d.id, cart, tenantId, settings, "cart_reminder");
-          if (r) summary.remindersSent++;
-          else summary.errors.push(`reminder ${d.id}`);
-        }
-      } catch (e) {
-        summary.errors.push(String(e.message || e).slice(0, 120));
-      }
-    }
-  } catch (e) {
-    summary.errors.push(`phaseA: ${String(e.message || e).slice(0, 120)}`);
-  }
-  try {
-    const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("status", "==", "En attente")));
-    const cutoff = Date.now() - 48 * 3600 * 1e3;
-    for (const d of snap.docs) {
-      try {
-        const order = d.data() || {};
-        if (order.waConfirmSent === true) continue;
-        const tenantId = String(order.userId || "");
-        if (!tenantId) continue;
-        const digits = String(order.phone || "").replace(/\D/g, "");
-        if (!/^0[567]\d{8}$/.test(digits) && !/^213[567]\d{8}$/.test(digits)) continue;
-        if (toMs(order.createdAt) < cutoff) continue;
-        const settings = await getWaSettings(tenantId);
-        if (!settings.enabled || !settings.orderConfirmations.enabled) continue;
-        if (await isUnsubscribed(tenantId, digits.replace(/^213/, "0"))) continue;
-        if (inQuietHours(settings)) {
-          summary.skippedQuietHours++;
-          continue;
-        }
-        const ok = await sendOrderConfirmMessage(d.id, order, tenantId, settings);
-        if (ok) summary.orderConfirmsSent++;
-        else summary.errors.push(`order ${d.id}`);
-      } catch (e) {
-        summary.errors.push(String(e.message || e).slice(0, 120));
-      }
-    }
-  } catch (e) {
-    summary.errors.push(`phaseB: ${String(e.message || e).slice(0, 120)}`);
-  }
-  try {
-    for (const status of WA_NOTIFIABLE_STATUSES) {
-      const snap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("status", "==", status)));
-      const cutoff = Date.now() - 24 * 3600 * 1e3;
-      for (const d of snap.docs) {
-        try {
-          const order = d.data() || {};
-          if (order.waConfirmSent !== true && order.whatsappConfirmed !== true) continue;
-          if (order.waLastStatusSent === status) continue;
-          if (toMs(order.updatedAt || order.createdAt) < cutoff) continue;
-          const tenantId = String(order.userId || "");
-          if (!tenantId) continue;
-          const settings = await getWaSettings(tenantId);
-          if (!settings.enabled) continue;
-          const digits = String(order.phone || "").replace(/\D/g, "");
-          if (await isUnsubscribed(tenantId, digits.replace(/^213/, "0"))) continue;
-          if (inQuietHours(settings)) {
-            summary.skippedQuietHours++;
-            continue;
-          }
-          const lang = settings.language === "store" ? "ar" : settings.language;
-          const tplMap = lang === "fr" ? WA_ORDER_STATUS_FR : WA_ORDER_STATUS_AR;
-          const line = tplMap[status];
-          if (!line) continue;
-          const tenantSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", tenantId)).catch(() => null);
-          const tenantData = tenantSnap?.data() || {};
-          const trackUrl = `${waBaseUrl()}/track/${encodeURIComponent(String(order.reference || order.id || ""))}`;
-          const body = `${line}
-
-\u{1F4E6} ${cartItemsSummary(order.items)}
-\u{1F517} ${trackUrl}`;
-          const r = await waSendText(digits, body);
-          await logWaMessage({
-            tenantId,
-            kind: "order_status",
-            direction: "out",
-            orderId: d.id,
-            phone: digits,
-            lang,
-            body,
-            status: r.ok ? "sent" : "failed",
-            simulated: r.simulated,
-            waMessageId: r.waMessageId,
-            error: r.error
-          });
-          await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "orders", d.id), {
-            waLastStatusSent: status,
-            waLastStatusAt: (/* @__PURE__ */ new Date()).toISOString(),
-            ...r.ok ? {} : { waLastError: r.error || "" }
-          }, { merge: true });
-          await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "orders", d.id), {
-            waLastStatusSent: status,
-            waLastStatusAt: (/* @__PURE__ */ new Date()).toISOString()
-          }, { merge: true }).catch(() => {
-          });
-          if (r.ok) summary.statusNotificationsSent++;
-          else summary.errors.push(`status ${d.id}`);
-        } catch (e) {
-          summary.errors.push(String(e.message || e).slice(0, 120));
-        }
-      }
-    }
-  } catch (e) {
-    summary.errors.push(`phaseC: ${String(e.message || e).slice(0, 120)}`);
-  }
-  return summary;
-}
-async function ensureCartToken(cartId, cart) {
-  const existing = String(cart.waToken || "");
-  if (existing) return existing;
-  const token = import_crypto2.default.randomBytes(12).toString("hex");
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId), { waToken: token }, { merge: true });
-  const tenantId = String(cart.tenantId || "");
-  if (tenantId) {
-    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), { waToken: token }, { merge: true }).catch(() => {
-    });
-  }
-  return token;
-}
-async function sendCartMessage(cartId, cart, tenantId, settings, kind) {
-  const digits = String(cart.phoneDigits || "");
-  const lang = resolveLang(settings, cart.lang);
-  const tenantSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", tenantId)).catch(() => null);
-  const tenantData = tenantSnap?.data() || {};
-  const token = await ensureCartToken(cartId, cart);
-  const link = `${waBaseUrl()}/wa/${cartId}?t=${token}`;
-  const reminderPrefix = kind === "cart_reminder" ? lang === "fr" ? "\u23F0 Petit rappel \u2014 " : "\u23F0 \u062A\u0630\u0643\u064A\u0631 \u2014 " : "";
-  const tpl = lang === "fr" ? settings.abandonedCarts.messageFr : settings.abandonedCarts.messageAr;
-  const total = Number(cart.total) || 0;
-  const body = reminderPrefix + renderWaTemplate(tpl, {
-    nom: String(cart.client || "").split(" ")[0] || (lang === "fr" ? "cher client" : "\u0639\u0645\u064A\u0644\u0646\u0627"),
-    boutique: resolveTenantName(tenantData),
-    produits: cartItemsSummary(cart.items),
-    total: total.toLocaleString("fr-FR"),
-    wilaya: String(cart.wilaya || ""),
-    lien: link
-  });
-  const r = await waSendText(digits, body);
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  await logWaMessage({
-    tenantId,
-    kind,
-    direction: "out",
-    cartId,
-    phone: digits,
-    lang,
-    body,
-    status: r.ok ? "sent" : "failed",
-    simulated: r.simulated,
-    waMessageId: r.waMessageId,
-    error: r.error,
-    sentAt: nowIso
-  });
-  const patch = {
-    waStatus: r.ok ? "sent" : "failed",
-    waSimulated: r.simulated,
-    waSentAt: nowIso,
-    ...kind === "cart_reminder" ? { waReminderSentAt: nowIso } : {},
-    ...r.ok ? {} : { waError: r.error || "" }
-  };
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
-  });
-  return r.ok;
-}
-async function sendOrderConfirmMessage(orderId, order, tenantId, settings) {
-  const digits = String(order.phone || "").replace(/\D/g, "").replace(/^213/, "0");
-  const lang = settings.language === "store" ? order.lang === "fr" ? "fr" : "ar" : settings.language;
-  const tenantSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "tenants", tenantId)).catch(() => null);
-  const tenantData = tenantSnap?.data() || {};
-  const token = import_crypto2.default.randomBytes(12).toString("hex");
-  const link = `${waBaseUrl()}/wa/order/${orderId}?t=${token}`;
-  const tpl = lang === "fr" ? WA_ORDER_CONFIRM_FR : WA_ORDER_CONFIRM_AR;
-  const body = renderWaTemplate(tpl, {
-    nom: String(order.client || "").split(" ")[0] || (lang === "fr" ? "cher client" : "\u0639\u0645\u064A\u0644\u0646\u0627"),
-    boutique: resolveTenantName(tenantData),
-    produits: cartItemsSummary(order.items),
-    total: (Number(order.total) || 0).toLocaleString("fr-FR"),
-    wilaya: String(order.wilaya || ""),
-    lien: link
-  });
-  const r = await waSendText(digits, body);
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  await logWaMessage({
-    tenantId,
-    kind: "order_confirm",
-    direction: "out",
-    orderId,
-    phone: digits,
-    lang,
-    body,
-    status: r.ok ? "sent" : "failed",
-    simulated: r.simulated,
-    waMessageId: r.waMessageId,
-    error: r.error,
-    sentAt: nowIso
-  });
-  const patch = {
-    waConfirmSent: r.ok === true,
-    waConfirmSimulated: r.simulated,
-    waConfirmSentAt: nowIso,
-    waToken: token,
-    ...r.ok ? {} : { waLastError: r.error || "" }
-  };
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "orders", orderId), patch, { merge: true });
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "orders", orderId), patch, { merge: true }).catch(() => {
-  });
-  return r.ok;
-}
-async function getProductDoc(tenantId, productId) {
-  const tries = [(0, import_firestore4.doc)(db, "products", productId), (0, import_firestore4.doc)(db, "tenants", tenantId, "products", productId)];
-  for (const ref of tries) {
-    try {
-      const snap = await (0, import_firestore4.getDoc)(ref);
-      if (snap.exists()) return snap.data() || {};
-    } catch {
-    }
-  }
-  return null;
-}
-async function convertCartViaWhatsApp(cartId, acceptNewPrice) {
-  const cartSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId)).catch(() => null);
-  if (!cartSnap || !cartSnap.exists()) return { ok: false, reason: "invalid" };
-  const cart = cartSnap.data() || {};
-  const tenantId = String(cart.tenantId || "");
-  if (!tenantId) return { ok: false, reason: "invalid" };
-  if (cart.status === "recovered" && cart.orderId) {
-    return { ok: true, reason: "already", orderId: String(cart.orderId), trackingCode: String(cart.orderId) };
-  }
-  const items = Array.isArray(cart.items) ? cart.items : [];
-  const first = items[0] || {};
-  const productId = String(first.productId || "");
-  const product = productId ? await getProductDoc(tenantId, productId) : null;
-  if (productId && !product) return { ok: false, reason: "product_unavailable" };
-  if (product && String(product.status || "active") !== "active") {
-    return { ok: false, reason: "product_unavailable" };
-  }
-  const stock = product ? Number(product.stock) : NaN;
-  if (product && Number.isFinite(stock) && stock <= 0) {
-    return { ok: false, reason: "out_of_stock" };
-  }
-  const currentPrice = product ? Number(product.price) : Number(first.price) || 0;
-  const qty = Number(first.quantity ?? first.qty) || 1;
-  const wilayaStr = String(cart.wilaya || "");
-  const codeMatch = wilayaStr.match(/(\d{1,2})\s*[-–]/);
-  const wilaya = codeMatch ? ALGERIAN_WILAYAS.find((w) => w.code === Number(codeMatch[1])) : void 0;
-  const deliveryType = String(cart.deliveryType || "home") === "desk" ? "desk" : "home";
-  const currentShipping = wilaya ? deliveryType === "home" ? wilaya.homeDeliveryPrice : wilaya.deskDeliveryPrice : Number(cart.shipping) || 0;
-  const currentTotal = currentPrice * qty + currentShipping;
-  const oldTotal = Number(cart.total) || 0;
-  if (!acceptNewPrice && (currentPrice !== (Number(first.price) || 0) || currentTotal !== oldTotal)) {
-    return { ok: false, reason: "price_changed", currentPrice, currentShipping, currentTotal };
-  }
-  const generatedOrderId = `ORD-${Math.floor(Math.random() * 9e4) + 1e4}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "")}-${import_crypto2.default.randomBytes(3).toString("hex").toUpperCase()}`;
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  const productImage = String(product && (product.image || (product.images || [])[0]) || first.image || "");
-  const productName = String(product && (product.nameAr || product.name) || first.name || "Produit");
-  const orderPayload = {
-    orderNumber: generatedOrderId.substring(4, 10),
-    reference: generatedOrderId,
-    trackingCode: generatedOrderId,
-    userId: tenantId,
-    client: String(cart.client || "Client WhatsApp"),
-    phone: String(cart.phone || ""),
-    wilaya: wilayaStr,
-    commune: String(cart.commune || ""),
-    address: String(cart.address || ""),
-    itemsSummary: cartItemsSummary(items),
-    total: currentTotal,
-    status: "Confirm\xE9e",
-    paymentStatus: "Non pay\xE9",
-    paymentMethod: "COD (\u0627\u0644\u062F\u0641\u0639 \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645)",
-    deliveryType: deliveryType === "home" ? "Livraison \xE0 domicile" : "Point de relais / Stop Desk",
-    shippingMethod: deliveryType === "home" ? "Livraison \xE0 domicile" : "Point de relais / Stop Desk",
-    shippingCost: currentShipping,
-    source: "WhatsApp \u2013 panier abandonn\xE9",
-    whatsappConfirmed: true,
-    confirmedAt: nowIso,
-    date: nowIso,
-    image: productImage,
-    items: [{
-      productId,
-      name: productName,
-      price: currentPrice,
-      quantity: qty,
-      variants: first.variants || {},
-      image: productImage
-    }]
-  };
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "orders", generatedOrderId), {
-    ...orderPayload,
-    createdAt: (0, import_firestore4.serverTimestamp)(),
-    updatedAt: (0, import_firestore4.serverTimestamp)()
-  }, { merge: true });
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "orders", generatedOrderId), {
-    ...orderPayload,
-    createdAt: (0, import_firestore4.serverTimestamp)(),
-    updatedAt: (0, import_firestore4.serverTimestamp)()
-  }, { merge: true });
-  const patch = {
-    status: "recovered",
-    recovered: true,
-    orderId: generatedOrderId,
-    recoveredAt: nowIso,
-    updatedAt: nowIso,
-    waStatus: "replied",
-    waRepliedAt: nowIso,
-    total: currentTotal
-  };
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
-  });
-  await logWaMessage({
-    tenantId,
-    kind: "incoming",
-    direction: "in",
-    cartId,
-    orderId: generatedOrderId,
-    phone: String(cart.phoneDigits || ""),
-    lang: cart.lang === "fr" ? "fr" : "ar",
-    body: "\u2705 Confirmer ma commande (bouton)",
-    status: "received",
-    sentAt: nowIso
-  });
-  return { ok: true, orderId: generatedOrderId, trackingCode: generatedOrderId, currentTotal };
-}
-async function waCartAction(cartId, token, action, acceptNewPrice) {
-  const cartSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId)).catch(() => null);
-  if (!cartSnap || !cartSnap.exists()) return { ok: false, error: "Panier introuvable." };
-  const cart = cartSnap.data() || {};
-  if (String(cart.waToken || "") !== token) return { ok: false, error: "Lien invalide ou expir\xE9." };
-  const tenantId = String(cart.tenantId || "");
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  if (action === "confirm") {
-    return convertCartViaWhatsApp(cartId, acceptNewPrice);
-  }
-  if (action === "modify") {
-    const patch2 = { status: "contacted", waStatus: "replied", waRepliedAt: nowIso, waMerchantTodo: true, updatedAt: nowIso };
-    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId), patch2, { merge: true });
-    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch2, { merge: true }).catch(() => {
-    });
-    await logWaMessage({
-      tenantId,
-      kind: "incoming",
-      direction: "in",
-      cartId,
-      phone: String(cart.phoneDigits || ""),
-      lang: cart.lang === "fr" ? "fr" : "ar",
-      body: "\u270F\uFE0F Modifier / Appeler (bouton)",
-      status: "received",
-      sentAt: nowIso
-    });
-    return { ok: true };
-  }
-  const patch = { status: "refused", waStatus: "replied", waRepliedAt: nowIso, refusedAt: nowIso, updatedAt: nowIso };
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId), patch, { merge: true });
-  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), patch, { merge: true }).catch(() => {
-  });
-  await logWaMessage({
-    tenantId,
-    kind: "incoming",
-    direction: "in",
-    cartId,
-    phone: String(cart.phoneDigits || ""),
-    lang: cart.lang === "fr" ? "fr" : "ar",
-    body: "\u274C Non merci (bouton)",
-    status: "received",
-    sentAt: nowIso
-  });
-  return { ok: true };
-}
-function clientText(v, max) {
-  return String(v ?? "").trim().slice(0, max);
-}
-function registerWhatsAppRoutes(app2) {
-  app2.get("/api/whatsapp/status", (_req, res) => {
-    res.json({ cloudApi: isCloudApiConfigured(), baseUrl: waBaseUrl() });
-  });
-  const handleProcess = async (req, res) => {
-    try {
-      const force = req.method === "POST" && clientText(req.query.force, 5) === "1";
-      const summary = await processWhatsAppQueue(force);
-      res.json({ ok: true, ...summary });
-    } catch (e) {
-      res.status(500).json({ ok: false, error: String(e.message || e) });
-    }
-  };
-  app2.get("/api/whatsapp/process", handleProcess);
-  app2.post("/api/whatsapp/process", handleProcess);
-  app2.post("/api/whatsapp/action", async (req, res) => {
-    try {
-      const b = req.body || {};
-      const cartId = clientText(b.cartId, 120);
-      const token = clientText(b.token, 60);
-      const action = clientText(b.action, 20);
-      const acceptNewPrice = b.acceptNewPrice === true;
-      if (!cartId || !token || !["confirm", "modify", "decline"].includes(action)) {
-        res.status(400).json({ ok: false, error: "invalid_request" });
-        return;
-      }
-      const r = await waCartAction(cartId, token, action, acceptNewPrice);
-      res.json(r);
-    } catch (e) {
-      res.status(500).json({ ok: false, error: "action_failed", detail: String(e.message || e) });
-    }
-  });
-  app2.post("/api/whatsapp/resend", async (req, res) => {
-    try {
-      const b = req.body || {};
-      const cartId = clientText(b.cartId, 120);
-      const token = clientText(b.token, 60);
-      if (!cartId || !token) {
-        res.status(400).json({ ok: false, error: "invalid_request" });
-        return;
-      }
-      const snap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "abandoned_carts", cartId));
-      if (!snap.exists()) {
-        res.status(404).json({ ok: false, error: "not_found" });
-        return;
-      }
-      const cart = snap.data() || {};
-      if (String(cart.waToken || "") !== token) {
-        res.status(403).json({ ok: false, error: "forbidden" });
-        return;
-      }
-      const tenantId = String(cart.tenantId || "");
-      const settings = await getWaSettings(tenantId);
-      if (!settings.enabled || !settings.abandonedCarts.enabled) {
-        res.status(409).json({ ok: false, error: "extension_disabled" });
-        return;
-      }
-      if (["recovered", "refused"].includes(String(cart.status))) {
-        res.status(409).json({ ok: false, error: "cart_closed" });
-        return;
-      }
-      if (await isUnsubscribed(tenantId, String(cart.phoneDigits || ""))) {
-        res.status(409).json({ ok: false, error: "unsubscribed" });
-        return;
-      }
-      const ok = await sendCartMessage(cartId, cart, tenantId, settings, "cart");
-      res.json({ ok });
-    } catch (e) {
-      res.status(500).json({ ok: false, error: "resend_failed" });
-    }
-  });
-  app2.post("/api/whatsapp/order-action", async (req, res) => {
-    try {
-      const b = req.body || {};
-      const orderId = clientText(b.orderId, 120);
-      const token = clientText(b.token, 60);
-      const action = clientText(b.action, 20);
-      if (!orderId || !token || !["confirm", "decline"].includes(action)) {
-        res.status(400).json({ ok: false, error: "invalid_request" });
-        return;
-      }
-      let orderSnap = await (0, import_firestore4.getDoc)((0, import_firestore4.doc)(db, "orders", orderId)).catch(() => null);
-      let orderData = orderSnap?.exists() ? orderSnap.data() || {} : null;
-      let docId = orderId;
-      if (!orderData) {
-        const byRef = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "orders"), (0, import_firestore4.where)("reference", "==", orderId))).catch(() => null);
-        if (byRef && !byRef.empty) {
-          docId = byRef.docs[0].id;
-          orderData = byRef.docs[0].data() || {};
-        }
-      }
-      if (!orderData) {
-        res.status(404).json({ ok: false, error: "not_found" });
-        return;
-      }
-      if (String(orderData.waToken || "") !== token) {
-        res.status(403).json({ ok: false, error: "forbidden" });
-        return;
-      }
-      const tenantId = String(orderData.userId || "");
-      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-      const newStatus = action === "confirm" ? "Confirm\xE9e" : "Annul\xE9e";
-      const patch = {
-        status: newStatus,
-        updatedAt: nowIso,
-        ...action === "confirm" ? { whatsappConfirmed: true, confirmedAt: nowIso } : { refusedAt: nowIso }
-      };
-      await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "orders", docId), patch, { merge: true });
-      if (tenantId) {
-        await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantId, "orders", docId), patch, { merge: true }).catch(() => {
-        });
-      }
-      await logWaMessage({
-        tenantId,
-        kind: "incoming",
-        direction: "in",
-        orderId: docId,
-        phone: String(orderData.phone || "").replace(/\D/g, ""),
-        lang: "ar",
-        body: action === "confirm" ? "\u2705 Confirmer ma commande (bouton)" : "\u274C Refuser (bouton)",
-        status: "received",
-        sentAt: nowIso
-      });
-      res.json({ ok: true, status: newStatus, trackingCode: String(orderData.trackingCode || orderData.reference || docId) });
-    } catch (e) {
-      res.status(500).json({ ok: false, error: "order_action_failed" });
-    }
-  });
-  app2.get("/api/webhooks/whatsapp", (req, res) => {
-    const mode = clientText(req.query["hub.mode"], 20);
-    const token = clientText(req.query["hub.verify_token"], 100);
-    const challenge = clientText(req.query["hub.challenge"], 200);
-    if (mode === "subscribe" && token && token === String(process.env.WHATSAPP_VERIFY_TOKEN || "")) {
-      res.status(200).send(challenge);
-      return;
-    }
-    res.sendStatus(403);
-  });
-  app2.post("/api/webhooks/whatsapp", async (req, res) => {
-    try {
-      const rawBody = req.rawBody;
-      const appSecret = String(process.env.WHATSAPP_APP_SECRET || "");
-      if (appSecret) {
-        const sig = String(req.headers["x-hub-signature-256"] || "");
-        if (!sig) {
-          res.sendStatus(401);
-          return;
-        }
-        const expected = "sha256=" + import_crypto2.default.createHmac("sha256", appSecret).update(rawBody || Buffer.from(JSON.stringify(req.body || {}))).digest("hex");
-        if (sig !== expected) {
-          res.sendStatus(401);
-          return;
-        }
-      }
-      const payload = req.body || {};
-      const entries = payload.entry || [];
-      for (const entry of entries) {
-        const changes = entry.changes || [];
-        for (const change of changes) {
-          const value = change.value || {};
-          const tenantId = String(value.metadata?.phone_number_id || "");
-          const statuses = value.statuses || [];
-          for (const st of statuses) {
-            const waMessageId = String(st.id || "");
-            const status = String(st.status || "");
-            if (!waMessageId || !["sent", "delivered", "read", "failed"].includes(status)) continue;
-            try {
-              const msgsSnap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "whatsapp_messages"), (0, import_firestore4.where)("waMessageId", "==", waMessageId)));
-              for (const m of msgsSnap.docs) {
-                const data = m.data() || {};
-                const patch = { status };
-                const tsField = status === "delivered" ? "waDeliveredAt" : status === "read" ? "waReadAt" : status === "failed" ? "waFailedAt" : null;
-                if (tsField) patch[tsField] = (/* @__PURE__ */ new Date()).toISOString();
-                const errors = st.errors || [];
-                if (errors.length) patch.error = errors[0]?.title || errors[0]?.message || "failed";
-                await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "whatsapp_messages", m.id), patch, { merge: true });
-                if (data.cartId) {
-                  const cPatch = { waStatus: status };
-                  if (tsField) cPatch[tsField] = patch[tsField];
-                  if (errors.length) cPatch.waError = patch.error;
-                  const tenantOfCart = String(data.tenantId || "");
-                  await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", String(data.cartId)), cPatch, { merge: true });
-                  if (tenantOfCart) {
-                    await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "tenants", tenantOfCart, "abandoned_carts", String(data.cartId)), cPatch, { merge: true }).catch(() => {
-                    });
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn("webhook status update failed:", e);
-            }
-          }
-          const messages = value.messages || [];
-          for (const msg of messages) {
-            const waMessageId = String(msg.id || "");
-            const from = String(msg.from || "");
-            if (!waMessageId || !from) continue;
-            const digits = from.replace(/\D/g, "").replace(/^213/, "0");
-            try {
-              const seen = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "whatsapp_messages"), (0, import_firestore4.where)("waMessageId", "==", waMessageId)));
-              if (!seen.empty) continue;
-            } catch {
-            }
-            const type = String(msg.type || "text");
-            let body = "";
-            let buttonAction = null;
-            if (type === "text") {
-              body = String(msg.text?.body || "");
-              const low = body.trim().toLowerCase();
-              if (STOP_KEYWORDS.some((k) => low === k.toLowerCase() || low.startsWith(k.toLowerCase()))) {
-                await markUnsubscribed("global", digits, "webhook_stop");
-                await logWaMessage({
-                  tenantId: tenantId || "global",
-                  kind: "incoming",
-                  direction: "in",
-                  phone: digits,
-                  lang: "ar",
-                  body: `\u{1F6AB} STOP : ${body}`,
-                  status: "received",
-                  waMessageId
-                });
-                continue;
-              }
-            } else if (type === "button") {
-              body = String(msg.button?.text || "");
-              const payload2 = String(msg.button?.payload || "");
-              if (payload2.includes("confirm") || /confirmer|تأكيد/i.test(body)) buttonAction = "confirm";
-              else if (payload2.includes("modify") || /modifier|appeler|تعديل|اتصال/i.test(body)) buttonAction = "modify";
-              else if (payload2.includes("decline") || /non merci|لا شكرا/i.test(body)) buttonAction = "decline";
-            } else if (type === "interactive") {
-              const reply = msg.interactive;
-              body = String(reply?.button_reply?.title || reply?.list_reply?.title || "");
-              const id = String(reply?.button_reply?.id || reply?.list_reply?.id || "");
-              if (id.includes("confirm") || /confirmer|تأكيد/i.test(body)) buttonAction = "confirm";
-              else if (id.includes("modify") || /modifier|appeler|تعديل/i.test(body)) buttonAction = "modify";
-              else if (id.includes("decline") || /non merci|لا شكرا/i.test(body)) buttonAction = "decline";
-            }
-            let targetCartId = "";
-            let targetToken = "";
-            let targetTenantId = "";
-            try {
-              const cartsSnap = await (0, import_firestore4.getDocs)((0, import_firestore4.query)((0, import_firestore4.collection)(db, "abandoned_carts"), (0, import_firestore4.where)("phoneDigits", "==", digits)));
-              let bestAt = 0;
-              cartsSnap.forEach((c) => {
-                const data = c.data() || {};
-                if (["recovered", "refused"].includes(String(data.status))) return;
-                const at = toMs(data.waSentAt) || toMs(data.updatedAt);
-                if (at > bestAt && data.waToken) {
-                  bestAt = at;
-                  targetCartId = c.id;
-                  targetToken = String(data.waToken);
-                  targetTenantId = String(data.tenantId || "");
-                }
-              });
-            } catch {
-            }
-            await logWaMessage({
-              tenantId: targetTenantId || tenantId || "global",
-              kind: "incoming",
-              direction: "in",
-              cartId: targetCartId || void 0,
-              phone: digits,
-              lang: "ar",
-              body: body || `[${type}]`,
-              status: "received",
-              waMessageId
-            });
-            if (buttonAction && targetCartId && targetToken) {
-              await waCartAction(targetCartId, targetToken, buttonAction, false);
-            } else {
-              if (targetCartId) {
-                const patch = { waStatus: "replied", waRepliedAt: (/* @__PURE__ */ new Date()).toISOString(), waMerchantTodo: true };
-                await (0, import_firestore4.setDoc)((0, import_firestore4.doc)(db, "abandoned_carts", targetCartId), patch, { merge: true }).catch(() => {
-                });
-              }
-            }
-          }
-        }
-      }
-      res.sendStatus(200);
-    } catch (e) {
-      console.warn("webhook error:", e);
-      res.sendStatus(200);
-    }
-  });
-}
-
-// server.ts
 var storage = import_multer.default.memoryStorage();
 var upload = (0, import_multer.default)({
   storage,
@@ -2820,8 +4610,8 @@ async function getApp() {
     api_key: "571992972679788",
     api_secret: "ojRyuQn_r0KsBbWKH0dtLUY4-3I"
   });
-  const app2 = (0, import_express3.default)();
-  app2.use(import_express3.default.json({
+  const app2 = (0, import_express5.default)();
+  app2.use(import_express5.default.json({
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     }
@@ -2863,21 +4653,21 @@ async function getApp() {
       let orderDocRef = null;
       if (effectiveTenantId && lookupRef) {
         try {
-          const directSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef));
+          const directSnap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef));
           if (directSnap.exists()) {
             orderData = directSnap.data();
-            orderDocRef = (0, import_firestore5.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef);
+            orderDocRef = (0, import_firestore7.doc)(db, "tenants", effectiveTenantId, "orders", lookupRef);
           }
         } catch {
         }
       }
       if (!orderData && lookupRef) {
         try {
-          const q = (0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("reference", "==", lookupRef));
-          const snap = await (0, import_firestore5.getDocs)(q);
+          const q = (0, import_firestore7.query)((0, import_firestore7.collection)(db, "orders"), (0, import_firestore7.where)("reference", "==", lookupRef));
+          const snap = await (0, import_firestore7.getDocs)(q);
           if (!snap.empty) {
             orderData = snap.docs[0].data();
-            orderDocRef = (0, import_firestore5.doc)(db, "orders", snap.docs[0].id);
+            orderDocRef = (0, import_firestore7.doc)(db, "orders", snap.docs[0].id);
             if (!effectiveTenantId && orderData.userId) {
               effectiveTenantId = orderData.userId;
             }
@@ -2908,7 +4698,7 @@ async function getApp() {
       let storeName = "Votre boutique DZ Build";
       if (effectiveTenantId) {
         try {
-          const tenantSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "tenants", effectiveTenantId));
+          const tenantSnap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "tenants", effectiveTenantId));
           if (tenantSnap.exists()) {
             const tData = tenantSnap.data();
             ownerEmail = tData.notificationEmail || tData.email || tData.ownerEmail || "";
@@ -2918,7 +4708,7 @@ async function getApp() {
             if (tData.callmebotApiKey) callmebotApiKey = tData.callmebotApiKey;
             if (tData.storeName) storeName = tData.storeName;
           }
-          const settingsSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "tenants", effectiveTenantId, "settings", "notifications"));
+          const settingsSnap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "tenants", effectiveTenantId, "settings", "notifications"));
           if (settingsSnap.exists()) {
             const sData = settingsSnap.data();
             if (sData.notificationEmail) ownerEmail = sData.notificationEmail;
@@ -3045,7 +4835,7 @@ async function getApp() {
           `;
           let transporter;
           if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-            transporter = import_nodemailer.default.createTransport({
+            transporter = import_nodemailer2.default.createTransport({
               host: process.env.SMTP_HOST,
               port: Number(process.env.SMTP_PORT || 587),
               secure: process.env.SMTP_SECURE === "true",
@@ -3055,8 +4845,8 @@ async function getApp() {
               }
             });
           } else {
-            const testAccount = await import_nodemailer.default.createTestAccount();
-            transporter = import_nodemailer.default.createTransport({
+            const testAccount = await import_nodemailer2.default.createTestAccount();
+            transporter = import_nodemailer2.default.createTransport({
               host: "smtp.ethereal.email",
               port: 587,
               secure: false,
@@ -3073,7 +4863,7 @@ async function getApp() {
             subject: `\u{1F6D2} Nouvelle commande #${orderNumber} \u2014 ${total.toLocaleString()} DZD`,
             html: emailHtml
           });
-          const previewUrl = import_nodemailer.default.getTestMessageUrl(info) || "";
+          const previewUrl = import_nodemailer2.default.getTestMessageUrl(info) || "";
           console.log(`[EMAIL DISPATCH SUCCESS] Owner email sent to ${ownerEmail}. MessageId: ${info.messageId}`);
           return { success: true, messageId: info.messageId, previewUrl };
         })(),
@@ -3111,7 +4901,7 @@ async function getApp() {
       };
       if (orderDocRef) {
         try {
-          await (0, import_firestore5.setDoc)(orderDocRef, { ownerNotified: ownerNotifiedPayload }, { merge: true });
+          await (0, import_firestore7.setDoc)(orderDocRef, { ownerNotified: ownerNotifiedPayload }, { merge: true });
         } catch (updateErr) {
           console.warn("[NOTIFY] Could not update order ownerNotified:", updateErr);
         }
@@ -3119,7 +4909,7 @@ async function getApp() {
       if (effectiveTenantId) {
         try {
           const logId = `log_${lookupRef}_${Date.now()}`;
-          await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", effectiveTenantId, "notificationLogs", logId), {
+          await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "tenants", effectiveTenantId, "notificationLogs", logId), {
             orderId: lookupRef,
             orderNumber,
             date: (/* @__PURE__ */ new Date()).toISOString(),
@@ -3167,7 +4957,7 @@ async function getApp() {
       try {
         let transporter;
         if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-          transporter = import_nodemailer.default.createTransport({
+          transporter = import_nodemailer2.default.createTransport({
             host: process.env.SMTP_HOST,
             port: Number(process.env.SMTP_PORT || 587),
             secure: process.env.SMTP_SECURE === "true",
@@ -3177,8 +4967,8 @@ async function getApp() {
             }
           });
         } else {
-          const testAccount = await import_nodemailer.default.createTestAccount();
-          transporter = import_nodemailer.default.createTransport({
+          const testAccount = await import_nodemailer2.default.createTestAccount();
+          transporter = import_nodemailer2.default.createTransport({
             host: "smtp.ethereal.email",
             port: 587,
             secure: false,
@@ -3201,7 +4991,7 @@ async function getApp() {
           `
         });
         emailSent = true;
-        previewUrl = import_nodemailer.default.getTestMessageUrl(info) || "";
+        previewUrl = import_nodemailer2.default.getTestMessageUrl(info) || "";
       } catch (e) {
         emailError = e.message;
       }
@@ -3261,10 +5051,10 @@ async function getApp() {
       return res.status(400).json({ error: "No image uploaded" });
     }
     try {
-      const id = import_crypto3.default.randomUUID();
+      const id = import_crypto4.default.randomUUID();
       const mimeType = req.file.mimetype;
       const base64Data = req.file.buffer.toString("base64");
-      await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "hosted_images", id), {
+      await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "hosted_images", id), {
         id,
         mimeType,
         data: base64Data,
@@ -3279,8 +5069,8 @@ async function getApp() {
   });
   app2.get("/api/images/:id", async (req, res) => {
     try {
-      const docRef = (0, import_firestore5.doc)(db, "hosted_images", req.params.id);
-      const docSnap = await (0, import_firestore5.getDoc)(docRef);
+      const docRef = (0, import_firestore7.doc)(db, "hosted_images", req.params.id);
+      const docSnap = await (0, import_firestore7.getDoc)(docRef);
       if (docSnap.exists()) {
         const data = docSnap.data();
         const buffer = Buffer.from(data.data, "base64");
@@ -3297,10 +5087,10 @@ async function getApp() {
   });
   app2.get("/api/admin/images", adminApiGuard("media"), async (req, res) => {
     try {
-      const querySnapshot = await (0, import_firestore5.getDocs)((0, import_firestore5.collection)(db, "hosted_images"));
+      const querySnapshot = await (0, import_firestore7.getDocs)((0, import_firestore7.collection)(db, "hosted_images"));
       const images = [];
-      querySnapshot.forEach((doc5) => {
-        const data = doc5.data();
+      querySnapshot.forEach((doc7) => {
+        const data = doc7.data();
         images.push({
           id: data.id,
           mimeType: data.mimeType,
@@ -3317,7 +5107,7 @@ async function getApp() {
   });
   app2.delete("/api/admin/images/:id", adminApiGuard("media"), async (req, res) => {
     try {
-      await (0, import_firestore5.deleteDoc)((0, import_firestore5.doc)(db, "hosted_images", req.params.id));
+      await (0, import_firestore7.deleteDoc)((0, import_firestore7.doc)(db, "hosted_images", req.params.id));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting image:", error);
@@ -3326,28 +5116,38 @@ async function getApp() {
   });
   app2.use("/api/admin/auth", adminAuth_default);
   app2.use("/api/admin/v1", adminApi_default);
+  app2.use("/api/admin/v1", adminModules_default);
+  app2.use("/api/admin/v1", adminPlatform_default);
+  app2.all("/api/jobs/daily", async (_req, res) => {
+    try {
+      const jobs = await runDailyJobs();
+      res.json({ ok: true, jobs });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e.message || e) });
+    }
+  });
   app2.post("/api/webhooks/payment", async (req, res) => {
     try {
       const signature = req.headers["signature"];
       const payload = JSON.stringify(req.body);
       const secret = process.env.CHARGILY_SECRET_KEY || "dummy_secret";
-      const computedSignature = import_crypto3.default.createHmac("sha256", secret).update(payload).digest("hex");
+      const computedSignature = import_crypto4.default.createHmac("sha256", secret).update(payload).digest("hex");
       const event = req.body;
       if (event && event.type === "checkout.paid") {
         const checkout = event.data;
         const tenantId = checkout.metadata?.tenantId;
         if (tenantId) {
-          const q = (0, import_firestore5.query)((0, import_firestore5.collection)(db, "payments"), (0, import_firestore5.where)("tenantId", "==", tenantId), (0, import_firestore5.where)("status", "==", "pending"));
-          const snap = await (0, import_firestore5.getDocs)(q);
+          const q = (0, import_firestore7.query)((0, import_firestore7.collection)(db, "payments"), (0, import_firestore7.where)("tenantId", "==", tenantId), (0, import_firestore7.where)("status", "==", "pending"));
+          const snap = await (0, import_firestore7.getDocs)(q);
           if (!snap.empty) {
             const paymentDoc = snap.docs[0];
-            await (0, import_firestore5.updateDoc)((0, import_firestore5.doc)(db, "payments", paymentDoc.id), {
+            await (0, import_firestore7.updateDoc)((0, import_firestore7.doc)(db, "payments", paymentDoc.id), {
               status: "completed",
               approvedAt: (/* @__PURE__ */ new Date()).toISOString()
             });
             const paymentData = paymentDoc.data();
-            const tenantRef = (0, import_firestore5.doc)(db, "tenants", tenantId);
-            const tenantSnap = await (0, import_firestore5.getDoc)(tenantRef);
+            const tenantRef = (0, import_firestore7.doc)(db, "tenants", tenantId);
+            const tenantSnap = await (0, import_firestore7.getDoc)(tenantRef);
             let baseDate = /* @__PURE__ */ new Date();
             if (tenantSnap.exists()) {
               const tData = tenantSnap.data();
@@ -3362,7 +5162,7 @@ async function getApp() {
             else if (duration.includes("6 mois")) expiresAt.setMonth(baseDate.getMonth() + 6);
             else if (duration.includes("1 an") || duration.includes("12 mois")) expiresAt.setFullYear(baseDate.getFullYear() + 1);
             else expiresAt.setMonth(baseDate.getMonth() + 1);
-            await (0, import_firestore5.updateDoc)(tenantRef, {
+            await (0, import_firestore7.updateDoc)(tenantRef, {
               plan: paymentData.planType || "pro",
               planName: paymentData.plan || "Professionnel",
               planExpiresAt: expiresAt.toISOString(),
@@ -3379,8 +5179,8 @@ async function getApp() {
   });
   const getProductOffersList = async (productId) => {
     try {
-      const q = (0, import_firestore5.query)((0, import_firestore5.collection)(db, "product_offers"), (0, import_firestore5.where)("product_id", "==", productId));
-      const snap = await (0, import_firestore5.getDocs)(q);
+      const q = (0, import_firestore7.query)((0, import_firestore7.collection)(db, "product_offers"), (0, import_firestore7.where)("product_id", "==", productId));
+      const snap = await (0, import_firestore7.getDocs)(q);
       const list = [];
       snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
       list.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
@@ -3392,7 +5192,7 @@ async function getApp() {
   const handleGetProductById = async (req, res) => {
     try {
       const prodId = req.params.id;
-      const snap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "products", prodId));
+      const snap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "products", prodId));
       if (!snap.exists()) {
         return res.status(404).json({ error: "Produit non trouv\xE9" });
       }
@@ -3431,9 +5231,9 @@ async function getApp() {
         createdAt: payload.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
-      await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "products", prodId), productData, { merge: true });
+      await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "products", prodId), productData, { merge: true });
       for (const off of cleanOffers) {
-        await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "product_offers", off.id), off, { merge: true });
+        await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "product_offers", off.id), off, { merge: true });
       }
       res.status(201).json({ success: true, product: productData });
     } catch (err) {
@@ -3460,9 +5260,9 @@ async function getApp() {
         offers: cleanOffers,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
-      await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "products", prodId), productData, { merge: true });
+      await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "products", prodId), productData, { merge: true });
       for (const off of cleanOffers) {
-        await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "product_offers", off.id), off, { merge: true });
+        await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "product_offers", off.id), off, { merge: true });
       }
       res.json({ success: true, product: productData });
     } catch (err) {
@@ -3475,12 +5275,12 @@ async function getApp() {
     try {
       const slugOrId = req.params.slug;
       let product = null;
-      const snap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "products", slugOrId));
+      const snap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "products", slugOrId));
       if (snap.exists()) {
         product = { id: snap.id, ...snap.data() };
       } else {
-        const q = (0, import_firestore5.query)((0, import_firestore5.collection)(db, "products"), (0, import_firestore5.where)("slug", "==", slugOrId));
-        const qSnap = await (0, import_firestore5.getDocs)(q);
+        const q = (0, import_firestore7.query)((0, import_firestore7.collection)(db, "products"), (0, import_firestore7.where)("slug", "==", slugOrId));
+        const qSnap = await (0, import_firestore7.getDocs)(q);
         if (!qSnap.empty) {
           product = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() };
         }
@@ -3523,7 +5323,7 @@ async function getApp() {
       const targetProductId = productId || req.body.items?.[0]?.productId;
       let authenticProduct = null;
       if (targetProductId) {
-        const pSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "products", targetProductId));
+        const pSnap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "products", targetProductId));
         if (pSnap.exists()) {
           authenticProduct = { id: pSnap.id, ...pSnap.data() };
         }
@@ -3531,7 +5331,7 @@ async function getApp() {
       const unitBasePrice = authenticProduct?.price || Number(req.body.items?.[0]?.price) || 1e3;
       let authenticOffer = null;
       if (effectiveOfferId) {
-        const oSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "product_offers", effectiveOfferId));
+        const oSnap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "product_offers", effectiveOfferId));
         if (oSnap.exists()) {
           authenticOffer = { id: oSnap.id, ...oSnap.data() };
         } else if (authenticProduct?.offers) {
@@ -3599,9 +5399,9 @@ async function getApp() {
           variants: variants || req.body.items?.[0]?.variants || {}
         }]
       };
-      await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "orders", generatedOrderId), verifiedOrder);
+      await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "orders", generatedOrderId), verifiedOrder);
       if (effectiveTenant && effectiveTenant !== "default_tenant") {
-        await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", effectiveTenant, "orders", generatedOrderId), verifiedOrder);
+        await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "tenants", effectiveTenant, "orders", generatedOrderId), verifiedOrder);
       }
       res.status(201).json({
         success: true,
@@ -3649,9 +5449,9 @@ async function getApp() {
         recentEventsBuffer.splice(0, 1e3);
       }
       try {
-        const eventsColl = (0, import_firestore5.collection)(db, "events");
-        const newDocRef = (0, import_firestore5.doc)(eventsColl);
-        (0, import_firestore5.setDoc)(newDocRef, eventData).catch(() => {
+        const eventsColl = (0, import_firestore7.collection)(db, "events");
+        const newDocRef = (0, import_firestore7.doc)(eventsColl);
+        (0, import_firestore7.setDoc)(newDocRef, eventData).catch(() => {
         });
       } catch {
       }
@@ -3685,13 +5485,13 @@ async function getApp() {
       const ordersMap = /* @__PURE__ */ new Map();
       const queries = [];
       if (effectiveTenantId) {
-        queries.push((0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("userId", "==", effectiveTenantId))).catch(() => null));
-        queries.push((0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("tenantId", "==", effectiveTenantId))).catch(() => null));
-        queries.push((0, import_firestore5.getDocs)((0, import_firestore5.collection)(db, "tenants", effectiveTenantId, "orders")).catch(() => null));
+        queries.push((0, import_firestore7.getDocs)((0, import_firestore7.query)((0, import_firestore7.collection)(db, "orders"), (0, import_firestore7.where)("userId", "==", effectiveTenantId))).catch(() => null));
+        queries.push((0, import_firestore7.getDocs)((0, import_firestore7.query)((0, import_firestore7.collection)(db, "orders"), (0, import_firestore7.where)("tenantId", "==", effectiveTenantId))).catch(() => null));
+        queries.push((0, import_firestore7.getDocs)((0, import_firestore7.collection)(db, "tenants", effectiveTenantId, "orders")).catch(() => null));
       }
-      queries.push((0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "orders"), (0, import_firestore5.where)("userId", "==", "default_tenant"))).catch(() => null));
-      queries.push((0, import_firestore5.getDocs)((0, import_firestore5.collection)(db, "tenants", "default_tenant", "orders")).catch(() => null));
-      queries.push((0, import_firestore5.getDocs)((0, import_firestore5.collection)(db, "orders")).catch(() => null));
+      queries.push((0, import_firestore7.getDocs)((0, import_firestore7.query)((0, import_firestore7.collection)(db, "orders"), (0, import_firestore7.where)("userId", "==", "default_tenant"))).catch(() => null));
+      queries.push((0, import_firestore7.getDocs)((0, import_firestore7.collection)(db, "tenants", "default_tenant", "orders")).catch(() => null));
+      queries.push((0, import_firestore7.getDocs)((0, import_firestore7.collection)(db, "orders")).catch(() => null));
       const snaps = await Promise.all(queries);
       snaps.forEach((snap) => {
         if (snap && snap.docs) {
@@ -3707,9 +5507,9 @@ async function getApp() {
       try {
         const prodQueries = [];
         if (effectiveTenantId) {
-          prodQueries.push((0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "products"), (0, import_firestore5.where)("userId", "==", effectiveTenantId))).catch(() => null));
+          prodQueries.push((0, import_firestore7.getDocs)((0, import_firestore7.query)((0, import_firestore7.collection)(db, "products"), (0, import_firestore7.where)("userId", "==", effectiveTenantId))).catch(() => null));
         }
-        prodQueries.push((0, import_firestore5.getDocs)((0, import_firestore5.collection)(db, "products")).catch(() => null));
+        prodQueries.push((0, import_firestore7.getDocs)((0, import_firestore7.collection)(db, "products")).catch(() => null));
         const pSnaps = await Promise.all(prodQueries);
         pSnaps.forEach((snap) => {
           if (snap && snap.docs) {
@@ -3753,10 +5553,10 @@ async function getApp() {
       const productsMap = /* @__PURE__ */ new Map();
       const queries = [];
       if (tenantId) {
-        queries.push((0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "products"), (0, import_firestore5.where)("userId", "==", tenantId))).catch(() => null));
-        queries.push((0, import_firestore5.getDocs)((0, import_firestore5.collection)(db, "tenants", tenantId, "products")).catch(() => null));
+        queries.push((0, import_firestore7.getDocs)((0, import_firestore7.query)((0, import_firestore7.collection)(db, "products"), (0, import_firestore7.where)("userId", "==", tenantId))).catch(() => null));
+        queries.push((0, import_firestore7.getDocs)((0, import_firestore7.collection)(db, "tenants", tenantId, "products")).catch(() => null));
       }
-      queries.push((0, import_firestore5.getDocs)((0, import_firestore5.collection)(db, "products")).catch(() => null));
+      queries.push((0, import_firestore7.getDocs)((0, import_firestore7.collection)(db, "products")).catch(() => null));
       const snaps = await Promise.all(queries);
       snaps.forEach((snap) => {
         if (snap && snap.docs) {
@@ -3821,7 +5621,7 @@ async function getApp() {
       }
       let tenantExists = false;
       try {
-        const tenantSnap = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "tenants", tenantId));
+        const tenantSnap = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "tenants", tenantId));
         tenantExists = tenantSnap.exists();
       } catch (e) {
         console.warn("abandoned-carts/track: tenant check failed:", e);
@@ -3854,7 +5654,7 @@ async function getApp() {
       const variantKey = Object.entries(first.variants).map(([k, v]) => `${k}:${v}`).sort().join("|").slice(0, 40);
       const slugSrc = `${first.productId}_${variantKey}`.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 90);
       const cartId = `cart_${tenantId}_${digits}_${slugSrc}`;
-      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
       const utm = b.utm && typeof b.utm === "object" && !Array.isArray(b.utm) ? b.utm : {};
       const payload = {
         tenantId,
@@ -3883,14 +5683,14 @@ async function getApp() {
         // Consentement WhatsApp (mention + case éventuelle) stocké avec le panier
         consentText: cartText(b.consentText, 300),
         consentChecked: b.consentChecked === true,
-        consentAt: b.consentChecked === true ? nowIso : "",
-        updatedAt: nowIso
+        consentAt: b.consentChecked === true ? nowIso3 : "",
+        updatedAt: nowIso3
       };
-      const cartRef = (0, import_firestore5.doc)(db, "abandoned_carts", cartId);
+      const cartRef = (0, import_firestore7.doc)(db, "abandoned_carts", cartId);
       let status = "abandoned";
-      let createdAt = nowIso;
+      let createdAt = nowIso3;
       try {
-        const existing = await (0, import_firestore5.getDoc)(cartRef);
+        const existing = await (0, import_firestore7.getDoc)(cartRef);
         if (existing.exists()) {
           const prev = existing.data() || {};
           if (prev.status === "contacted" || prev.status === "relanced" || prev.status === "recovered") {
@@ -3904,8 +5704,8 @@ async function getApp() {
       }
       payload.status = status;
       payload.createdAt = createdAt;
-      await (0, import_firestore5.setDoc)(cartRef, payload, { merge: true });
-      await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), payload, { merge: true });
+      await (0, import_firestore7.setDoc)(cartRef, payload, { merge: true });
+      await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), payload, { merge: true });
       processWhatsAppQueue(false).catch(() => {
       });
       res.json({ ok: true, id: cartId, status });
@@ -3924,17 +5724,17 @@ async function getApp() {
         res.status(400).json({ ok: false, error: "invalid_request" });
         return;
       }
-      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const nowIso3 = (/* @__PURE__ */ new Date()).toISOString();
       const updates = {
         status: "recovered",
         recovered: true,
-        recoveredAt: nowIso,
-        updatedAt: nowIso
+        recoveredAt: nowIso3,
+        updatedAt: nowIso3
       };
       if (orderId) updates.orderId = orderId;
       let updated = 0;
       try {
-        const snap = await (0, import_firestore5.getDocs)((0, import_firestore5.query)((0, import_firestore5.collection)(db, "abandoned_carts"), (0, import_firestore5.where)("phoneDigits", "==", digits)));
+        const snap = await (0, import_firestore7.getDocs)((0, import_firestore7.query)((0, import_firestore7.collection)(db, "abandoned_carts"), (0, import_firestore7.where)("phoneDigits", "==", digits)));
         const ids = [];
         snap.forEach((d) => {
           const data = d.data() || {};
@@ -3943,8 +5743,8 @@ async function getApp() {
           }
         });
         for (const id of ids) {
-          await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", id), updates, { merge: true });
-          await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", id), updates, { merge: true });
+          await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "abandoned_carts", id), updates, { merge: true });
+          await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "tenants", tenantId, "abandoned_carts", id), updates, { merge: true });
           updated++;
         }
       } catch (e) {
@@ -3952,10 +5752,10 @@ async function getApp() {
       }
       const legacyId = `cart_${tenantId}_${digits}`;
       try {
-        const legacy = await (0, import_firestore5.getDoc)((0, import_firestore5.doc)(db, "abandoned_carts", legacyId));
+        const legacy = await (0, import_firestore7.getDoc)((0, import_firestore7.doc)(db, "abandoned_carts", legacyId));
         if (legacy.exists()) {
-          await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "abandoned_carts", legacyId), updates, { merge: true });
-          await (0, import_firestore5.setDoc)((0, import_firestore5.doc)(db, "tenants", tenantId, "abandoned_carts", legacyId), updates, { merge: true });
+          await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "abandoned_carts", legacyId), updates, { merge: true });
+          await (0, import_firestore7.setDoc)((0, import_firestore7.doc)(db, "tenants", tenantId, "abandoned_carts", legacyId), updates, { merge: true });
           updated++;
         }
       } catch (e) {
@@ -3966,6 +5766,10 @@ async function getApp() {
       console.warn("Error in /api/abandoned-carts/recover:", e);
       res.status(500).json({ ok: false, error: "recover_failed" });
     }
+  });
+  app2.use("/api/whatsapp/process", (_req, _res, next) => {
+    void runDailyJobs().catch(() => void 0);
+    next();
   });
   registerWhatsAppRoutes(app2);
   return app2;
@@ -3981,7 +5785,7 @@ async function startServer() {
     app2.use(vite.middlewares);
   } else {
     const distPath = import_path2.default.join(process.cwd(), "dist");
-    app2.use(import_express3.default.static(distPath));
+    app2.use(import_express5.default.static(distPath));
     app2.get("*", (req, res) => {
       res.sendFile(import_path2.default.join(distPath, "index.html"));
     });

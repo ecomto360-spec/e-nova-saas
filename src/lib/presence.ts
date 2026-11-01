@@ -30,11 +30,17 @@ async function beat(storeName: string): Promise<void> {
     const idToken = await user.getIdToken(/* forceRefresh */ false).catch(() => null);
     if (!idToken) return;
     const { device, os } = detectDevice();
-    await fetch("/api/admin/v1/heartbeat", {
+    const res = await fetch("/api/admin/v1/heartbeat", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
       body: JSON.stringify({ device, os, storeName, page: location.pathname.slice(0, 120) })
     });
+    // Compte suspendu par un administrateur : déconnexion forcée immédiate.
+    if (res.status === 403) {
+      stopPresenceHeartbeat();
+      try { await auth.signOut(); } catch { /* ignore */ }
+      window.location.href = "/login?suspended=1";
+    }
   } catch {
     /* silencieux : la présence est best-effort */
   }

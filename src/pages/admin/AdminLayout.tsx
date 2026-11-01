@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Store, CreditCard, Wallet, BarChart3, Palette,
-  Puzzle, MessageCircle, Settings, Bell, ScrollText, HeartPulse, LogOut,
-  Menu, X, ShieldCheck, Loader2, ExternalLink, History
+  LayoutDashboard, Users, Store, ScrollText, LogOut, Menu, X, ShieldCheck, Loader2, ExternalLink
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 
@@ -23,17 +21,7 @@ const MODULES: Array<{ to: string; key: string; icon: typeof LayoutDashboard; pe
   { to: "/admin/dashboard", key: "admin.nav.dashboard", icon: LayoutDashboard, permission: "dashboard" },
   { to: "/admin/members", key: "admin.nav.members", icon: Users, permission: "members" },
   { to: "/admin/stores", key: "admin.nav.stores", icon: Store, permission: "stores" },
-  { to: "/admin/subscriptions", key: "admin.nav.subscriptions", icon: CreditCard, permission: "billing" },
-  { to: "/admin/payments", key: "admin.nav.payments", icon: Wallet, permission: "payments" },
-  { to: "/admin/stats", key: "admin.nav.stats", icon: BarChart3, permission: "stats" },
-  { to: "/admin/themes", key: "admin.nav.themes", icon: Palette, permission: "themes" },
-  { to: "/admin/extensions", key: "admin.nav.extensions", icon: Puzzle, permission: "extensions" },
-  { to: "/admin/integrations", key: "admin.nav.integrations", icon: MessageCircle, permission: "integrations" },
-  { to: "/admin/settings", key: "admin.nav.settings", icon: Settings, permission: "settings" },
-  { to: "/admin/notifications", key: "admin.nav.notifications", icon: Bell, permission: "notifications" },
   { to: "/admin/audit", key: "admin.nav.audit", icon: ScrollText, permission: "audit" },
-  { to: "/admin/health", key: "admin.nav.health", icon: HeartPulse, permission: "health" },
-  { to: "/admin/legacy", key: "admin.nav.legacy", icon: History, permission: "members" }
 ];
 
 export default function AdminLayout() {

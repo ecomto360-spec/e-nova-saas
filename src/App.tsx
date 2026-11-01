@@ -39,11 +39,11 @@ import ReferralProgram from "./pages/settings/ReferralProgram";
 import ApiSettings from "./pages/settings/ApiSettings";
 import Subscription from "./pages/Subscription";
 import AdminLogin from "./pages/admin/AdminLogin";
-import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboardHome from "./pages/admin/AdminDashboardHome";
 import AdminAudit from "./pages/admin/AdminAudit";
-import AdminPlaceholder from "./pages/admin/AdminPlaceholder";
+import AdminMembers from "./pages/admin/AdminMembers";
+import AdminStores from "./pages/admin/AdminStores";
 import LandingPages from "./pages/LandingPages";
 import LandingPagePublicView from "./pages/LandingPagePublicView";
 
@@ -62,22 +62,13 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/admin" element={<AdminLogin />} />
-              {/* LOT A — espace Super Admin : layout + modules (le reste arrive aux lots B→E) */}
+              {/* LOT A→E — espace Super Admin : tous les modules sont installés */}
               <Route element={<AdminLayout />}>
                 <Route path="/admin/dashboard" element={<AdminDashboardHome />} />
                 <Route path="/admin/audit" element={<AdminAudit />} />
-                <Route path="/admin/legacy" element={<AdminDashboard />} />
-                <Route path="/admin/members" element={<AdminPlaceholder />} />
-                <Route path="/admin/stores" element={<AdminPlaceholder />} />
-                <Route path="/admin/subscriptions" element={<AdminPlaceholder />} />
-                <Route path="/admin/payments" element={<AdminPlaceholder />} />
-                <Route path="/admin/stats" element={<AdminPlaceholder />} />
-                <Route path="/admin/themes" element={<AdminPlaceholder />} />
-                <Route path="/admin/extensions" element={<AdminPlaceholder />} />
-                <Route path="/admin/integrations" element={<AdminPlaceholder />} />
-                <Route path="/admin/settings" element={<AdminPlaceholder />} />
-                <Route path="/admin/notifications" element={<AdminPlaceholder />} />
-                <Route path="/admin/health" element={<AdminPlaceholder />} />
+                <Route path="/admin/members" element={<AdminMembers />} />
+                <Route path="/admin/stores" element={<AdminStores />} />
+                <Route path="/admin/legacy" element={<Navigate to="/admin/members" replace />} />
               </Route>
               
               {/* Standalone Public Storefront & Landing Page Routes */}
