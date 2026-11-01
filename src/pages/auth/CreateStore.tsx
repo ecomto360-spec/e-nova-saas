@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, Package } from "lucide-react";
 import { auth, db } from "../../lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, query, where, collection, serverTimestamp } from "firebase/firestore";
 
 export default function CreateStore() {
   const navigate = useNavigate();
@@ -78,14 +78,42 @@ export default function CreateStore() {
     
     try {
       const user = auth.currentUser;
+      // Réglages plateforme : essai par défaut + slugs réservés + unicité
+      let trialDays = 14;
+      const reserved = new Set(["admin", "api", "login", "register", "store", "dashboard", "legal", "settings"]);
+      try {
+        const snap = await getDoc(doc(db, "platform_settings", "general"));
+        if (snap.exists()) {
+          const d = snap.data() as { defaultTrialDays?: number; reservedSlugs?: string[] };
+          if (typeof d.defaultTrialDays === "number") trialDays = d.defaultTrialDays;
+          (d.reservedSlugs || []).forEach((r) => reserved.add(r));
+        }
+      } catch { /* réglages indisponibles : valeurs par défaut */ }
+      const finalSlug = (storeUrl || storeName.toLowerCase().replace(/[^a-z0-9-]/g, '')).toLowerCase();
+      if (reserved.has(finalSlug)) {
+        setError("Cette adresse de boutique est réservée par la plateforme. Choisissez-en une autre.");
+        setIsSubmitting(false);
+        return;
+      }
+      try {
+        const dup = await getDocs(query(collection(db, "tenants"), where("storeUrl", "==", finalSlug)));
+        if (!dup.empty) {
+          setError("Cette adresse de boutique est déjà utilisée. Choisissez-en une autre.");
+          setIsSubmitting(false);
+          return;
+        }
+      } catch { /* vérification best-effort */ }
+
       const tenantPayload = {
         storeName: storeName.trim(),
-        storeUrl: storeUrl || storeName.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+        storeUrl: finalSlug,
+        slug: finalSlug,
         productType,
         language,
         ownerEmail: user?.email || "",
         createdAt: new Date().toISOString(),
         trialStartDate: new Date().toISOString(),
+        planExpiresAt: new Date(Date.now() + trialDays * 86400000).toISOString(),
         status: 'active',
         plan: 'Standard'
       };

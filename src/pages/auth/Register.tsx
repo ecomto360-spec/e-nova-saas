@@ -1,15 +1,16 @@
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Loader2, Eye, EyeOff, Phone, MessageSquare } from "lucide-react";
 import { GoogleIcon } from "./Login";
 import { auth, googleProvider, db } from "../../lib/firebase";
 import { signInWithPopup, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { checkTenantAndRedirect } from "../../lib/checkTenant";
 import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../../lib/phoneUtils";
 
 export default function Register() {
   const [fullName, setFullName] = useState("");
+  const [registrationsOpen, setRegistrationsOpen] = useState(true);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [phoneError, setPhoneError] = useState("");
@@ -19,8 +20,18 @@ export default function Register() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
+  useEffect(() => {
+    // Réglages plateforme : inscriptions ouvertes/fermées + essai par défaut
+    getDoc(doc(db, "platform_settings", "general")).then((snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data() as { registrationsOpen?: boolean };
+      if (typeof d.registrationsOpen === "boolean") setRegistrationsOpen(d.registrationsOpen);
+    }).catch(() => undefined);
+  }, []);
+
   const handleGoogleLogin = async () => {
     try {
+      if (!registrationsOpen) { setError("Les inscriptions sont actuellement fermées. Réessayez plus tard."); return; }
       setIsLoading(true);
       setError("");
       const result = await signInWithPopup(auth, googleProvider);
@@ -50,6 +61,10 @@ export default function Register() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!registrationsOpen) {
+      setError("Les inscriptions sont actuellement fermées. Réessayez plus tard.");
+      return;
+    }
     if (!email.trim()) {
       setError("Veuillez renseigner votre adresse e-mail.");
       return;
@@ -124,6 +139,12 @@ export default function Register() {
   };
 
   return (
+    <>
+      {!registrationsOpen && (
+        <div className="mb-6 p-4 bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-xl text-sm font-medium text-center">
+          Les inscriptions sont actuellement fermées par l'administrateur de la plateforme.
+        </div>
+      )}
     <div className="w-full max-w-[440px] bg-[#1a1a1f] rounded-[24px] p-10 shadow-2xl border border-neutral-800/50 my-8">
       <div className="flex justify-center mb-6">
         <img src="/logo.png" alt="E nova" className="h-14 w-auto max-w-[200px] object-contain shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />
@@ -261,5 +282,6 @@ export default function Register() {
         </p>
       </div>
     </div>
+    </>
   );
 }

@@ -47,6 +47,10 @@ import AdminStores from "./pages/admin/AdminStores";
 import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import AdminPayments from "./pages/admin/AdminPayments";
 import AdminStats from "./pages/admin/AdminStats";
+import AdminThemes from "./pages/admin/AdminThemes";
+import AdminExtensions from "./pages/admin/AdminExtensions";
+import AdminWhatsApp from "./pages/admin/AdminWhatsApp";
+import AdminSettings from "./pages/admin/AdminSettings";
 import LandingPages from "./pages/LandingPages";
 import LandingPagePublicView from "./pages/LandingPagePublicView";
 
@@ -74,6 +78,10 @@ export default function App() {
                 <Route path="/admin/subscriptions" element={<AdminSubscriptions />} />
                 <Route path="/admin/payments" element={<AdminPayments />} />
                 <Route path="/admin/stats" element={<AdminStats />} />
+                <Route path="/admin/themes" element={<AdminThemes />} />
+                <Route path="/admin/extensions" element={<AdminExtensions />} />
+                <Route path="/admin/integrations" element={<AdminWhatsApp />} />
+                <Route path="/admin/settings" element={<AdminSettings />} />
                 <Route path="/admin/legacy" element={<Navigate to="/admin/members" replace />} />
               </Route>
               

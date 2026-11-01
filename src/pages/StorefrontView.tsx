@@ -43,6 +43,10 @@ export default function StorefrontView() {
   const [storefront, setStorefront] = useState<StorefrontSettings | undefined>(undefined);
   const [soldCounts, setSoldCounts] = useState<Record<string, number>>({});
   const [isExpired, setIsExpired] = useState(false);
+  /** Mode maintenance global (super admin) — bannière + page dédiée. */
+  const [maintenance, setMaintenance] = useState<{ on: boolean; message: string } | null>(null);
+  /** Boutique suspendue par un administrateur. */
+  const [isSuspended, setIsSuspended] = useState(false);
   const [tenantId, setTenantId] = useState<string>("");
   /** Erreur de chargement visible (jamais un faux « aucun produit » muet). */
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -63,6 +67,29 @@ export default function StorefrontView() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => setOwnerSignedIn(Boolean(user)));
     return () => unsubscribe();
+  }, []);
+
+  // Réglages plateforme : mode maintenance + bannière + scripts globaux.
+  useEffect(() => {
+    let alive = true;
+    getDocFromServer(doc(dbPublic, "platform_settings", "general")).then((snap) => {
+      if (!alive || !snap.exists()) return;
+      const d = snap.data() as { maintenance?: { on?: boolean; message?: string }; globalScripts?: string };
+      if (d.maintenance && d.maintenance.on) setMaintenance({ on: true, message: d.maintenance.message || "" });
+      // Scripts globaux (analytics…) injectés une seule fois
+      const scripts = String(d.globalScripts || "").trim();
+      if (scripts) {
+        const holder = document.createElement("div");
+        holder.innerHTML = scripts;
+        holder.querySelectorAll("script").forEach((old) => {
+          const sc = document.createElement("script");
+          [...old.attributes].forEach((a) => sc.setAttribute(a.name, a.value));
+          sc.text = old.textContent || "";
+          document.head.appendChild(sc);
+        });
+      }
+    }).catch(() => undefined);
+    return () => { alive = false; };
   }, []);
 
   // Garde-fou : si le chargement dépasse 15 s (réseau bloqué, restauration de
@@ -100,6 +127,9 @@ export default function StorefrontView() {
             if (isTenantExpired(data)) {
                setIsExpired(true);
             }
+            if (data.status === "suspended") {
+               setIsSuspended(true);
+            }
             if (data.storeName) setStoreName(data.storeName);
             if (data.activeTheme) {
               const found = STORE_THEMES.find(t => t.id === data.activeTheme);
@@ -128,6 +158,9 @@ export default function StorefrontView() {
              const data = tSnap.data();
              if (isTenantExpired(data)) {
                  setIsExpired(true);
+             }
+             if (data.status === "suspended") {
+                 setIsSuspended(true);
              }
              if (data.storeName) setStoreName(data.storeName);
              if (data.activeTheme) {
@@ -217,6 +250,32 @@ export default function StorefrontView() {
     };
   }, [storeSlug]);
 
+  if (maintenance?.on) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center mb-5">
+            <Sparkles className="w-8 h-8 text-orange-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-3">Maintenance en cours</h1>
+          <p className="text-neutral-400">{maintenance.message || "La plateforme est momentanément indisponible. Revenez bientôt."}</p>
+        </div>
+      </div>
+    );
+  }
+  if (isSuspended) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center mb-5">
+            <Store className="w-8 h-8 text-red-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-3">Boutique indisponible</h1>
+          <p className="text-neutral-400">Cette boutique est momentanément indisponible. Contactez le support si vous pensez que c'est une erreur.</p>
+        </div>
+      </div>
+    );
+  }
   if (isExpired) return <StoreUnavailable />;
 
   if (loading) {
