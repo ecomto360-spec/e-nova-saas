@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/whatsapp/process",
-      "schedule": "*/10 * * * *"
+      "schedule": "7 3 * * *"
     }
   ],
   "rewrites": [

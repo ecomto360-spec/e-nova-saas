@@ -64,10 +64,14 @@ libre (→ tâche marchand).
 ## 5. Ordonnanceur (délais 5/10/30/60 min, heures calmes, rappel 4 h)
 
 Les envois sont traités par `/api/whatsapp/process` :
-- **Cron Vercel** toutes les 10 minutes (`vercel.json → crons`). ⚠️ Sur le plan
-  *Hobby*, Vercel limite les crons (1×/jour) : dans ce cas, le déclenchement
-  repose sur le trafic (chaque capture de panier fait avancer la file) et sur
-  le bouton **« Traiter maintenant »** (réglages de l'extension).
+- **Cron Vercel quotidien** à 03:07 UTC (`vercel.json → crons`). ⚠️ Le plan
+  *Hobby* de Vercel n'accepte qu'**un cron par jour maximum** — une planification
+  plus fréquente (`*/10`) fait **échouer le déploiement**. En pratique, le
+  traitement en temps réel repose sur le trafic (piggyback ci-dessous) et sur
+  le bouton **« Traiter maintenant »** (réglages de l'extension) : le cron
+  quotidien sert de filet de sécurité (paniers dus pendant une période sans
+  visiteurs). Sur un plan **Pro**, la planification peut être passée à
+  `*/10 * * * *`.
 - **Piggyback** : chaque POST `/api/abandoned-carts/track` (formulaire boutique)
   déclenche un cycle en arrière-plan (garde-fou : 1 cycle/minute max).
 - **Manuel** : réglages de l'extension → *Traitement immédiat*.
