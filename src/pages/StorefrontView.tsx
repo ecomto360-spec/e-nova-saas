@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Edit3, Palette, Sparkles, Store } from "lucide-react";
 import { auth, db } from "../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, getDocFromServer, collection, query, where, getDocs, getDocsFromServer } from "firebase/firestore";
 import { STORE_THEMES, StoreTheme } from "../data/themesData";
 import { ThemeStorePreview } from "../components/storefront/ThemeStorePreview";
 import { StoreCustomizerConfig, defaultStoreConfig } from "../components/admin/StoreCustomizerConfig";
@@ -38,7 +38,9 @@ export default function StorefrontView() {
             if (storeSlug) {
         try {
           const tenantQuery = query(collection(db, "tenants"), where("storeUrl", "==", storeSlug));
-          const tenantSnap = await getDocs(tenantQuery);
+          // Lecture SERVEUR forcée : la boutique publique doit toujours refléter
+          // l'état réel de la base, jamais un cache local périmé du navigateur.
+          const tenantSnap = await getDocsFromServer(tenantQuery);
           if (!tenantSnap.empty) {
             targetUserId = tenantSnap.docs[0].id;
             const data = tenantSnap.docs[0].data();
@@ -61,7 +63,7 @@ export default function StorefrontView() {
           // ALWAYS fetch tenant doc to check expiration
           const tRef = doc(db, "tenants", targetUserId);
           setTenantId(targetUserId);
-          const tSnap = await getDoc(tRef);
+          const tSnap = await getDocFromServer(tRef);
           if (tSnap.exists()) {
              const data = tSnap.data();
              if (isTenantExpired(data)) {
@@ -76,7 +78,7 @@ export default function StorefrontView() {
 
           // Fetch Custom Store Config
           const confRef = doc(db, "store_config", targetUserId);
-          const confSnap = await getDoc(confRef);
+          const confSnap = await getDocFromServer(confRef);
           if (confSnap.exists()) {
             const confData = confSnap.data();
             if (confData.activeThemeId) {
@@ -90,14 +92,14 @@ export default function StorefrontView() {
 
           // Fetch Storefront Settings (contenu éditable de la page d'accueil)
           const sfRef = doc(db, "tenants", targetUserId, "settings", "storefront");
-          const sfSnap = await getDoc(sfRef);
+          const sfSnap = await getDocFromServer(sfRef);
           setStorefront(
             mergeStorefrontSettings(sfSnap.exists() ? (sfSnap.data() as Partial<StorefrontSettings>) : undefined)
           );
 
           // Compute sold counts per product (source "meilleures ventes")
           const ordersQuery = query(collection(db, "orders"), where("userId", "==", targetUserId));
-          const ordersSnap = await getDocs(ordersQuery);
+          const ordersSnap = await getDocsFromServer(ordersQuery);
           const counts: Record<string, number> = {};
           ordersSnap.forEach(d => {
             const items = (d.data() as { items?: Array<{ productId?: string; quantity?: number }> }).items ?? [];
@@ -111,13 +113,13 @@ export default function StorefrontView() {
 
           // Fetch products
           const productsQuery = query(collection(db, "products"), where("userId", "==", targetUserId));
-          const productsSnap = await getDocs(productsQuery);
+          const productsSnap = await getDocsFromServer(productsQuery);
           const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setActualProducts(productsData);
 
           // Fetch categories
           const categoriesQuery = query(collection(db, "categories"), where("userId", "==", targetUserId), where("status", "==", "active"));
-          const categoriesSnap = await getDocs(categoriesQuery);
+          const categoriesSnap = await getDocsFromServer(categoriesQuery);
           const categoriesData = categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setActualCategories(categoriesData);
         } catch (err) {
