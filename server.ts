@@ -21,7 +21,7 @@ const upload = multer({
   limits: { fileSize: 900 * 1024 } 
 });
 
-async function startServer() {
+export async function getApp(): Promise<express.Express> {
   // Configuration Cloudinary avec les clés intégrées directement en dur
   cloudinary.config({ 
     cloud_name: 'ie6edvfe', 
@@ -30,7 +30,6 @@ async function startServer() {
   });
 
   const app = express();
-  const PORT = 3000;
   
   app.use(express.json());
   app.use(cookieParser());
@@ -1165,7 +1164,18 @@ async function startServer() {
     }
   });
 
+  return app;
+}
 
+/**
+ * Démarrage autonome (développement local `tsx server.ts` ou `npm start`).
+ * La fonction Vercel (api/index.ts) importe uniquement `getApp()` : elle ne
+ * doit JAMAIS écouter sur un port ni servir les fichiers statiques (Vercel
+ * s'en charge via vercel.json).
+ */
+async function startServer(): Promise<void> {
+  const app = await getApp();
+  const PORT = 3000;
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
@@ -1187,4 +1197,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// Ne démarrer le serveur que si ce fichier est exécuté directement
+// (tsx server.ts en dev, ou `npm start` sur dist/server.cjs). Lorsque la
+// fonction Vercel importe getApp(), require.main !== module -> pas d'écoute.
+if (require.main === module) {
+  startServer();
+}
