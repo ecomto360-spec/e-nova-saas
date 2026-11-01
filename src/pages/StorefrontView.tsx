@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Edit3, Palette, Sparkles, Store } from "lucide-react";
-import { auth, db } from "../lib/firebase";
+import { auth, dbPublic } from "../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, getDocFromServer, collection, query, where, getDocs, getDocsFromServer } from "firebase/firestore";
 import { STORE_THEMES, StoreTheme } from "../data/themesData";
@@ -16,12 +16,13 @@ import { BUNDLE_ID } from "../version";
 /**
  * Page publique de boutique.
  *
- * CONTRAT (Lot 14) : toutes les données (boutique, catégories, produits)
+ * CONTRAT (Lot 15) : toutes les données (boutique, catégories, produits)
  * proviennent UNIQUEMENT du slug de l'URL (/store/:slug), lues côté SERVEUR
- * (getDocsFromServer) — jamais de l'utilisateur connecté, jamais du
- * localStorage/sessionStorage, jamais d'un cache du dashboard. La session
- * propriétaire ne fait qu'afficher la barre d'outils (aucun changement de
- * source de données, aucun filtre uid, aucune collection privée).
+ * (getDocsFromServer) via dbPublic — une instance Firestore SANS authentification
+ * (voir lib/firebase.ts) : l'état de session du navigateur ne peut ni bloquer
+ * ni modifier ces lectures. Jamais de localStorage/sessionStorage, jamais d'un
+ * cache du dashboard. La session propriétaire ne fait qu'afficher la barre
+ * d'outils (aucun changement de source de données, aucun filtre uid).
  *
  * La route /store (sans slug, ouverte par d'anciens boutons du dashboard)
  * résout via auth.uid UNIQUEMENT pour un compte propriétaire ; elle affiche
@@ -89,7 +90,7 @@ export default function StorefrontView() {
       // If a storeSlug is provided in the URL, fetch the tenant by storeUrl (slug)
             if (storeSlug) {
         try {
-          const tenantQuery = query(collection(db, "tenants"), where("storeUrl", "==", storeSlug));
+          const tenantQuery = query(collection(dbPublic, "tenants"), where("storeUrl", "==", storeSlug));
           // Lecture SERVEUR forcée : la boutique publique doit toujours refléter
           // l'état réel de la base, jamais un cache local périmé du navigateur.
           const tenantSnap = await getDocsFromServer(tenantQuery);
@@ -120,7 +121,7 @@ export default function StorefrontView() {
       if (targetUserId) {
         try {
           // ALWAYS fetch tenant doc to check expiration
-          const tRef = doc(db, "tenants", targetUserId);
+          const tRef = doc(dbPublic, "tenants", targetUserId);
           setTenantId(targetUserId);
           const tSnap = await getDocFromServer(tRef);
           if (tSnap.exists()) {
@@ -142,7 +143,7 @@ export default function StorefrontView() {
           }
 
           // Fetch Custom Store Config
-          const confRef = doc(db, "store_config", targetUserId);
+          const confRef = doc(dbPublic, "store_config", targetUserId);
           const confSnap = await getDocFromServer(confRef);
           if (confSnap.exists()) {
             const confData = confSnap.data();
@@ -156,14 +157,14 @@ export default function StorefrontView() {
           }
 
           // Fetch Storefront Settings (contenu éditable de la page d'accueil)
-          const sfRef = doc(db, "tenants", targetUserId, "settings", "storefront");
+          const sfRef = doc(dbPublic, "tenants", targetUserId, "settings", "storefront");
           const sfSnap = await getDocFromServer(sfRef);
           setStorefront(
             mergeStorefrontSettings(sfSnap.exists() ? (sfSnap.data() as Partial<StorefrontSettings>) : undefined)
           );
 
           // Compute sold counts per product (source "meilleures ventes")
-          const ordersQuery = query(collection(db, "orders"), where("userId", "==", targetUserId));
+          const ordersQuery = query(collection(dbPublic, "orders"), where("userId", "==", targetUserId));
           const ordersSnap = await getDocsFromServer(ordersQuery);
           const counts: Record<string, number> = {};
           ordersSnap.forEach(d => {
@@ -177,13 +178,13 @@ export default function StorefrontView() {
           setSoldCounts(counts);
 
           // Fetch products
-          const productsQuery = query(collection(db, "products"), where("userId", "==", targetUserId));
+          const productsQuery = query(collection(dbPublic, "products"), where("userId", "==", targetUserId));
           const productsSnap = await getDocsFromServer(productsQuery);
           const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setActualProducts(productsData);
 
           // Fetch categories
-          const categoriesQuery = query(collection(db, "categories"), where("userId", "==", targetUserId), where("status", "==", "active"));
+          const categoriesQuery = query(collection(dbPublic, "categories"), where("userId", "==", targetUserId), where("status", "==", "active"));
           const categoriesSnap = await getDocsFromServer(categoriesQuery);
           const categoriesData = categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setActualCategories(categoriesData);
