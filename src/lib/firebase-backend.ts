@@ -2,8 +2,14 @@ import { initializeApp } from 'firebase/app';
 import { initializeFirestore } from 'firebase/firestore';
 import fs from 'fs';
 import path from 'path';
+// Import STATIQUE de la configuration : embarquée dans le bundle au build,
+// donc toujours disponible dans la fonction Vercel (une lecture dynamique
+// via fs.readFileSync/process.cwd() n'est pas tracée par le packaging et
+// la config serait absente dans le lambda).
+import bundledRawConfig from '../../firebase-applet-config.json';
 
-let rawConfig: any = {};
+let rawConfig: any = bundledRawConfig ?? {};
+// Fallback : si un fichier local existe (dev), il prime (sans crash sinon).
 try {
   const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
   if (fs.existsSync(configPath)) {
