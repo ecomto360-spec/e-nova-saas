@@ -296,10 +296,12 @@ export default function Products() {
         }
 
         // Fetch products from 'products' collection
+        const remoteIds = new Set<string>();
         try {
           const prodQuery = query(collection(db, "products"), where("userId", "==", user.uid));
           const prodSnap = await getDocs(prodQuery);
           prodSnap.forEach(docSnap => {
+            remoteIds.add(String(docSnap.id));
             localMap.set(String(docSnap.id), {
               id: docSnap.id,
               ...docSnap.data()
@@ -330,6 +332,29 @@ export default function Products() {
           try {
             localStorage.setItem("dzbuild_products", JSON.stringify(merged));
           } catch {}
+        }
+
+        // Auto-réparation : produits présents en local mais absents du cloud
+        // (ex. écriture échouée silencieusement pendant une interruption).
+        // On les ré-écrit vers Firestore pour que la boutique publique les voie.
+        const localOnly = Array.from(localMap.values()).filter(
+          (p) => p && p.id && !remoteIds.has(String(p.id))
+        );
+        if (localOnly.length > 0) {
+          try {
+            await Promise.all(localOnly.map((p) =>
+              setDoc(doc(db, "products", String(p.id)), {
+                ...p,
+                userId: user.uid,
+                updatedAt: new Date().toISOString()
+              }, { merge: true })
+            ));
+            showToast(`☁️ ${localOnly.length} produit(s) resynchronisé(s) vers le cloud`);
+          } catch (syncErr) {
+            console.warn("Resynchronisation cloud impossible:", syncErr);
+            const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+            showToast(`⚠ Impossible de resynchroniser ${localOnly.length} produit(s) vers le cloud : ${msg}`);
+          }
         }
       } catch (e) {
         // Safe catch
@@ -531,6 +556,14 @@ export default function Products() {
             ...productItem,
             updatedAt: new Date().toISOString()
           }, { merge: true });
+          // Ne JAMAIS avaler silencieusement un échec cloud : sinon le produit
+          // n'existerait qu'en localStorage (visible au dashboard, invisible
+          // pour la boutique publique qui lit Firestore).
+          savePromise.catch((dbErr) => {
+            const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+            console.warn("Échec de la synchronisation cloud du produit:", dbErr);
+            showToast(`⚠ Produit enregistré en local mais NON synchronisé (${msg}) — il le sera automatiquement au prochain chargement.`);
+          });
 
           // Also save offers to product_offers collection
           const offersPromises = (cleanOffers || []).map(off => 

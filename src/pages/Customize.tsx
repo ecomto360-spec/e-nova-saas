@@ -420,7 +420,10 @@ export default function Customize() {
                   </div>
                   <div className="flex flex-col gap-2">
                     {storefront.sectionsOrder.map((sid, idx) => {
-                      const visible = storefront[sid].visible;
+                      // "trust" (sectionsOrder) correspond à la clé "trustBar" des réglages.
+                      // Garde "?." : une section inconnue ne doit jamais faire planter la page.
+                      const sectionKey: SectionKey = sid === "trust" ? "trustBar" : sid;
+                      const visible = storefront[sectionKey]?.visible ?? true;
                       return (
                         <div
                           key={sid}
