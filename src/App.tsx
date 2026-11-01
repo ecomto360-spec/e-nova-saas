@@ -44,6 +44,9 @@ import AdminDashboardHome from "./pages/admin/AdminDashboardHome";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminMembers from "./pages/admin/AdminMembers";
 import AdminStores from "./pages/admin/AdminStores";
+import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
+import AdminPayments from "./pages/admin/AdminPayments";
+import AdminStats from "./pages/admin/AdminStats";
 import LandingPages from "./pages/LandingPages";
 import LandingPagePublicView from "./pages/LandingPagePublicView";
 
@@ -68,6 +71,9 @@ export default function App() {
                 <Route path="/admin/audit" element={<AdminAudit />} />
                 <Route path="/admin/members" element={<AdminMembers />} />
                 <Route path="/admin/stores" element={<AdminStores />} />
+                <Route path="/admin/subscriptions" element={<AdminSubscriptions />} />
+                <Route path="/admin/payments" element={<AdminPayments />} />
+                <Route path="/admin/stats" element={<AdminStats />} />
                 <Route path="/admin/legacy" element={<Navigate to="/admin/members" replace />} />
               </Route>
               

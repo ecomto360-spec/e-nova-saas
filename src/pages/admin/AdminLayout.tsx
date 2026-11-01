@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Store, ScrollText, LogOut, Menu, X, ShieldCheck, Loader2, ExternalLink
+  LayoutDashboard, Users, Store, CreditCard, Wallet, BarChart3, ScrollText, LogOut, Menu, X, ShieldCheck, Loader2, ExternalLink
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 
@@ -21,6 +21,9 @@ const MODULES: Array<{ to: string; key: string; icon: typeof LayoutDashboard; pe
   { to: "/admin/dashboard", key: "admin.nav.dashboard", icon: LayoutDashboard, permission: "dashboard" },
   { to: "/admin/members", key: "admin.nav.members", icon: Users, permission: "members" },
   { to: "/admin/stores", key: "admin.nav.stores", icon: Store, permission: "stores" },
+  { to: "/admin/subscriptions", key: "admin.nav.subscriptions", icon: CreditCard, permission: "billing" },
+  { to: "/admin/payments", key: "admin.nav.payments", icon: Wallet, permission: "payments" },
+  { to: "/admin/stats", key: "admin.nav.stats", icon: BarChart3, permission: "stats" },
   { to: "/admin/audit", key: "admin.nav.audit", icon: ScrollText, permission: "audit" },
 ];
 
