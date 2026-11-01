@@ -1,6 +1,13 @@
-import React, { useState, useMemo, FormEvent, useEffect } from "react";
+import React, { useState, useMemo, useRef, FormEvent, useEffect } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../../lib/firebase";
+import {
+  CartCaptureInput,
+  trackAbandonedCart,
+  trackAbandonedCartNow,
+  flushAbandonedCart,
+  notifyCartRecovered
+} from "../../lib/abandonedCartCapture";
 import { StoreCustomizerConfig } from "../admin/StoreCustomizerConfig";
 import {
   BilingualText,
@@ -359,6 +366,67 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
     return ((selectedProduct.price + variantPriceDiff) * quantity) + deliveryPrice;
   }, [selectedProduct, quantity, deliveryPrice, selectedVariants]);
 
+  // ==========================================================================
+  // DÉTECTION DES PANIERS ABANDONNÉS (capture publique, sans authentification)
+  // Dès que le téléphone saisi est un numéro algérien valide, l'état du
+  // formulaire est envoyé vers /api/abandoned-carts/track (débounce ~1,5 s),
+  // puis re-validé au blur et à la fermeture de l'onglet (sendBeacon).
+  // Aucune écriture directe dans Firestore depuis la boutique publique.
+  // ==========================================================================
+  const latestCartCaptureRef = useRef<CartCaptureInput | null>(null);
+
+  useEffect(() => {
+    const effectiveTenantId = tenantId || auth.currentUser?.uid;
+    if (!selectedProduct || !effectiveTenantId) {
+      latestCartCaptureRef.current = null;
+      return;
+    }
+    const prodImg = selectedProduct.image || (selectedProduct.images && selectedProduct.images[0]) || "";
+    const capture: CartCaptureInput = {
+      tenantId: effectiveTenantId,
+      slug: window.location.pathname.split("/").filter(Boolean).pop() || "",
+      phone: customerPhone,
+      client: customerName,
+      wilaya: currentWilaya ? `${currentWilaya.code < 10 ? `0${currentWilaya.code}` : currentWilaya.code} - ${currentWilaya.arName}` : "",
+      commune,
+      address: customerAddress,
+      deliveryType,
+      items: [{
+        productId: String(selectedProduct.id || "demo-product"),
+        name: selectedProduct.nameAr || selectedProduct.name,
+        image: prodImg,
+        variants: selectedVariants,
+        qty: quantity,
+        price: totalPrice - deliveryPrice
+      }],
+      subtotal: totalPrice - deliveryPrice,
+      shipping: deliveryPrice,
+      total: totalPrice,
+      lang: "ar",
+      source: "storefront_product_form"
+    };
+    latestCartCaptureRef.current = capture;
+    trackAbandonedCart(capture);
+  }, [tenantId, selectedProduct, customerPhone, customerName, selectedWilayaCode, commune, customerAddress, deliveryType, quantity, selectedVariants, currentWilaya, totalPrice, deliveryPrice]);
+
+  // Dernier état garanti à la fermeture de l'onglet / changement d'onglet.
+  useEffect(() => {
+    const flush = () => {
+      if (latestCartCaptureRef.current) {
+        flushAbandonedCart(latestCartCaptureRef.current);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
   const handleOpenProduct = (product: StoreDemoProduct) => {
     setSelectedProduct(product);
     setCurrentProductImage(product.image);
@@ -452,6 +520,10 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
         await addDoc(collection(db, "orders"), orderData);
         // Also save to tenant subcollection to ensure compatibility
         await addDoc(collection(db, "tenants", effectiveTenantId, "orders"), orderData);
+
+        // Commande validée : toutes les fiches panier de ce téléphone passent
+        // en "recovered" (plus jamais "abandonné").
+        notifyCartRecovered(effectiveTenantId, customerPhone, generatedOrderId);
 
         // Real-time alert for Header notification bell and audio chime
         try {
@@ -1325,11 +1397,11 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                          <div className="bg-emerald-50 text-emerald-600 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-100">
                             <CheckCircle2 size={14} /> متوفر
                          </div>
-                         <h1 className="text-2xl sm:text-3xl font-black text-white">{selectedProduct.nameAr || selectedProduct.name}</h1>
+                         <h1 className="text-2xl sm:text-3xl font-black text-gray-900">{selectedProduct.nameAr || selectedProduct.name}</h1>
                       </div>
-                      
+
                       <div className="flex justify-end gap-3 items-center mb-8">
-                         <span className="text-3xl sm:text-4xl font-black text-white">{selectedProduct.price.toLocaleString()} د.ج</span>
+                         <span className="text-3xl sm:text-4xl font-black text-gray-900">{selectedProduct.price.toLocaleString()} د.ج</span>
                          {selectedProduct.originalPrice && selectedProduct.originalPrice > selectedProduct.price && (
                            <>
                              <span className="text-gray-400 line-through text-lg">{selectedProduct.originalPrice.toLocaleString()} د.ج</span>
@@ -1440,7 +1512,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
                       {/* Order Form Card */}
                       <form id="order-form" onSubmit={handleOrderSubmit} className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-8 shadow-sm">
-                         <div className="flex justify-center items-center gap-2 mb-8 text-xl font-black text-white">
+                         <div className="flex justify-center items-center gap-2 mb-8 text-xl font-black text-gray-900">
                            اطلب الآن <ClipboardList size={24} />
                          </div>
                          
@@ -1460,11 +1532,20 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                                  type="tel" required dir="ltr"
                                  maxLength={getPhoneMaxLength(customerPhone)}
                                  placeholder="* رقم الهاتف (0550252565)"
-                                  value={customerPhone} 
+                                  value={customerPhone}
                                  onChange={(e) => {
                                    const cleaned = cleanAndLimitPhone(e.target.value);
                                    setCustomerPhone(cleaned);
                                    if (customerPhoneError) setCustomerPhoneError("");
+                                 }}
+                                 onBlur={() => {
+                                   // Capture immédiate du panier au blur du téléphone
+                                   if (latestCartCaptureRef.current) {
+                                     trackAbandonedCartNow({
+                                       ...latestCartCaptureRef.current,
+                                       phone: customerPhone
+                                     });
+                                   }
                                  }}
                                  className={`w-full bg-gray-50/50 border rounded-xl py-3.5 px-4 text-right pr-12 focus:outline-none focus:ring-2 focus:bg-white transition-all font-medium ${customerPhoneError ? "border-red-500 focus:ring-red-500" : "border-gray-200 focus:ring-[#1c192b]"}`}
                                />
@@ -1624,7 +1705,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                       {/* Description */}
                       {selectedProduct.description && (
                         <div className="mt-12 bg-white rounded-3xl p-8 border border-gray-100 shadow-sm text-right">
-                          <h4 className="text-lg font-black text-white mb-4">وصف المنتج</h4>
+                          <h4 className="text-lg font-black text-gray-900 mb-4">وصف المنتج</h4>
                           <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{selectedProduct.description}</p>
                         </div>
                       )}

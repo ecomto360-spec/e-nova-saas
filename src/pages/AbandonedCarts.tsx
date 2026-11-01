@@ -29,15 +29,16 @@ import {
 import { 
   AbandonedCart, 
   getAbandonedCarts, 
-  markAbandonedCartAsRelanced, 
+  markAbandonedCartAsContacted,
   markAbandonedCartAsRecovered, 
   deleteAbandonedCart, 
   convertAbandonedCartToOrder, 
   generateWhatsAppRelanceUrl,
-  saveAbandonedCart
+  saveAbandonedCart,
+  cleanupOldAbandonedCarts
 } from "../lib/abandonedCartService";
 import { auth, db } from "../lib/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { formatDateTime } from "../lib/date";
 
 export default function AbandonedCarts() {
@@ -47,7 +48,7 @@ export default function AbandonedCarts() {
   const [carts, setCarts] = useState<AbandonedCart[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "abandoned" | "relanced" | "recovered">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "abandoned" | "contacted" | "recovered">("all");
   const [selectedCartDetails, setSelectedCartDetails] = useState<AbandonedCart | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [convertingId, setConvertingId] = useState<string | null>(null);
@@ -87,23 +88,34 @@ export default function AbandonedCarts() {
     };
     window.addEventListener("message", handleMessage);
 
-    // Écouteur Firestore en temps réel
+    // Écouteur Firestore en temps réel (filtré sur CE vendeur : apparition < 5 s)
     let unsubGlobal: (() => void) | undefined;
     let unsubTenant: (() => void) | undefined;
     try {
-      unsubGlobal = onSnapshot(collection(db, "abandoned_carts"), () => {
-        loadCarts();
-      }, (err) => console.warn("Firestore abandoned listener warning:", err));
-
       const tenantUid = auth.currentUser?.uid;
       if (tenantUid) {
+        unsubGlobal = onSnapshot(
+          query(collection(db, "abandoned_carts"), where("tenantId", "==", tenantUid)),
+          () => { loadCarts(); },
+          (err) => console.warn("Firestore abandoned listener warning:", err)
+        );
+
         unsubTenant = onSnapshot(collection(db, "tenants", tenantUid, "abandoned_carts"), () => {
           loadCarts();
         }, () => {});
       }
     } catch {}
 
+    // Nettoyage automatique : suppression des fiches de plus de 60 jours
+    // (une fois au chargement de la page, après résolution de l'authentification).
+    const cleanupTimer = setTimeout(() => {
+      if (auth.currentUser?.uid) {
+        cleanupOldAbandonedCarts(auth.currentUser.uid, 60).catch(() => {});
+      }
+    }, 4000);
+
     return () => {
+      clearTimeout(cleanupTimer);
       window.removeEventListener("dzbuild_abandoned_cart_updated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
       window.removeEventListener("message", handleMessage);
@@ -112,10 +124,14 @@ export default function AbandonedCarts() {
     };
   }, [loadCarts]);
 
-  // Statistiques calculées
+  // Statistiques calculées (statut "contacted" ; l'ancien "relanced" est mappé)
+  const isContactedStatus = (c: AbandonedCart) =>
+    c.status === "contacted" || c.status === "relanced" || (c.relanceCount && c.relanceCount > 0);
+
   const stats = useMemo(() => {
     const totalAbandoned = carts.length;
-    const relanced = carts.filter(c => c.status === "relanced" || (c.relanceCount && c.relanceCount > 0)).length;
+    const abandonedActive = carts.filter(c => c.status === "abandoned" && !c.recovered).length;
+    const contacted = carts.filter(isContactedStatus).length;
     const recovered = carts.filter(c => c.status === "recovered" || c.recovered).length;
     const recoveredAmount = carts
       .filter(c => c.status === "recovered" || c.recovered)
@@ -128,7 +144,8 @@ export default function AbandonedCarts() {
 
     return {
       totalAbandoned,
-      relanced,
+      abandonedActive,
+      contacted,
       recovered,
       recoveredAmount,
       lostAmount,
@@ -139,10 +156,10 @@ export default function AbandonedCarts() {
   // Filtrage et recherche
   const filteredCarts = useMemo(() => {
     return carts.filter(cart => {
-      const matchesStatus = 
+      const matchesStatus =
         statusFilter === "all" ? true :
         statusFilter === "abandoned" ? (cart.status === "abandoned" && !cart.recovered) :
-        statusFilter === "relanced" ? (cart.status === "relanced" && !cart.recovered) :
+        statusFilter === "contacted" ? ((cart.status === "contacted" || cart.status === "relanced") && !cart.recovered) :
         statusFilter === "recovered" ? (cart.status === "recovered" || cart.recovered) : true;
 
       const q = searchQuery.toLowerCase().trim();
@@ -158,6 +175,31 @@ export default function AbandonedCarts() {
     });
   }, [carts, statusFilter, searchQuery]);
 
+  // Date relative compacte ("il y a 3 min")
+  const formatRelativeTime = (value: any): string => {
+    try {
+      let ms = 0;
+      if (value && typeof value === "object" && typeof (value as any).toMillis === "function") {
+        ms = (value as any).toMillis();
+      } else {
+        const parsed = new Date(value).getTime();
+        ms = Number.isFinite(parsed) ? parsed : 0;
+      }
+      if (!ms) return "—";
+      const diff = Math.max(0, Date.now() - ms);
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return "à l'instant";
+      if (min < 60) return `il y a ${min} min`;
+      const hours = Math.floor(min / 60);
+      if (hours < 24) return `il y a ${hours} h`;
+      const days = Math.floor(hours / 24);
+      if (days < 30) return `il y a ${days} j`;
+      return `il y a ${Math.floor(days / 30)} mois`;
+    } catch {
+      return "—";
+    }
+  };
+
   // Action : Relancer via WhatsApp
   const handleRelanceWhatsApp = async (cart: AbandonedCart) => {
     const url = generateWhatsAppRelanceUrl(cart, waTemplate);
@@ -169,8 +211,17 @@ export default function AbandonedCarts() {
     // Ouvrir WhatsApp
     window.open(url, "_blank");
 
-    // Marquer comme relancé
-    await markAbandonedCartAsRelanced(cart.id, auth.currentUser?.uid);
+    // Marquer comme contacté
+    await markAbandonedCartAsContacted(cart.id, auth.currentUser?.uid);
+    await loadCarts();
+  };
+
+  // Action : Marquer comme "Contacté" (icône téléphone, avec confirmation)
+  const handleMarkContacted = async (cart: AbandonedCart) => {
+    if (!window.confirm("Voulez-vous marquer ce panier comme \"Contacté\" ?")) {
+      return;
+    }
+    await markAbandonedCartAsContacted(cart.id, auth.currentUser?.uid);
     await loadCarts();
   };
 
@@ -290,8 +341,8 @@ export default function AbandonedCarts() {
         <div className="rounded-2xl border border-neutral-800 bg-[#1e1e24] p-5 shadow-sm relative overflow-hidden">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Paniers en Souffrance</p>
-              <p className="mt-2 text-3xl font-black text-white">{stats.totalAbandoned}</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Paniers Abandonnés</p>
+              <p className="mt-2 text-3xl font-black text-white">{stats.abandonedActive}</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
               <Ghost className="w-5 h-5" />
@@ -303,19 +354,19 @@ export default function AbandonedCarts() {
           </div>
         </div>
 
-        {/* Paniers Relancés */}
+        {/* Paniers Contactés */}
         <div className="rounded-2xl border border-neutral-800 bg-[#1e1e24] p-5 shadow-sm relative overflow-hidden">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Clients Relancés</p>
-              <p className="mt-2 text-3xl font-black text-blue-400">{stats.relanced}</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Paniers Contactés</p>
+              <p className="mt-2 text-3xl font-black text-blue-400">{stats.contacted}</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
               <MessageSquare className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-3 flex items-center text-xs font-medium text-neutral-400">
-            <span>Relances WhatsApp / SMS actives</span>
+            <span>Contactés par téléphone ou WhatsApp</span>
           </div>
         </div>
 
@@ -372,15 +423,15 @@ export default function AbandonedCarts() {
                 statusFilter === "abandoned" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm" : "text-neutral-400 hover:text-white"
               }`}
             >
-              À relancer ({carts.filter(c => c.status === "abandoned" && !c.recovered).length})
+              Abandonnés ({carts.filter(c => c.status === "abandoned" && !c.recovered).length})
             </button>
             <button
-              onClick={() => setStatusFilter("relanced")}
+              onClick={() => setStatusFilter("contacted")}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                statusFilter === "relanced" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-sm" : "text-neutral-400 hover:text-white"
+                statusFilter === "contacted" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-sm" : "text-neutral-400 hover:text-white"
               }`}
             >
-              Relancés ({carts.filter(c => c.status === "relanced" && !c.recovered).length})
+              Contactés ({carts.filter(c => (c.status === "contacted" || c.status === "relanced") && !c.recovered).length})
             </button>
             <button
               onClick={() => setStatusFilter("recovered")}
@@ -453,7 +504,7 @@ export default function AbandonedCarts() {
               <tbody className="divide-y divide-neutral-800/80">
                 {filteredCarts.map((cart) => {
                   const isRecovered = cart.status === "recovered" || cart.recovered;
-                  const isRelanced = cart.status === "relanced";
+                  const isContacted = cart.status === "contacted" || cart.status === "relanced";
 
                   return (
                     <tr key={cart.id} className="hover:bg-neutral-800/30 transition-colors">
@@ -462,7 +513,7 @@ export default function AbandonedCarts() {
                         <div className="flex items-center gap-3">
                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
                             isRecovered ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
-                            isRelanced ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
+                            isContacted ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
                             "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                           }`}>
                             <User className="w-4 h-4" />
@@ -516,7 +567,10 @@ export default function AbandonedCarts() {
                       </td>
 
                       <td className="px-5 py-4 whitespace-nowrap">
-                        <div className="text-xs text-neutral-400 font-mono">
+                        <div className="text-xs text-neutral-300 font-semibold" title={formatDateTime(cart.createdAt || cart.date, false)}>
+                          {formatRelativeTime(cart.updatedAt || cart.createdAt || cart.date)}
+                        </div>
+                        <div className="text-[10px] text-neutral-500 font-mono">
                           {formatDateTime(cart.createdAt || cart.date, false)}
                         </div>
                         <div className="mt-1">
@@ -525,9 +579,9 @@ export default function AbandonedCarts() {
                               <CheckCircle2 className="w-3 h-3" /> Récupéré
                               {cart.orderId && <span className="text-neutral-400 font-mono ml-1">({cart.orderId.substring(0, 10)})</span>}
                             </span>
-                          ) : isRelanced ? (
+                          ) : isContacted ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                              <MessageSquare className="w-3 h-3" /> Relancé ({cart.relanceCount || 1}x)
+                              <MessageSquare className="w-3 h-3" /> Contacté{cart.relanceCount && cart.relanceCount > 1 ? ` (${cart.relanceCount}x)` : ""}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -564,6 +618,17 @@ export default function AbandonedCarts() {
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                               )}
                               <span className="hidden sm:inline">Valider</span>
+                            </button>
+                          )}
+
+                          {/* Bouton Marquer Contacté (icône téléphone) */}
+                          {!isRecovered && !isContacted && (
+                            <button
+                              onClick={() => handleMarkContacted(cart)}
+                              className="p-1.5 text-neutral-400 hover:text-blue-400 rounded-lg hover:bg-blue-500/10 transition-colors cursor-pointer"
+                              title="Marquer ce panier comme contacté"
+                            >
+                              <Phone className="w-4 h-4" />
                             </button>
                           )}
 

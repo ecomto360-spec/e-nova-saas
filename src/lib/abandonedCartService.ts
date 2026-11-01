@@ -1,10 +1,13 @@
 import { db, auth } from "./firebase";
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDocs, 
-  updateDoc, 
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  query,
+  where,
   serverTimestamp,
   deleteDoc
 } from "firebase/firestore";
@@ -31,16 +34,25 @@ export interface AbandonedCart {
   itemsSummary: string;
   items?: AbandonedCartItem[];
   total: number;
-  status: "abandoned" | "relanced" | "recovered";
+  status: "abandoned" | "relanced" | "contacted" | "recovered";
   recovered: boolean;
   relanceCount: number;
   source: string;
+  phoneDigits?: string;
   createdAt: any;
   updatedAt: any;
   date?: string;
   orderId?: string;
   recoveredAt?: any;
   lastRelancedAt?: any;
+  contactedAt?: any;
+  shipping?: number;
+  subtotal?: number;
+  wilayaCode?: string;
+  deliveryType?: string;
+  pageUrl?: string;
+  sessionId?: string;
+  lang?: string;
 }
 
 export function cleanPhoneForWhatsApp(phone: string): string {
@@ -117,6 +129,7 @@ export async function saveAbandonedCart(data: Partial<AbandonedCart>): Promise<s
     tenantId: effectiveTenantId,
     client: clientName || (phone ? phone : "Client potentiel"),
     phone: phone,
+    phoneDigits: cleanPhone,
     email: email,
     wilaya: wilaya,
     commune: data.commune || "",
@@ -149,7 +162,7 @@ export async function saveAbandonedCart(data: Partial<AbandonedCart>): Promise<s
       list[existingIndex] = {
         ...prev,
         ...cartPayload,
-        status: prev.status === "recovered" ? "recovered" : (prev.status === "relanced" ? "relanced" : cartPayload.status),
+        status: prev.status === "recovered" ? "recovered" : (prev.status === "relanced" || prev.status === "contacted" ? prev.status : cartPayload.status),
         recovered: prev.recovered || cartPayload.recovered,
         relanceCount: prev.relanceCount || 0
       };
@@ -171,8 +184,21 @@ export async function saveAbandonedCart(data: Partial<AbandonedCart>): Promise<s
 
   // 2. Sauvegarde Firestore
   try {
+    // Préserver le statut posé par le vendeur (contacted/recovered ne retombent
+    // jamais en "abandoned" lors d'un upsert).
+    let firestoreStatus = cartPayload.status;
+    try {
+      const existingSnap = await getDoc(doc(db, "abandoned_carts", cartId));
+      if (existingSnap.exists()) {
+        const prevStatus = existingSnap.data()?.status;
+        if (prevStatus === "recovered") firestoreStatus = "recovered";
+        else if (prevStatus === "contacted" || prevStatus === "relanced") firestoreStatus = "contacted";
+      }
+    } catch {}
+
     await setDoc(doc(db, "abandoned_carts", cartId), {
       ...cartPayload,
+      status: firestoreStatus,
       updatedAt: serverTimestamp(),
       ...(data.createdAt ? {} : { createdAt: serverTimestamp() })
     }, { merge: true });
@@ -180,6 +206,7 @@ export async function saveAbandonedCart(data: Partial<AbandonedCart>): Promise<s
     if (effectiveTenantId) {
       await setDoc(doc(db, "tenants", effectiveTenantId, "abandoned_carts", cartId), {
         ...cartPayload,
+        status: firestoreStatus,
         updatedAt: serverTimestamp(),
         ...(data.createdAt ? {} : { createdAt: serverTimestamp() })
       }, { merge: true });
@@ -233,28 +260,147 @@ export async function markAbandonedCartAsRecovered(phone: string, orderId: strin
     console.warn("Local storage recovery update error:", e);
   }
 
-  // 2. Firestore
+  // 2. Firestore — toutes les fiches ACTIVES de ce téléphone chez ce vendeur
+  // (nouvelles fiches avec phoneDigits + ancien ID déterministe) passent en
+  // "recovered" : une commande validée ne peut jamais rester "abandonnée".
   try {
-    await setDoc(doc(db, "abandoned_carts", cartId), {
-      status: "recovered",
+    const updates = {
+      status: "recovered" as const,
       recovered: true,
       orderId,
       recoveredAt: serverTimestamp(),
       updatedAt: serverTimestamp()
-    }, { merge: true });
+    };
 
-    if (effectiveTenantId) {
-      await setDoc(doc(db, "tenants", effectiveTenantId, "abandoned_carts", cartId), {
-        status: "recovered",
-        recovered: true,
-        orderId,
-        recoveredAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+    const idsToUpdate: string[] = [cartId];
+    try {
+      const snap = await getDocs(query(collection(db, "abandoned_carts"), where("phoneDigits", "==", cleanPhone)));
+      snap.forEach((d) => {
+        const data = d.data() || {};
+        if (data.tenantId === effectiveTenantId && data.status !== "recovered" && !idsToUpdate.includes(d.id)) {
+          idsToUpdate.push(d.id);
+        }
+      });
+    } catch {}
+
+    for (const id of idsToUpdate) {
+      try {
+        await setDoc(doc(db, "abandoned_carts", id), updates, { merge: true });
+        await setDoc(doc(db, "tenants", effectiveTenantId, "abandoned_carts", id), updates, { merge: true });
+      } catch {}
     }
   } catch (e) {
     console.warn("Firestore recovery update warning:", e);
   }
+}
+
+/**
+ * Marque un panier comme "Contacté" (bouton téléphone / relance WhatsApp).
+ * Le statut "contacted" remplace l'ancien "relanced" (legacy mappé à l'affichage).
+ */
+export async function markAbandonedCartAsContacted(cartId: string, tenantId?: string): Promise<void> {
+  const effectiveTenantId = tenantId || auth.currentUser?.uid || "default_tenant";
+  const nowIso = new Date().toISOString();
+
+  // 1. Local
+  try {
+    const cached = localStorage.getItem("dzbuild_abandoned_carts");
+    if (cached) {
+      const list: AbandonedCart[] = JSON.parse(cached);
+      const updated = list.map(c => {
+        if (c.id === cartId) {
+          return {
+            ...c,
+            status: "contacted" as const,
+            relanceCount: (c.relanceCount || 0) + 1,
+            lastRelancedAt: nowIso,
+            contactedAt: nowIso
+          };
+        }
+        return c;
+      });
+      localStorage.setItem("dzbuild_abandoned_carts", JSON.stringify(updated));
+      window.dispatchEvent(new Event("dzbuild_abandoned_cart_updated"));
+      window.dispatchEvent(new Event("storage"));
+    }
+  } catch (e) {}
+
+  // 2. Firestore (les deux collections)
+  try {
+    const updates = {
+      status: "contacted" as const,
+      lastRelancedAt: serverTimestamp(),
+      contactedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(doc(db, "abandoned_carts", cartId), updates, { merge: true });
+    await setDoc(doc(db, "tenants", effectiveTenantId, "abandoned_carts", cartId), updates, { merge: true });
+  } catch (e) {
+    console.warn("Firestore contacted update warning:", e);
+  }
+}
+
+/**
+ * Nettoyage automatique : supprime les fiches de plus de `days` jours (60 par
+ * défaut) chez ce vendeur, dans les deux collections + le cache local.
+ */
+export async function cleanupOldAbandonedCarts(tenantId?: string, days = 60): Promise<number> {
+  const effectiveTenantId = tenantId || auth.currentUser?.uid;
+  if (!effectiveTenantId) return 0;
+
+  const maxAgeMs = days * 24 * 60 * 60 * 1000;
+  const toMillis = (v: any): number => {
+    try {
+      if (!v) return 0;
+      if (typeof v === "object" && typeof v.toMillis === "function") return v.toMillis();
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? t : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  let removed = 0;
+  const expiredIds: string[] = [];
+  try {
+    const snap = await getDocs(collection(db, "tenants", effectiveTenantId, "abandoned_carts"));
+    snap.forEach((d) => {
+      const data = d.data() || {};
+      const updatedMs = toMillis(data.updatedAt) || toMillis(data.createdAt) || toMillis(data.date);
+      if (updatedMs > 0 && Date.now() - updatedMs > maxAgeMs) {
+        expiredIds.push(d.id);
+      }
+    });
+  } catch (e) {
+    console.warn("cleanupOldAbandonedCarts: read failed:", e);
+    return 0;
+  }
+
+  for (const id of expiredIds) {
+    try {
+      await deleteDoc(doc(db, "tenants", effectiveTenantId, "abandoned_carts", id));
+      await deleteDoc(doc(db, "abandoned_carts", id));
+      removed++;
+    } catch {}
+  }
+
+  // Cache local du navigateur du vendeur
+  try {
+    const cached = localStorage.getItem("dzbuild_abandoned_carts");
+    if (cached) {
+      const list: AbandonedCart[] = JSON.parse(cached);
+      const kept = list.filter(c => {
+        const updatedMs = toMillis(c.updatedAt) || toMillis(c.createdAt) || toMillis(c.date);
+        return !(updatedMs > 0 && Date.now() - updatedMs > maxAgeMs);
+      });
+      if (kept.length !== list.length) {
+        localStorage.setItem("dzbuild_abandoned_carts", JSON.stringify(kept));
+        window.dispatchEvent(new Event("dzbuild_abandoned_cart_updated"));
+      }
+    }
+  } catch {}
+
+  return removed;
 }
 
 /**
@@ -336,12 +482,15 @@ export async function getAbandonedCarts(tenantId?: string): Promise<AbandonedCar
   const mergedMap = new Map<string, AbandonedCart>();
 
   // 1. Lire d'abord depuis localStorage pour un affichage instantané
+  // (uniquement les fiches de CE vendeur — jamais celles des autres tenants)
   try {
     const cached = localStorage.getItem("dzbuild_abandoned_carts");
     if (cached) {
       const localList: AbandonedCart[] = JSON.parse(cached);
       localList.forEach(c => {
-        if (c.id) mergedMap.set(c.id, c);
+        if (c.id && (!c.tenantId || c.tenantId === effectiveTenantId)) {
+          mergedMap.set(c.id, c);
+        }
       });
     }
   } catch (err) {
@@ -349,15 +498,14 @@ export async function getAbandonedCarts(tenantId?: string): Promise<AbandonedCar
   }
 
   // 2. Récupérer depuis Firestore si disponible
+  // Sécurité : la collection globale est filtrée par tenantId (lecture
+  // propriétaire uniquement) + la sous-collection du vendeur.
   try {
     const promises: Promise<any>[] = [
-      getDocs(collection(db, "abandoned_carts")),
-      getDocs(collection(db, "tenants", "default_tenant", "abandoned_carts"))
+      getDocs(query(collection(db, "abandoned_carts"), where("tenantId", "==", effectiveTenantId))),
+      getDocs(collection(db, "tenants", effectiveTenantId, "abandoned_carts"))
     ];
 
-    if (effectiveTenantId && effectiveTenantId !== "default_tenant") {
-      promises.push(getDocs(collection(db, "tenants", effectiveTenantId, "abandoned_carts")));
-    }
     if (auth.currentUser?.uid && auth.currentUser.uid !== effectiveTenantId) {
       promises.push(getDocs(collection(db, "tenants", auth.currentUser.uid, "abandoned_carts")));
     }
@@ -378,7 +526,7 @@ export async function getAbandonedCarts(tenantId?: string): Promise<AbandonedCar
       }
     });
 
-    // Mettre à jour le cache local avec les données fraîches
+    // Mettre à jour le cache local avec les données fraîches (ce vendeur uniquement)
     const mergedList = Array.from(mergedMap.values());
     try {
       localStorage.setItem("dzbuild_abandoned_carts", JSON.stringify(mergedList));
@@ -387,11 +535,22 @@ export async function getAbandonedCarts(tenantId?: string): Promise<AbandonedCar
     console.warn("Firestore abandoned carts fetch warning:", dbErr);
   }
 
-  // Trier par date la plus récente
+  // Trier par date la plus récente (updatedAt peut être un Timestamp Firestore
+  // ou une chaîne ISO selon la source)
+  const toMs = (v: any): number => {
+    try {
+      if (!v) return 0;
+      if (typeof v === "object" && typeof v.toMillis === "function") return v.toMillis();
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? t : 0;
+    } catch {
+      return 0;
+    }
+  };
   const result = Array.from(mergedMap.values());
   result.sort((a, b) => {
-    const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-    const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    const timeA = toMs(a.updatedAt) || toMs(a.createdAt) || toMs(a.date);
+    const timeB = toMs(b.updatedAt) || toMs(b.createdAt) || toMs(b.date);
     return timeB - timeA;
   });
 

@@ -2216,6 +2216,191 @@ async function getApp() {
       res.json([]);
     }
   });
+  const cartTrackRate = /* @__PURE__ */ new Map();
+  function clientIpOf(req) {
+    const fwd = String(req.headers["x-forwarded-for"] || "");
+    return (fwd.split(",")[0] || req.socket?.remoteAddress || "unknown").trim();
+  }
+  function cartText(v, max) {
+    return String(v ?? "").trim().slice(0, max);
+  }
+  function isValidDzDigits(digits) {
+    return /^0[567]\d{8}$/.test(digits) || /^213[567]\d{8}$/.test(digits);
+  }
+  app2.post("/api/abandoned-carts/track", async (req, res) => {
+    try {
+      const b = req.body || {};
+      if (cartText(b.website, 50)) {
+        res.status(400).json({ ok: false, error: "bot_detected" });
+        return;
+      }
+      const ip = clientIpOf(req);
+      const now = Date.now();
+      if (cartTrackRate.size > 5e3) cartTrackRate.clear();
+      const rl = cartTrackRate.get(ip) || { count: 0, reset: now + 10 * 60 * 1e3 };
+      if (now > rl.reset) {
+        rl.count = 0;
+        rl.reset = now + 10 * 60 * 1e3;
+      }
+      rl.count++;
+      cartTrackRate.set(ip, rl);
+      if (rl.count > 60) {
+        res.status(429).json({ ok: false, error: "rate_limited" });
+        return;
+      }
+      const tenantId = cartText(b.tenantId, 60);
+      const phoneRaw = cartText(b.phone, 20);
+      const digits = phoneRaw.replace(/\D/g, "");
+      if (!tenantId || !/^[a-zA-Z0-9_.-]+$/.test(tenantId)) {
+        res.status(400).json({ ok: false, error: "invalid_tenant" });
+        return;
+      }
+      if (!isValidDzDigits(digits)) {
+        res.status(400).json({ ok: false, error: "invalid_phone" });
+        return;
+      }
+      let tenantExists = false;
+      try {
+        const tenantSnap = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "tenants", tenantId));
+        tenantExists = tenantSnap.exists();
+      } catch (e) {
+        console.warn("abandoned-carts/track: tenant check failed:", e);
+      }
+      if (!tenantExists) {
+        res.status(404).json({ ok: false, error: "unknown_store" });
+        return;
+      }
+      const rawItems = Array.isArray(b.items) ? b.items.slice(0, 20) : [];
+      const items = rawItems.map((it) => ({
+        productId: cartText(it?.productId, 60) || "unknown",
+        name: cartText(it?.name, 150),
+        image: cartText(it?.image, 500),
+        variants: it?.variants && typeof it.variants === "object" && !Array.isArray(it.variants) ? Object.fromEntries(Object.entries(it.variants).slice(0, 8).map(([k, v]) => [cartText(k, 40), cartText(v, 60)])) : {},
+        quantity: Math.max(1, Math.min(999, Math.round(Number(it?.qty ?? it?.quantity) || 1))),
+        price: Math.max(0, Math.min(1e8, Math.round(Number(it?.price) || 0)))
+      }));
+      if (items.length === 0) {
+        res.status(400).json({ ok: false, error: "no_items" });
+        return;
+      }
+      const subtotal = Math.max(0, Math.min(1e8, Math.round(Number(b.subtotal) || 0)));
+      const shipping = Math.max(0, Math.min(1e5, Math.round(Number(b.shipping) || 0)));
+      const total = Math.max(0, Math.min(1e8, Math.round(Number(b.total) || subtotal + shipping)));
+      const itemsSummary = cartText(
+        b.itemsSummary,
+        300
+      ) || items.map((it) => `${it.name} x${it.quantity}`).join("\u060C ").slice(0, 300);
+      const first = items[0];
+      const variantKey = Object.entries(first.variants).map(([k, v]) => `${k}:${v}`).sort().join("|").slice(0, 40);
+      const slugSrc = `${first.productId}_${variantKey}`.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 90);
+      const cartId = `cart_${tenantId}_${digits}_${slugSrc}`;
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const utm = b.utm && typeof b.utm === "object" && !Array.isArray(b.utm) ? b.utm : {};
+      const payload = {
+        tenantId,
+        storeId: tenantId,
+        storeSlug: cartText(b.slug, 80),
+        sessionId: cartText(b.sessionId, 60),
+        phone: phoneRaw,
+        phoneDigits: digits,
+        client: cartText(b.client, 80),
+        email: "",
+        wilaya: cartText(b.wilaya, 80),
+        commune: cartText(b.commune, 80),
+        address: cartText(b.address, 250),
+        deliveryType: b.deliveryType === "desk" ? "desk" : "home",
+        items,
+        itemsSummary,
+        subtotal,
+        shipping,
+        total,
+        source: cartText(b.source, 60) || "storefront_form",
+        pageUrl: cartText(b.pageUrl, 300),
+        utmSource: cartText(utm.source, 60),
+        utmMedium: cartText(utm.medium, 60),
+        utmCampaign: cartText(utm.campaign, 60),
+        lang: b.lang === "fr" ? "fr" : "ar",
+        updatedAt: nowIso
+      };
+      const cartRef = (0, import_firestore3.doc)(db, "abandoned_carts", cartId);
+      let status = "abandoned";
+      let createdAt = nowIso;
+      try {
+        const existing = await (0, import_firestore3.getDoc)(cartRef);
+        if (existing.exists()) {
+          const prev = existing.data() || {};
+          if (prev.status === "contacted" || prev.status === "relanced" || prev.status === "recovered") {
+            status = prev.status === "relanced" ? "contacted" : prev.status;
+          }
+          if (prev.createdAt) createdAt = prev.createdAt;
+          payload.relanceCount = prev.relanceCount || 0;
+        }
+      } catch (e) {
+        console.warn("abandoned-carts/track: read existing failed:", e);
+      }
+      payload.status = status;
+      payload.createdAt = createdAt;
+      await (0, import_firestore3.setDoc)(cartRef, payload, { merge: true });
+      await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", cartId), payload, { merge: true });
+      res.json({ ok: true, id: cartId, status });
+    } catch (e) {
+      console.warn("Error in /api/abandoned-carts/track:", e);
+      res.status(500).json({ ok: false, error: "track_failed" });
+    }
+  });
+  app2.post("/api/abandoned-carts/recover", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const tenantId = cartText(b.tenantId, 60);
+      const digits = cartText(b.phone, 20).replace(/\D/g, "");
+      const orderId = cartText(b.orderId, 80);
+      if (!tenantId || !/^[a-zA-Z0-9_.-]+$/.test(tenantId) || !isValidDzDigits(digits)) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const updates = {
+        status: "recovered",
+        recovered: true,
+        recoveredAt: nowIso,
+        updatedAt: nowIso
+      };
+      if (orderId) updates.orderId = orderId;
+      let updated = 0;
+      try {
+        const snap = await (0, import_firestore3.getDocs)((0, import_firestore3.query)((0, import_firestore3.collection)(db, "abandoned_carts"), (0, import_firestore3.where)("phoneDigits", "==", digits)));
+        const ids = [];
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          if (data.tenantId === tenantId && data.status !== "recovered") {
+            ids.push(d.id);
+          }
+        });
+        for (const id of ids) {
+          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", id), updates, { merge: true });
+          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", id), updates, { merge: true });
+          updated++;
+        }
+      } catch (e) {
+        console.warn("abandoned-carts/recover: query failed:", e);
+      }
+      const legacyId = `cart_${tenantId}_${digits}`;
+      try {
+        const legacy = await (0, import_firestore3.getDoc)((0, import_firestore3.doc)(db, "abandoned_carts", legacyId));
+        if (legacy.exists()) {
+          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "abandoned_carts", legacyId), updates, { merge: true });
+          await (0, import_firestore3.setDoc)((0, import_firestore3.doc)(db, "tenants", tenantId, "abandoned_carts", legacyId), updates, { merge: true });
+          updated++;
+        }
+      } catch (e) {
+        console.warn("abandoned-carts/recover: legacy doc failed:", e);
+      }
+      res.json({ ok: true, updated });
+    } catch (e) {
+      console.warn("Error in /api/abandoned-carts/recover:", e);
+      res.status(500).json({ ok: false, error: "recover_failed" });
+    }
+  });
   return app2;
 }
 async function startServer() {

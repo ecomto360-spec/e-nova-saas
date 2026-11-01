@@ -1164,6 +1164,235 @@ export async function getApp(): Promise<express.Express> {
     }
   });
 
+  // ==========================================================================
+  // PANIERS ABANDONNÉS — capture publique depuis le formulaire de la boutique.
+  // Le client boutique n'écrit JAMAIS directement dans Firestore : tout passe
+  // ici (validation, honeypot, rate-limit IP par instance, upsert déterministe,
+  // préservation du statut contacted/recovered défini par le vendeur).
+  // ==========================================================================
+  const cartTrackRate = new Map<string, { count: number; reset: number }>();
+
+  function clientIpOf(req: express.Request): string {
+    const fwd = String((req.headers["x-forwarded-for"] as string) || "");
+    return (fwd.split(",")[0] || req.socket?.remoteAddress || "unknown").trim();
+  }
+
+  function cartText(v: unknown, max: number): string {
+    return String(v ?? "").trim().slice(0, max);
+  }
+
+  function isValidDzDigits(digits: string): boolean {
+    return /^0[567]\d{8}$/.test(digits) || /^213[567]\d{8}$/.test(digits);
+  }
+
+  app.post("/api/abandoned-carts/track", async (req, res) => {
+    try {
+      const b = (req.body || {}) as Record<string, any>;
+
+      // Honeypot anti-bot : le champ caché "website" doit rester vide.
+      if (cartText(b.website, 50)) {
+        res.status(400).json({ ok: false, error: "bot_detected" });
+        return;
+      }
+
+      // Rate-limit best-effort par IP (60 requêtes / 10 min).
+      const ip = clientIpOf(req);
+      const now = Date.now();
+      if (cartTrackRate.size > 5000) cartTrackRate.clear();
+      const rl = cartTrackRate.get(ip) || { count: 0, reset: now + 10 * 60 * 1000 };
+      if (now > rl.reset) {
+        rl.count = 0;
+        rl.reset = now + 10 * 60 * 1000;
+      }
+      rl.count++;
+      cartTrackRate.set(ip, rl);
+      if (rl.count > 60) {
+        res.status(429).json({ ok: false, error: "rate_limited" });
+        return;
+      }
+
+      // Validation des entrées.
+      const tenantId = cartText(b.tenantId, 60);
+      const phoneRaw = cartText(b.phone, 20);
+      const digits = phoneRaw.replace(/\D/g, "");
+      if (!tenantId || !/^[a-zA-Z0-9_.-]+$/.test(tenantId)) {
+        res.status(400).json({ ok: false, error: "invalid_tenant" });
+        return;
+      }
+      if (!isValidDzDigits(digits)) {
+        res.status(400).json({ ok: false, error: "invalid_phone" });
+        return;
+      }
+
+      // Le magasin doit exister (anti-spam de collections).
+      let tenantExists = false;
+      try {
+        const tenantSnap = await getDoc(doc(db, "tenants", tenantId));
+        tenantExists = tenantSnap.exists();
+      } catch (e) {
+        console.warn("abandoned-carts/track: tenant check failed:", e);
+      }
+      if (!tenantExists) {
+        res.status(404).json({ ok: false, error: "unknown_store" });
+        return;
+      }
+
+      // Nettoyage des articles (max 20).
+      const rawItems = Array.isArray(b.items) ? b.items.slice(0, 20) : [];
+      const items = rawItems.map((it: any) => ({
+        productId: cartText(it?.productId, 60) || "unknown",
+        name: cartText(it?.name, 150),
+        image: cartText(it?.image, 500),
+        variants: (it?.variants && typeof it.variants === "object" && !Array.isArray(it.variants))
+          ? Object.fromEntries(Object.entries(it.variants as Record<string, unknown>).slice(0, 8).map(([k, v]) => [cartText(k, 40), cartText(v, 60)]))
+          : {},
+        quantity: Math.max(1, Math.min(999, Math.round(Number(it?.qty ?? it?.quantity) || 1))),
+        price: Math.max(0, Math.min(100000000, Math.round(Number(it?.price) || 0)))
+      }));
+      if (items.length === 0) {
+        res.status(400).json({ ok: false, error: "no_items" });
+        return;
+      }
+
+      const subtotal = Math.max(0, Math.min(100000000, Math.round(Number(b.subtotal) || 0)));
+      const shipping = Math.max(0, Math.min(100000, Math.round(Number(b.shipping) || 0)));
+      const total = Math.max(0, Math.min(100000000, Math.round(Number(b.total) || subtotal + shipping)));
+      const itemsSummary = cartText(
+        b.itemsSummary,
+        300
+      ) || items.map((it: { name: string; quantity: number }) => `${it.name} x${it.quantity}`).join("، ").slice(0, 300);
+
+      // Identifiant déterministe : une seule fiche par (magasin, téléphone, produit/variante).
+      const first = items[0];
+      const variantKey = Object.entries(first.variants as Record<string, string>)
+        .map(([k, v]) => `${k}:${v}`)
+        .sort()
+        .join("|")
+        .slice(0, 40);
+      const slugSrc = `${first.productId}_${variantKey}`.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 90);
+      const cartId = `cart_${tenantId}_${digits}_${slugSrc}`;
+
+      const nowIso = new Date().toISOString();
+      const utm = (b.utm && typeof b.utm === "object" && !Array.isArray(b.utm)) ? b.utm : {};
+      const payload: Record<string, any> = {
+        tenantId,
+        storeId: tenantId,
+        storeSlug: cartText(b.slug, 80),
+        sessionId: cartText(b.sessionId, 60),
+        phone: phoneRaw,
+        phoneDigits: digits,
+        client: cartText(b.client, 80),
+        email: "",
+        wilaya: cartText(b.wilaya, 80),
+        commune: cartText(b.commune, 80),
+        address: cartText(b.address, 250),
+        deliveryType: b.deliveryType === "desk" ? "desk" : "home",
+        items,
+        itemsSummary,
+        subtotal,
+        shipping,
+        total,
+        source: cartText(b.source, 60) || "storefront_form",
+        pageUrl: cartText(b.pageUrl, 300),
+        utmSource: cartText(utm.source, 60),
+        utmMedium: cartText(utm.medium, 60),
+        utmCampaign: cartText(utm.campaign, 60),
+        lang: b.lang === "fr" ? "fr" : "ar",
+        updatedAt: nowIso
+      };
+
+      // Upsert : préserver createdAt et le statut posé par le vendeur
+      // (contacted / recovered ne retombent jamais en "abandoned").
+      const cartRef = doc(db, "abandoned_carts", cartId);
+      let status = "abandoned";
+      let createdAt = nowIso;
+      try {
+        const existing = await getDoc(cartRef);
+        if (existing.exists()) {
+          const prev = existing.data() || {};
+          if (prev.status === "contacted" || prev.status === "relanced" || prev.status === "recovered") {
+            status = prev.status === "relanced" ? "contacted" : prev.status;
+          }
+          if (prev.createdAt) createdAt = prev.createdAt;
+          payload.relanceCount = prev.relanceCount || 0;
+        }
+      } catch (e) {
+        console.warn("abandoned-carts/track: read existing failed:", e);
+      }
+      payload.status = status;
+      payload.createdAt = createdAt;
+
+      await setDoc(cartRef, payload, { merge: true });
+      await setDoc(doc(db, "tenants", tenantId, "abandoned_carts", cartId), payload, { merge: true });
+
+      res.json({ ok: true, id: cartId, status });
+    } catch (e) {
+      console.warn("Error in /api/abandoned-carts/track:", e);
+      res.status(500).json({ ok: false, error: "track_failed" });
+    }
+  });
+
+  // Commande validée dans la boutique : toutes les fiches actives du téléphone
+  // passent en "recovered" (avec l'orderId) — jamais reclassées "abandonnées".
+  app.post("/api/abandoned-carts/recover", async (req, res) => {
+    try {
+      const b = (req.body || {}) as Record<string, any>;
+      const tenantId = cartText(b.tenantId, 60);
+      const digits = cartText(b.phone, 20).replace(/\D/g, "");
+      const orderId = cartText(b.orderId, 80);
+      if (!tenantId || !/^[a-zA-Z0-9_.-]+$/.test(tenantId) || !isValidDzDigits(digits)) {
+        res.status(400).json({ ok: false, error: "invalid_request" });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const updates: Record<string, any> = {
+        status: "recovered",
+        recovered: true,
+        recoveredAt: nowIso,
+        updatedAt: nowIso
+      };
+      if (orderId) updates.orderId = orderId;
+
+      let updated = 0;
+      try {
+        const snap = await getDocs(query(collection(db, "abandoned_carts"), where("phoneDigits", "==", digits)));
+        const ids: string[] = [];
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          if (data.tenantId === tenantId && data.status !== "recovered") {
+            ids.push(d.id);
+          }
+        });
+        for (const id of ids) {
+          await setDoc(doc(db, "abandoned_carts", id), updates, { merge: true });
+          await setDoc(doc(db, "tenants", tenantId, "abandoned_carts", id), updates, { merge: true });
+          updated++;
+        }
+      } catch (e) {
+        console.warn("abandoned-carts/recover: query failed:", e);
+      }
+
+      // Compatibilité : anciennes fiches sans phoneDigits, ID déterministe historique.
+      const legacyId = `cart_${tenantId}_${digits}`;
+      try {
+        const legacy = await getDoc(doc(db, "abandoned_carts", legacyId));
+        if (legacy.exists()) {
+          await setDoc(doc(db, "abandoned_carts", legacyId), updates, { merge: true });
+          await setDoc(doc(db, "tenants", tenantId, "abandoned_carts", legacyId), updates, { merge: true });
+          updated++;
+        }
+      } catch (e) {
+        console.warn("abandoned-carts/recover: legacy doc failed:", e);
+      }
+
+      res.json({ ok: true, updated });
+    } catch (e) {
+      console.warn("Error in /api/abandoned-carts/recover:", e);
+      res.status(500).json({ ok: false, error: "recover_failed" });
+    }
+  });
+
   return app;
 }
 
