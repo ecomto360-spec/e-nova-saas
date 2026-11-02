@@ -765,6 +765,7 @@ export default function Themes() {
           onClose={() => setPreviewModalOpen(false)}
           onApplyTheme={handleApplyLegacyTheme}
           isCurrentTheme={previewManifest.id === activeRegistryThemeId}
+          registryThemeId={previewManifest.id}
         />
       )}
     </div>

@@ -23,6 +23,8 @@ interface ThemePreviewModalProps {
   onClose: () => void;
   onApplyTheme: (theme: StoreTheme) => void;
   isCurrentTheme?: boolean;
+  /** T3 — identifiant du registre : tokens typo/layout du thème prévisualisé. */
+  registryThemeId?: string;
 }
 
 export function ThemePreviewModal({
@@ -30,7 +32,8 @@ export function ThemePreviewModal({
   isOpen,
   onClose,
   onApplyTheme,
-  isCurrentTheme = false
+  isCurrentTheme = false,
+  registryThemeId
 }: ThemePreviewModalProps) {
   const [deviceMode, setDeviceMode] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [isApplying, setIsApplying] = useState(false);
@@ -182,7 +185,7 @@ export function ThemePreviewModal({
 
           {/* Actual Storefront Component */}
           <div className="w-full bg-[#fafafa]">
-            <ThemeStorePreview theme={theme} tenantId={auth.currentUser?.uid} />
+            <ThemeStorePreview theme={theme} registryThemeId={registryThemeId} tenantId={auth.currentUser?.uid} />
           </div>
         </div>
       </div>

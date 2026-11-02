@@ -53,6 +53,8 @@ import {
   Copy, MessageCircle, Facebook, Instagram, Music2, Send, Github, Link2
 } from "lucide-react";
 import { StoreTheme, StoreDemoProduct } from "../../data/themesData";
+import { getManifestByLegacyId, getThemeManifest } from "../../themes/registry";
+import { ensureGoogleFonts, fontStack } from "../../lib/themeFonts";
 import { ALGERIAN_WILAYAS as WILAYAS_LIST } from "../../data/landingData";
 import { getCommunesForWilaya } from "../../data/algerianCommunes";
 import { isPhoneBlacklisted } from "../../lib/blacklist";
@@ -111,6 +113,8 @@ interface ThemeStorePreviewProps {
   soldCounts?: Record<string, number>;
   /** T1 — sections v2 (page d'accueil ordonnée). Absent -> migration v1. */
   sectionsV2?: HomeSection[];
+  /** T3 — identifiant du registre (prioritaire sur le thème legacy pour les tokens). */
+  registryThemeId?: string;
   /** Section sélectionnée dans l'éditeur : contour pointillé orange persistant. */
   selectedSectionId?: string;
   /** Mode « œil » : masque les repères d'édition (survol, contour, badge). */
@@ -122,7 +126,7 @@ interface ThemeStorePreviewProps {
 }
 
 export function ThemeStorePreview({ theme, config, customStoreName, customLogoUrl, isStandaloneView = false, actualProducts,
-  actualCategories, currentView = "home", onSectionSelect, initialProductId, tenantId, storefront, soldCounts, sectionsV2, v2Settings, selectedSectionId, disableEditorOverlays, storeSlug }: ThemeStorePreviewProps) {
+  actualCategories, currentView = "home", onSectionSelect, initialProductId, tenantId, storefront, soldCounts, sectionsV2, v2Settings, selectedSectionId, disableEditorOverlays, registryThemeId, storeSlug }: ThemeStorePreviewProps) {
   
   const isActivated = config?.isActivated || false;
 
@@ -136,6 +140,16 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
     if (!isActivated) return fallbackDemo;
     return configVal;
   };
+
+  /* ===== T3 — tokens du thème actif (typo + layout réellement distincts) ===== */
+  const themeManifest = (registryThemeId ? getThemeManifest(registryThemeId) : getManifestByLegacyId(theme.id)) ?? getThemeManifest("starter_v2");
+  const heroStyle = themeManifest.layoutVariants.heroStyle;
+  const categoryStyle = themeManifest.layoutVariants.categoryStyle;
+  const themeGridCols = themeManifest.layoutVariants.gridColumns;
+  const themeCard = themeManifest.layoutVariants.productCard;
+  const headingFontFamily = fontStack(themeManifest.defaultFonts.heading);
+  const bodyFontFamily = fontStack(themeManifest.defaultFonts.body);
+  const isDigitalTheme = themeManifest.id === "digital_products";
 
   const c_primaryColor = getVal(config?.primaryColor, theme.primaryColor, "#dddddd");
   const c_fontFamily = getVal(config?.fontFamily, "sans", "sans");
@@ -244,6 +258,18 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   const [currentProductImage, setCurrentProductImage] = useState<string>("");
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(1);
+
+  /* T3 — charge les polices Google Fonts du thème (arabe inclus) + règle des titres. */
+  useEffect(() => {
+    ensureGoogleFonts([themeManifest.defaultFonts.heading, themeManifest.defaultFonts.body, config?.fontFamily]);
+    let styleEl = document.getElementById("enova-storefront-fonts");
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = "enova-storefront-fonts";
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = ".enova-storefront h1,.enova-storefront h2,.enova-storefront h3,.enova-storefront h4{font-family:var(--enova-heading-font,inherit)}";
+  }, [themeManifest.defaultFonts.heading, themeManifest.defaultFonts.body, config?.fontFamily]);
   
   // COD Form State
   const [customerName, setCustomerName] = useState("");
@@ -834,7 +860,11 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-gray-800 flex flex-col font-sans" dir={isRtl ? "rtl" : "ltr"}>
+    <div
+      className="enova-storefront min-h-screen bg-[#fafafa] text-gray-800 flex flex-col"
+      style={{ fontFamily: bodyFontFamily, ["--enova-heading-font" as string]: headingFontFamily } as React.CSSProperties}
+      dir={isRtl ? "rtl" : "ltr"}
+    >
       {/* Top Announcement Bar */}
       {c_announcementShow && (<div className="text-xs sm:text-sm py-2 px-4 text-center flex items-center justify-center gap-3 font-medium transition-colors shadow-sm" style={{ backgroundColor: c_announcementBg, color: c_announcementTextColor }}
       >
@@ -995,8 +1025,23 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
         const renderSection: Record<SectionId, React.ReactElement | null> = {
           hero: c_heroShow ? (
             <EditableSection id="hero_banner">
-              <section className="relative overflow-hidden bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white py-12 sm:py-20">
-                {/* Background Image with Overlay */}
+              <section className={`relative overflow-hidden ${
+                heroStyle === "fullscreen"
+                  ? "bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white min-h-[78vh] flex items-center py-16 sm:py-24"
+                  : heroStyle === "split"
+                    ? "bg-white text-gray-900 py-12 sm:py-20 border-b border-gray-100"
+                    : heroStyle === "minimal"
+                      ? "bg-gray-50 text-gray-900 py-14 sm:py-20 border-b border-gray-100"
+                      : "bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white py-12 sm:py-20"
+              }`}>
+                {/* Background Image with Overlay (banner / fullscreen ; encadré en split ; masqué en minimal) */}
+                {heroStyle === "split" ? (
+                  <div className="relative z-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+                    {c_heroBg ? (
+                      <img src={c_heroBg} alt="" className="w-full h-56 sm:h-72 object-cover rounded-3xl shadow-lg" />
+                    ) : null}
+                  </div>
+                ) : heroStyle !== "minimal" ? (
                 <div className="absolute inset-0 z-0">
                   <img
                     src={c_heroBgMobile}
@@ -1008,24 +1053,25 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                     alt="Hero Banner"
                     className="hidden sm:block w-full h-full object-cover object-center scale-105"
                   />
-                  <div className="absolute inset-0" style={{ backgroundColor: `rgba(17, 24, 39, ${c_heroOverlay})` }}></div>
+                  <div className="absolute inset-0" style={{ backgroundColor: `rgba(17, 24, 39, ${heroStyle === "fullscreen" ? Math.max(c_heroOverlay, 0.45) : c_heroOverlay})` }}></div>
                 </div>
+                ) : null}
 
-                <div className={`relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex ${c_heroJustify}`}>
-                  <div className={`max-w-2xl flex flex-col ${c_heroAlignInner}`}>
+                <div className={`relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex ${heroStyle === "fullscreen" || heroStyle === "minimal" ? "justify-center text-center" : c_heroJustify}`}>
+                  <div className={`max-w-2xl flex flex-col ${heroStyle === "fullscreen" || heroStyle === "minimal" ? "items-center" : c_heroAlignInner}`}>
                     {c_heroBadgeShow && (
-                      <div className={`inline-flex items-center gap-2 bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-full mb-4 ${c_heroBadgeSelf}`}>
+                      <div className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full mb-4 ${c_heroBadgeSelf} ${heroStyle === "split" || heroStyle === "minimal" ? "bg-gray-900/5 border border-gray-900/10 text-gray-700" : "bg-amber-500/20 border border-amber-500/30 text-amber-300"}`}>
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>{c_heroBadge}</span>
                       </div>
                     )}
                     {c_heroTitle && (
-                      <h2 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight mb-4 text-white">
+                      <h2 className={`${heroStyle === "fullscreen" ? "text-4xl sm:text-6xl" : "text-3xl sm:text-5xl"} font-black tracking-tight leading-tight mb-4 ${heroStyle === "split" || heroStyle === "minimal" ? "text-gray-900" : "text-white"}`} style={{ fontFamily: headingFontFamily }}>
                         {c_heroTitle}
                       </h2>
                     )}
                     {c_heroSubtitle && (
-                      <p className="text-sm sm:text-base text-gray-300 mb-8 font-normal leading-relaxed">
+                      <p className={`text-sm sm:text-base mb-8 font-normal leading-relaxed ${heroStyle === "split" || heroStyle === "minimal" ? "text-gray-600" : "text-gray-300"}`}>
                         {c_heroSubtitle}
                       </p>
                     )}
@@ -1034,6 +1080,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                         <a
                           href={c_heroBtnLink}
                           className="px-8 py-3.5 rounded-xl font-bold text-sm text-white shadow-xl hover:opacity-95 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+                          style={{ backgroundColor: c_primaryColor }}
                         >
                           {c_heroBtn}
                         </a>
@@ -1041,7 +1088,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                       {c_heroSecondaryShow && c_heroSecondary && (
                         <a
                           href={c_heroSecondaryLink}
-                          className="px-6 py-3.5 rounded-xl font-bold text-sm text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 transition-all"
+                          className={`px-6 py-3.5 rounded-xl font-bold text-sm transition-all ${heroStyle === "split" || heroStyle === "minimal" ? "text-gray-800 bg-white hover:bg-gray-50 border border-gray-300" : "text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20"}`}
                         >
                           {c_heroSecondary}
                         </a>
@@ -1088,23 +1135,38 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                  {sectionCategories.map((cat) => (
+                <div className={
+                  categoryStyle === "list"
+                    ? "flex gap-3 overflow-x-auto pb-2 custom-scrollbar"
+                    : categoryStyle === "cards"
+                      ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 sm:gap-5"
+                      : "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4"
+                }>
+                  {sectionCategories.map((cat) => {
+                    const catActive = selectedCategory === cat.id;
+                    /* T3 — variante de thème : pastilles défilantes / cartes rectangulaires / cercles. */
+                    const btnCls = categoryStyle === "list"
+                      ? "group flex items-center gap-2.5 px-4 py-2.5 rounded-full border whitespace-nowrap transition-all duration-300 " + (catActive ? "border-transparent text-white shadow-md" : "bg-white border-gray-200 hover:border-gray-400")
+                      : "group flex flex-col items-center text-center bg-white border transition-all duration-300 " + (categoryStyle === "cards" ? "p-0 text-start rounded-2xl overflow-hidden" : "p-4 rounded-2xl") + " " + (catActive ? "border-amber-500 shadow-md ring-2 ring-amber-500/20 bg-amber-50/20" : "border-gray-100 hover:border-gray-200 hover:shadow-sm");
+                    const thumbCls = categoryStyle === "list"
+                      ? "w-9 h-9 rounded-full overflow-hidden ring-2 ring-white/60"
+                      : categoryStyle === "cards"
+                        ? "w-full aspect-[4/3] overflow-hidden"
+                        : "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden mb-3 border-2 border-gray-100 shadow-inner";
+                    return (
                     <button
                       key={cat.id}
                       onClick={() => setSelectedCategory(cat.id)}
-                      className={`group flex flex-col items-center text-center p-4 rounded-2xl bg-white border transition-all duration-300 ${
-                        selectedCategory === cat.id
-                          ? "border-amber-500 shadow-md ring-2 ring-amber-500/20 bg-amber-50/20"
-                          : "border-gray-100 hover:border-gray-200 hover:shadow-sm"
-                      }`}
+                      style={categoryStyle === "list" && catActive ? { backgroundColor: c_primaryColor } : undefined}
+                      className={btnCls}
                     >
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden mb-3 border-2 border-gray-100 group-hover:scale-105 transition-transform duration-300 shadow-inner">
+                      <div className={thumbCls + " group-hover:scale-105 transition-transform duration-300"}>
                         {cat.image ? (
                           <img
                             src={cat.image}
                             alt={cat.nameAr}
                             className="w-full h-full object-cover object-center"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-300">
@@ -1112,16 +1174,17 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                           </div>
                         )}
                       </div>
-                      <span className="font-bold text-sm text-gray-900 group-hover:text-amber-600 transition-colors">
+                      <span className={categoryStyle === "cards" ? "font-bold text-sm text-gray-900 px-4 pt-3" : "font-bold text-sm text-gray-900 group-hover:text-amber-600 transition-colors"}>
                         {isActivated ? cat.name : cat.nameAr}
                       </span>
-                      <span className="text-xs text-gray-400 mt-0.5">
+                      <span className={categoryStyle === "cards" ? "text-xs text-gray-400 px-4 pb-4 pt-0.5" : "text-xs text-gray-400 mt-0.5"}>
                         {isActivated
-                          ? `${cat.productCount} ${c_lang === "ar" ? "منتج" : "produit(s)"}`
-                          : `${cat.productCount} منتج`}
+                          ? `${cat.productCount} ${c_lang === "ar" ? "\u0645\u0646\u062a\u062c" : "produit(s)"}`
+                          : `${cat.productCount} \u0645\u0646\u062a\u062c`}
                       </span>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             </EditableSection>
@@ -1154,6 +1217,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                         lang={c_lang}
                         isRtl={isRtl}
                         primaryColor={c_primaryColor}
+                        themeCard={themeCard}
                         onChooseOptions={(p) => setOptionsProduct(p)}
                         onOpenProduct={handleOpenLite}
                         onQuickAdd={handleQuickAdd}
@@ -1218,6 +1282,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                   categories={sectionCategories.map((c) => ({ id: c.id, name: c.name, nameAr: c.nameAr || c.name, image: c.image, productCount: 0 }))}
                   card={v2?.productCard ?? defaultV2Card}
                   priceFormat={v2?.priceFormat ?? "space"}
+                  themeCard={themeCard}
                   onChooseOptions={setOptionsProduct}
                   onOpenProduct={handleOpenLite}
                   onQuickAdd={handleQuickAdd}
@@ -1263,7 +1328,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
         {/* Products Grid */}
         {filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${themeGridCols === 3 ? "lg:grid-cols-3" : themeGridCols === 2 ? "lg:grid-cols-2" : "lg:grid-cols-4"} gap-4 sm:gap-6`}>
             {filteredProducts.map((product) => (
               <div key={product.id || product.name}>
               <ProductCardV2
@@ -1273,6 +1338,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                 primaryColor={c_primaryColor}
                 card={v2?.productCard ?? defaultV2Card}
                 priceFormat={v2?.priceFormat ?? "space"}
+                themeCard={themeCard}
                 onChooseOptions={setOptionsProduct}
                 onOpenProduct={handleOpenLite}
                 onQuickAdd={handleQuickAdd}
@@ -2081,6 +2147,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
         hideEmail={v2?.checkout.hideEmail ?? false}
         hideAddress={v2?.checkout.hideAddress ?? false}
         hideNotes={v2?.checkout.hideNotes ?? false}
+          digitalDelivery={isDigitalTheme}
         addressRequired={v2?.checkout.addressRequired ?? true}
         layout={v2?.checkout.layout ?? "twoColumns"}
         wilayas={WILAYAS_LIST}

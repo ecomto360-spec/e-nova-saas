@@ -22,6 +22,8 @@ interface ProductCardV2Props {
   onChooseOptions: (p: StorefrontProductLite) => void;
   onOpenProduct: (p: StorefrontProductLite) => void;
   onQuickAdd: (p: StorefrontProductLite) => void;
+  /** T3 — variante visuelle du thème actif. */
+  themeCard?: "standard" | "compact" | "editorial" | "bold";
 }
 
 export function ProductCardV2({
@@ -34,6 +36,7 @@ export function ProductCardV2({
   onChooseOptions,
   onOpenProduct,
   onQuickAdd,
+  themeCard = "standard",
 }: ProductCardV2Props): React.ReactElement {
   const discount =
     product.oldPrice && product.oldPrice > product.price
@@ -42,6 +45,25 @@ export function ProductCardV2({
   const soldOut = product.stock <= 0;
   const image = product.images[0] || "";
   const borderRadius = card.cardBorders === "square" ? "rounded-none" : card.cardBorders === "pill" ? "rounded-3xl" : "rounded-xl";
+  const secondImage = product.images[1] || "";
+
+  /* T3 — variantes de thème :
+     standard : ratio 1:1 (référence) ; compact : 1:1 serré, bouton discret ;
+     editorial : portrait 3:4 + 2e image au survol (mode/lookbook) ;
+     bold : 1:1, bords marqués, badge prix plein. */
+  const aspectClass =
+    themeCard === "editorial"
+      ? "aspect-[3/4]"
+      : themeCard === "compact"
+        ? "aspect-square"
+        : "aspect-square";
+  const padClass = themeCard === "compact" ? "p-2.5 gap-1.5" : themeCard === "bold" ? "p-4 gap-2" : "p-3.5 gap-2";
+  const frameClass =
+    themeCard === "bold"
+      ? "border-2 border-gray-900/90 shadow-[0_2px_0_rgba(0,0,0,0.9)] hover:shadow-[0_6px_0_rgba(0,0,0,0.9)] hover:-translate-y-0.5"
+      : themeCard === "editorial"
+        ? "border-0 shadow-[0_10px_40px_rgba(0,0,0,0.08)]"
+        : "border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:shadow-[0_10px_30px_rgba(0,0,0,0.10)]";
 
   const buttonLabel = card.buttonText
     ? lang === "ar"
@@ -55,10 +77,10 @@ export function ProductCardV2({
 
   return (
     <div
-      className={`group relative flex flex-col bg-white border border-gray-100 ${borderRadius} overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:shadow-[0_10px_30px_rgba(0,0,0,0.10)] transition-all duration-300`}
+      className={`group relative flex flex-col bg-white ${frameClass} ${borderRadius} overflow-hidden transition-all duration-300 ${padClass}`}
     >
       {/* Image (ratio 1:1, lazy, dimensions fixes -> zéro layout shift) */}
-      <div className="relative w-full overflow-hidden bg-gray-50 aspect-square">
+      <div className={`relative w-full overflow-hidden bg-gray-50 ${aspectClass}`}>
       <button
         type="button"
         onClick={() => onOpenProduct(product)}
@@ -66,15 +88,29 @@ export function ProductCardV2({
         aria-label={lang === "ar" ? product.nameAr : product.name}
       >
         {image ? (
-          <img
-            src={image}
-            alt={lang === "ar" ? product.nameAr : product.name}
-            width={400}
-            height={400}
-            loading="lazy"
-            decoding="async"
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
+          <>
+            <img
+              src={image}
+              alt={lang === "ar" ? product.nameAr : product.name}
+              width={400}
+              height={400}
+              loading="lazy"
+              decoding="async"
+              className={`w-full h-full object-cover transition-all duration-500 ${secondImage && themeCard === "editorial" ? "group-hover:opacity-0" : "group-hover:scale-105"}`}
+            />
+            {secondImage && themeCard === "editorial" && (
+              <img
+                src={secondImage}
+                alt=""
+                aria-hidden
+                width={400}
+                height={400}
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+              />
+            )}
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-300">
             <ShoppingCart className="w-10 h-10" aria-hidden />

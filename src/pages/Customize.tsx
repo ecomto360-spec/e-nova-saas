@@ -32,6 +32,7 @@ import { useTenant } from "../contexts/TenantContext";
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 import { STORE_THEMES } from "../data/themesData";
+import { getThemeManifest } from "../themes/registry";
 import type { StoreDemoProduct } from "../data/themesData";
 import { ThemeStorePreview } from "../components/storefront/ThemeStorePreview";
 import { loadDemoStoreData, removeDemoStoreData } from "../lib/storefrontDemoService";
@@ -96,7 +97,12 @@ export default function Customize() {
     localStorage.getItem("dzbuild_active_theme") || "starter"
   );
 
+  /* T3 — identifiant du registre : tokens typo/layout (organic_bio, corporate…). */
+  const registryThemeId = tenantData?.activeThemeRegistryId || undefined;
   const currentTheme = STORE_THEMES.find(t => t.id === activeThemeId) || STORE_THEMES[0];
+  const resolvedTheme = registryThemeId
+    ? STORE_THEMES.find(t => t.id === getThemeManifest(registryThemeId).legacyStoreThemeId) || currentTheme
+    : currentTheme;
 
   // Configuration design (en-tête, couleurs, annonce...) -> store_config/{uid}
   const [config, setConfig] = useState<StoreCustomizerConfig>(defaultStoreConfig);
@@ -1194,7 +1200,8 @@ export default function Customize() {
               : deviceMode === "tablet" ? "w-[768px] border-4 border-neutral-800 rounded-2xl shadow-xl overflow-hidden bg-white my-auto"
               : "w-full"}`}>
               <ThemeStorePreview
-                theme={currentTheme}
+                theme={resolvedTheme}
+                registryThemeId={registryThemeId}
                 config={{ ...config, isActivated: true }}
                 storefront={storefront}
                 sectionsV2={sections}

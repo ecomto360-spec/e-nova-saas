@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { X, Loader2, CheckCircle2, Truck, Building2, ShoppingBag } from "lucide-react";
+import { X, Loader2, CheckCircle2, Truck, Building2, ShoppingBag, Zap } from "lucide-react";
 import type { StoreCartItem } from "../../../lib/storefrontCart";
 import { formatPrice } from "../../../lib/storefrontCart";
 import { t } from "./sectionTypes";
@@ -37,6 +37,8 @@ interface CartCheckoutModalProps {
   hideNotes: boolean;
   addressRequired: boolean;
   layout: "twoColumns" | "oneColumn";
+  /** T3 — produits numériques : pas de wilaya/commune/adresse, livraison immédiate. */
+  digitalDelivery?: boolean;
   wilayas: Array<{ code: number; arName: string; name: string; homePrice?: number; officePrice?: number }>;
   communesForWilaya: (code: number) => string[];
   onValidatePhone: (phone: string) => { isValid: boolean; error?: string; errorAr?: string };
@@ -68,6 +70,7 @@ export function CartCheckoutModal({
   hideNotes,
   addressRequired,
   layout,
+  digitalDelivery = false,
   wilayas,
   communesForWilaya,
   onValidatePhone,
@@ -88,7 +91,7 @@ export function CartCheckoutModal({
 
   const communes = useMemo(() => (wilayaCode === "" ? [] : communesForWilaya(Number(wilayaCode))), [wilayaCode, communesForWilaya]);
   const wilaya = useMemo(() => (wilayaCode === "" ? null : wilayas.find((w) => w.code === Number(wilayaCode)) || null), [wilayaCode, wilayas]);
-  const deliveryPrice = wilaya ? (deliveryType === "home" ? wilaya.homePrice ?? 600 : wilaya.officePrice ?? 400) : 0;
+  const deliveryPrice = digitalDelivery ? 0 : wilaya ? (deliveryType === "home" ? wilaya.homePrice ?? 600 : wilaya.officePrice ?? 400) : 0;
   const total = subtotalDA + deliveryPrice;
 
   // Panier vide SANS succès : rien à afficher. Avec succès : rester ouvert
@@ -175,6 +178,15 @@ export function CartCheckoutModal({
 
                 <fieldset>
                   <legend className="text-sm font-black uppercase tracking-wide text-gray-400 mb-3">{texts.address}</legend>
+                  {digitalDelivery ? (
+                    <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+                      <Zap className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden />
+                      <div>
+                        <p className="text-sm font-bold text-emerald-900">{t(lang, "Livraison numérique immédiate", "تسليم رقمي فوري")}</p>
+                        <p className="text-xs text-emerald-700 mt-1">{t(lang, "Vos produits numériques sont envoyés par email et WhatsApp dès la confirmation de la commande — aucune adresse de livraison requise.", "تُرسل منتجاتك الرقمية عبر البريد الإلكتروني وواتساب فور تأكيد الطلب — لا حاجة لعنوان التوصيل.")}</p>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="space-y-3">
                     <select
                       value={wilayaCode}
@@ -206,10 +218,17 @@ export function CartCheckoutModal({
                       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={300} placeholder={t(lang, "Notes (optionnel)", "ملاحظات (اختياري)")} className={inputCls} aria-label={t(lang, "Notes", "ملاحظات")} />
                     )}
                   </div>
+                  )}
                 </fieldset>
 
                 <fieldset>
                   <legend className="text-sm font-black uppercase tracking-wide text-gray-400 mb-3">{texts.deliveryMethod}</legend>
+                  {digitalDelivery ? (
+                    <div className="p-4 rounded-2xl border-2 border-gray-900 bg-gray-50 flex items-center gap-3">
+                      <Zap className="w-5 h-5 text-gray-900" aria-hidden />
+                      <span className="text-sm font-bold text-gray-900">{t(lang, "Envoi immédiat (0 DA)", "إرسال فوري (0 دج)")}</span>
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
@@ -232,6 +251,7 @@ export function CartCheckoutModal({
                       <span className="block text-xs text-gray-500 mt-0.5">{formatPrice(wilaya?.officePrice ?? 400, priceFormat, lang)}</span>
                     </button>
                   </div>
+                  )}
                 </fieldset>
               </div>
 

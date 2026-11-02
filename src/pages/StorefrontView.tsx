@@ -12,6 +12,7 @@ import { StoreUnavailable } from "../components/storefront/StoreUnavailable";
 import { StorefrontSettings, mergeStorefrontSettings } from "../types/storefront";
 import type { HomeSection, StoreV2Settings } from "../types/storefrontSections";
 import { mergeSections, defaultV2Settings } from "../data/storefrontDefaults";
+import { getThemeManifest } from "../themes/registry";
 import { STORE_WINDOW_NAME } from "../lib/openStore";
 import { BUNDLE_ID } from "../version";
 
@@ -46,6 +47,8 @@ export default function StorefrontView() {
   /** T1 — sections v2 + réglages globaux (même document Firestore). */
   const [sectionsV2, setSectionsV2] = useState<HomeSection[] | undefined>(undefined);
   const [v2Settings, setV2Settings] = useState<StoreV2Settings | undefined>(undefined);
+  /** T3 — identifiant du registre (tokens typo/layout du thème actif). */
+  const [registryThemeId, setRegistryThemeId] = useState<string | undefined>(undefined);
   const [soldCounts, setSoldCounts] = useState<Record<string, number>>({});
   const [isExpired, setIsExpired] = useState(false);
   /** Mode maintenance global (super admin) — bannière + page dédiée. */
@@ -211,6 +214,14 @@ export default function StorefrontView() {
              if (data.activeTheme) {
                const found = STORE_THEMES.find(t => t.id === data.activeTheme);
                if (found) setActiveTheme(found);
+             }
+             // T3 — le registre prime : organic_bio/corporate/pro_services partagent
+             // le même thème de démo legacy mais ont des tokens distincts.
+             if (data.activeThemeRegistryId) {
+               const mf = getThemeManifest(String(data.activeThemeRegistryId));
+               setRegistryThemeId(mf.id);
+               const legacy = STORE_THEMES.find(t => t.id === mf.legacyStoreThemeId);
+               if (legacy) setActiveTheme(legacy);
              }
           } else if (!storeSlug) {
             // Route /store sans slug : le compte connecté n'a PAS de boutique.
@@ -465,6 +476,7 @@ export default function StorefrontView() {
           storefront={storefront}
           soldCounts={soldCounts}
           sectionsV2={sectionsV2}
+          registryThemeId={registryThemeId}
           v2Settings={v2Settings}
           storeSlug={storeSlug || tenantId}
         />

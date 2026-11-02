@@ -15,6 +15,8 @@ interface CollectionViewProps extends SectionViewProps {
   section: CollectionSection;
   card: ProductCardSettings;
   priceFormat: "plain" | "comma" | "space";
+  /** T3 — variante visuelle du thème actif. */
+  themeCard?: "standard" | "compact" | "editorial" | "bold";
   onQuickAdd: (p: StorefrontProductLite) => void;
   soldCounts?: Record<string, number>;
 }
@@ -27,7 +29,7 @@ export function CollectionView({
   products,
   categories,
   card,
-  priceFormat,
+  priceFormat, themeCard = "standard",
   onChooseOptions,
   onOpenProduct,
   onQuickAdd,
@@ -105,6 +107,7 @@ export function CollectionView({
                   isRtl={isRtl}
                   primaryColor={primaryColor}
                   card={card}
+                  themeCard={themeCard}
                   priceFormat={priceFormat}
                   onChooseOptions={onChooseOptions}
                   onOpenProduct={onOpenProduct}
