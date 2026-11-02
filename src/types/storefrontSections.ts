@@ -112,9 +112,11 @@ export interface CollectionSection extends HomeSectionBase {
   type: "collection";
   title: BilingualText;
   subtitle: BilingualText;
-  /** Source des produits : catégorie précise ou promotions. */
-  source: "category" | "onSale" | "newest" | "bestSellers";
+  /** Source des produits : catégorie, promotions, ou sélection manuelle. */
+  source: "category" | "onSale" | "newest" | "bestSellers" | "manual";
   categoryId: string;
+  /** Produits choisis manuellement (source "manual"). */
+  productIds: string[];
   style: "carousel" | "grid";
   maxItems: number;
 }

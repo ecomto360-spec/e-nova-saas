@@ -22,6 +22,7 @@ import type {
   StoreV2Settings,
   StorefrontSections,
   TrustSection,
+  HomeSectionType,
 } from "../types/storefrontSections";
 import type { StorefrontSettings } from "../types/storefront";
 
@@ -134,8 +135,71 @@ export function defaultCollectionSection(): CollectionSection {
     subtitle: bi("Les meilleures promotions du moment", "أفضل العروض حالياً"),
     source: "onSale",
     categoryId: "",
+    productIds: [],
     style: "carousel",
     maxItems: 10,
+  };
+}
+
+/**
+ * T2 — Fabrique de sections pour le bouton « Ajouter » de l'éditeur.
+ * Chaque type a des défauts bilingues prêts à l'emploi.
+ */
+export function createHomeSection(type: HomeSectionType, index = 0): HomeSection {
+  const uid = `${type}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  switch (type) {
+    case "hero":
+      return { ...defaultHeroSection(), id: uid };
+    case "categories":
+      return { ...defaultCategoriesSection(), id: uid };
+    case "featured":
+      return { ...defaultFeaturedSection(), id: uid };
+    case "trust":
+      return { ...defaultTrustSection(), id: uid };
+    case "promoBanner":
+      return { ...defaultPromoBannerSection(), id: uid };
+    case "collection":
+      return { ...defaultCollectionSection(), id: uid };
+    case "reviews":
+      return { ...defaultReviewsSection(), id: uid };
+    case "faq":
+      return { ...defaultFaqSection(), id: uid };
+    case "brandInfo":
+      return { ...defaultBrandInfoSection(), id: uid };
+    case "allProducts":
+      return { ...defaultAllProductsSection(), id: uid };
+    case "textImage":
+      return {
+        id: uid,
+        type: "textImage",
+        visible: true,
+        title: bi("Notre histoire", "قصتنا"),
+        body: bi(
+          "Racontez ce qui rend votre boutique unique : savoir-faire, qualité, service client.",
+          "احكِ ما يجعل متجرك مختلفاً: الخبرة، الجودة، وخدمة العملاء."
+        ),
+        image: "",
+        imagePosition: "start",
+        button: { visible: false, text: bi("En savoir plus", "اعرف المزيد"), link: "" },
+      };
+    case "video":
+      return {
+        id: uid,
+        type: "video",
+        visible: true,
+        title: bi("Notre boutique en vidéo", "متجرنا بالفيديو"),
+        embedUrl: "",
+      };
+    default:
+      return { ...defaultPromoBannerSection(), id: uid };
+  }
+}
+
+/** Duplique une section (nouvel id, même contenu) — bouton « Dupliquer ». */
+export function duplicateHomeSection(sec: HomeSection): HomeSection {
+  return {
+    ...structuredClone(sec),
+    id: `${sec.type}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
   };
 }
 

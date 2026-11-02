@@ -6,7 +6,7 @@
 import React, { useState } from "react";
 import { ChevronDown, Star, Quote, MapPin, Facebook, Instagram, MessageCircle, Truck, Package, RotateCcw, Phone, Clock, Star as StarIcon, Check, Music2 } from "lucide-react";
 import type { BilingualText } from "../../../types/storefront";
-import type { BrandInfoSection, FaqSection, PromoBannerSection, ReviewsSection, StoreReview, TrustSection } from "../../../types/storefrontSections";
+import type { BrandInfoSection, FaqSection, PromoBannerSection, ReviewsSection, StoreReview, TextImageSection, TrustSection, VideoSection } from "../../../types/storefrontSections";
 import type { SectionViewProps } from "./sectionTypes";
 import { t } from "./sectionTypes";
 
@@ -275,6 +275,96 @@ export function TrustSectionView({
             </div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+
+/* ---------------------- BLOC TEXTE + IMAGE (T2) ---------------------------- */
+
+export function TextImageSectionView({
+  section,
+  lang,
+  isRtl,
+  primaryColor,
+}: {
+  section: TextImageSection;
+  lang: "fr" | "ar";
+  isRtl: boolean;
+  primaryColor: string;
+}): React.ReactElement {
+  const txt = (b: BilingualText) => (lang === "ar" ? b.ar : b.fr);
+  const imageFirst = section.imagePosition === "start";
+  return (
+    <section id={`section-${section.id}`} className="py-12 sm:py-16 bg-white" dir={isRtl ? "rtl" : "ltr"}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-2 gap-8 lg:gap-14 items-center">
+        <div className={imageFirst ? "md:order-1" : "md:order-2"}>
+          {section.image ? (
+            <img
+              src={section.image}
+              alt={txt(section.title)}
+              loading="lazy"
+              decoding="async"
+              width={640}
+              height={480}
+              className="w-full aspect-[4/3] object-cover rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.08)]"
+            />
+          ) : (
+            <div className="w-full aspect-[4/3] rounded-3xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-5xl" aria-hidden>🖼️</div>
+          )}
+        </div>
+        <div className={imageFirst ? "md:order-2" : "md:order-1"}>
+          <h2 className="text-2xl sm:text-3xl font-black text-gray-900">{txt(section.title)}</h2>
+          <p className="mt-4 text-sm sm:text-base text-gray-600 leading-relaxed whitespace-pre-line">{txt(section.body)}</p>
+          {section.button.visible && section.button.link && (
+            <a
+              href={section.button.link || "#products"}
+              className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold shadow-sm hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {txt(section.button.text)}
+            </a>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* --------------------------- BLOC VIDÉO (T2) ------------------------------- */
+
+export function VideoSectionView({
+  section,
+  lang,
+  isRtl,
+}: {
+  section: VideoSection;
+  lang: "fr" | "ar";
+  isRtl: boolean;
+}): React.ReactElement | null {
+  const txt = (b: BilingualText) => (lang === "ar" ? b.ar : b.fr);
+  return (
+    <section id={`section-${section.id}`} className="py-12 sm:py-16 bg-gray-50" dir={isRtl ? "rtl" : "ltr"}>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-2xl sm:text-3xl font-black text-gray-900 text-center">{txt(section.title)}</h2>
+        <div className="mt-8 aspect-video rounded-3xl overflow-hidden bg-gray-900 shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+          {section.embedUrl ? (
+            <iframe
+              src={section.embedUrl}
+              title={txt(section.title)}
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full border-0"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 gap-3">
+              <span className="text-4xl" aria-hidden>🎬</span>
+              <span className="text-sm">{t(lang, "Vidéo à venir", "الفيديو قريباً")}</span>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

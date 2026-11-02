@@ -43,6 +43,10 @@ export function CollectionView({
     list = list.filter((p) => p.category === catName || (catId && p.category === catId));
   } else if (section.source === "bestSellers") {
     list.sort((a, b) => (soldCounts?.[b.id] ?? 0) - (soldCounts?.[a.id] ?? 0));
+  } else if (section.source === "manual" && section.productIds) {
+    // Produits choisis manuellement, dans l'ordre défini par le marchand.
+    const order = new Map(section.productIds.map((id, i) => [id, i]));
+    list = list.filter((p) => order.has(p.id)).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
   // « nouveautés » : ordre du catalogue (les plus récents en premier).
   const items = list.slice(0, Math.max(1, section.maxItems));

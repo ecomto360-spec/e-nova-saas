@@ -50,7 +50,7 @@ import {
   Clipboard,
   Package,
   Box,
-  Copy
+  Copy, MessageCircle, Facebook, Instagram, Music2, Send, Github, Link2
 } from "lucide-react";
 import { StoreTheme, StoreDemoProduct } from "../../data/themesData";
 import { ALGERIAN_WILAYAS as WILAYAS_LIST } from "../../data/landingData";
@@ -63,7 +63,7 @@ import { ProductCardV2 } from "./sections/ProductCardV2";
 import { OptionsModal } from "./sections/OptionsModal";
 import { MiniCart } from "./sections/MiniCart";
 import { CartCheckoutModal } from "./sections/CartCheckoutModal";
-import { ReviewsSectionView, FaqSectionView, PromoBannerSectionView, BrandInfoSectionView, TrustSectionView } from "./sections/ContentSections";
+import { ReviewsSectionView, FaqSectionView, PromoBannerSectionView, BrandInfoSectionView, TrustSectionView, TextImageSectionView, VideoSectionView } from "./sections/ContentSections";
 import { HelpWidget } from "./HelpWidget";
 import type { StorefrontProductLite } from "./sections/sectionTypes";
 import type { HomeSection, StoreV2Settings } from "../../types/storefrontSections";
@@ -111,6 +111,10 @@ interface ThemeStorePreviewProps {
   soldCounts?: Record<string, number>;
   /** T1 — sections v2 (page d'accueil ordonnée). Absent -> migration v1. */
   sectionsV2?: HomeSection[];
+  /** Section sélectionnée dans l'éditeur : contour pointillé orange persistant. */
+  selectedSectionId?: string;
+  /** Mode « œil » : masque les repères d'édition (survol, contour, badge). */
+  disableEditorOverlays?: boolean;
   /** T1 — réglages globaux v2 (footer, widget d'aide, carte produit, prix). */
   v2Settings?: StoreV2Settings;
   /** Slug public (clé du panier localStorage). */
@@ -118,7 +122,7 @@ interface ThemeStorePreviewProps {
 }
 
 export function ThemeStorePreview({ theme, config, customStoreName, customLogoUrl, isStandaloneView = false, actualProducts,
-  actualCategories, currentView = "home", onSectionSelect, initialProductId, tenantId, storefront, soldCounts, sectionsV2, v2Settings, storeSlug }: ThemeStorePreviewProps) {
+  actualCategories, currentView = "home", onSectionSelect, initialProductId, tenantId, storefront, soldCounts, sectionsV2, v2Settings, selectedSectionId, disableEditorOverlays, storeSlug }: ThemeStorePreviewProps) {
   
   const isActivated = config?.isActivated || false;
 
@@ -199,7 +203,8 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   const c_isSticky = getBool(config?.isSticky, true);
   const c_hasShadow = getBool(config?.hasShadow, true);
   const c_hasBottomBorder = getBool(config?.hasBottomBorder, false);
-  const c_showCartIcon = getBool(config?.showCartIcon, true);
+  const c_showCartIcon = v2Settings ? v2Settings.header.showCartIcon : getBool(config?.showCartIcon, true);
+  const c_showSearch = v2Settings ? v2Settings.header.showSearch : getBool((config as { showSearch?: boolean } | undefined)?.showSearch, true);
   const c_hideOnProductPage = getBool(config?.hideOnProductPage, false);
 
   // Trust (items pilotés par StorefrontSettings)
@@ -282,7 +287,8 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   // Helper pour entourer les sections cliquables
   const EditableSection = ({ id, children, className = "" }: { id: string, children: React.ReactNode, className?: string }) => {
-    if (isStandaloneView) return <div className={className}>{children}</div>;
+    if (isStandaloneView || disableEditorOverlays) return <div className={className}>{children}</div>;
+    const selected = selectedSectionId === id;
     return (
       <div 
         className={`relative group/section cursor-pointer ${className}`}
@@ -291,7 +297,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
           if (onSectionSelect) onSectionSelect(id);
         }}
       >
-        <div className="absolute inset-0 border-2 border-transparent group-hover/section:border-amber-500 group-hover/section:bg-amber-500/5 transition-all z-40 pointer-events-none rounded-lg m-0.5"></div>
+        <div className={`absolute inset-0 border-2 transition-all z-40 pointer-events-none rounded-lg m-0.5 ${selected ? "border-amber-500 border-dashed bg-amber-500/5" : "border-transparent group-hover/section:border-amber-500 group-hover/section:bg-amber-500/5"}`}></div>
         {/* Badge indicateur au survol */}
         <div className="absolute top-2 left-2 bg-amber-500 text-black text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/section:opacity-100 transition-opacity z-50 pointer-events-none shadow-sm">
           Modifier
@@ -349,7 +355,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
-    return (actualProducts ? actualProducts : theme.products).filter(product => {
+    const base = (actualProducts ? actualProducts : theme.products).filter(product => {
       // Un produit réel marqué inactif/brouillon ne doit JAMAIS apparaître en
       // boutique publique (les produits de démo n'ont pas de statut -> actifs).
       const isActive = !product.status || product.status === "active";
@@ -359,7 +365,17 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
         (product.nameAr && product.nameAr.toLowerCase().includes(searchQuery.toLowerCase()));
       return isActive && matchesCategory && matchesSearch;
     });
-  }, [(actualProducts ? actualProducts : theme.products), selectedCategory, searchQuery]);
+    // T2 — tri par défaut + « en stock d'abord » pilotés par les réglages v2.
+    const sortMode = v2Settings?.defaultProductSort ?? "recent";
+    const stockFirst = v2Settings?.stockFirst ?? false;
+    const withStock = (arr: typeof base) => (stockFirst ? [...arr].sort((a, b) => (Number(b.stock ?? 99) > 0 ? 1 : 0) - (Number(a.stock ?? 99) > 0 ? 1 : 0)) : arr);
+    if (sortMode === "priceAsc") return withStock([...base].sort((a, b) => Number(a.price ?? 0) - Number(b.price ?? 0)));
+    if (sortMode === "priceDesc") return withStock([...base].sort((a, b) => Number(b.price ?? 0) - Number(a.price ?? 0)));
+    if (sortMode === "bestSelling") return withStock([...base].sort((a, b) => (soldCounts?.[b.id] ?? 0) - (soldCounts?.[a.id] ?? 0)));
+    if (sortMode === "stockFirst") return [...base].sort((a, b) => (Number(b.stock ?? 99) > 0 ? 1 : 0) - (Number(a.stock ?? 99) > 0 ? 1 : 0));
+    // « recent » et « manual » : ordre du catalogue (inséré/défini par le marchand).
+    return withStock(base);
+  }, [(actualProducts ? actualProducts : theme.products), selectedCategory, searchQuery, v2Settings?.defaultProductSort, v2Settings?.stockFirst, soldCounts]);
 
   // Featured products (source : meilleures ventes ou sélection manuelle)
   const featuredProducts = useMemo(() => {
@@ -607,6 +623,22 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
     [sectionsV2, sf]
   );
   const v2 = v2Settings;
+
+  /* T2 — Réglages pied de page (v2) avec défauts sûrs. */
+  const footerSettings = v2?.footer ?? defaultV2Settings().footer;
+  const footerAbout = c_lang === "ar" ? footerSettings.about.ar : footerSettings.about.fr;
+  const footerShowCategories = footerSettings.showCategories;
+  const footerShowQuickLinks = footerSettings.showQuickLinks;
+  const footerHideBrand = footerSettings.hideBrand;
+  const footerSocials = [
+    { key: "whatsapp", href: `https://wa.me/${footerSettings.whatsapp.replace(/[^0-9]/g, "")}`, label: "WhatsApp", Icon: MessageCircle },
+    { key: "facebook", href: footerSettings.facebook, label: "Facebook", Icon: Facebook },
+    { key: "instagram", href: footerSettings.instagram, label: "Instagram", Icon: Instagram },
+    { key: "tiktok", href: footerSettings.tiktok, label: "TikTok", Icon: Music2 },
+    { key: "telegram", href: footerSettings.telegram, label: "Telegram", Icon: Send },
+    { key: "github", href: footerSettings.github, label: "GitHub", Icon: Github },
+    { key: "custom", href: footerSettings.customLink.url, label: footerSettings.customLink.name || "Lien", Icon: Link2 },
+  ].filter((x) => x.href && x.href.length > 3);
 
   const effectiveSlug = storeSlug || tenantId || "preview";
   const cart = useStorefrontCart(effectiveSlug);
@@ -857,7 +889,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
           </div>
 
           {/* Desktop Search Bar */}
-          <div className={`hidden md:flex flex-1 max-w-md mx-6 relative ${c_navStyle === 'centered' ? 'absolute right-20 w-64' : ''}`}>
+          <div className={`hidden md:flex flex-1 max-w-md mx-6 relative ${c_navStyle === 'centered' ? 'absolute right-20 w-64' : ''} ${c_showSearch ? "" : "md:hidden"}`}>
             <input 
               type="text"
               placeholder="ابحث عن منتج، قسم، أو فئة..."
@@ -1117,7 +1149,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                       <React.Fragment key={product.id}>
                       <ProductCardV2
                         product={toLiteProduct(product, i)}
-                        card={defaultV2Card}
+                        card={v2?.productCard ?? defaultV2Card}
                         priceFormat={v2Settings?.priceFormat ?? "plain"}
                         lang={c_lang}
                         isRtl={isRtl}
@@ -1193,8 +1225,12 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                 />
                 </React.Fragment>
               );
+            case "textImage":
+              return (<React.Fragment key={sec.id}><TextImageSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "video":
+              return (<React.Fragment key={sec.id}><VideoSectionView section={sec} lang={c_lang} isRtl={isRtl} /></React.Fragment>);
             default:
-              return null; // textImage / vidéo : T2
+              return null;
           }
         });
       })()}
@@ -1269,8 +1305,17 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                 {c_logoUrl ? <img src={c_logoUrl} alt="Logo" className="max-h-8 object-contain" /> : <h4 className="text-lg font-black text-white">{c_storeName}</h4>}
               </div>
               <p className="text-xs leading-relaxed text-gray-400">
-                متجرك الإلكتروني المفضل للتسوق بأمان في الجزائر. منتجات أصلية، توصيل سريع لـ 58 ولاية، والدفع عند الاستلام مع ضمان كامل.
+                {footerAbout}
               </p>
+              {(footerSocials.length > 0) && (
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
+                  {footerSocials.map((soc) => (
+                    <a key={soc.key} href={soc.href} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 hover:text-amber-400 hover:border-amber-500/50 transition-colors" aria-label={soc.label} title={soc.label}>
+                      <soc.Icon className="w-4 h-4" aria-hidden />
+                    </a>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-3 pt-2">
                 <div className="flex items-center gap-1.5 text-xs text-amber-400 font-bold bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -1280,7 +1325,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
             </div>
 
             {/* Col 2: Categories */}
-            <div>
+            <div className={footerShowCategories ? "" : "hidden"}>
               <h5 className="text-sm font-bold text-gray-900 mb-4">الأقسام الرئيسية</h5>
               <ul className="space-y-2 text-xs">
                 {displayCategories.map((cat) => (
@@ -1297,7 +1342,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
             </div>
 
             {/* Col 3: Quick Links */}
-            <div>
+            <div className={footerShowQuickLinks ? "" : "hidden"}>
               <h5 className="text-sm font-bold text-gray-900 mb-4">روابط تهمك</h5>
               <ul className="space-y-2 text-xs">
                 <li><a href="#about" className="hover:text-amber-400 transition-colors">من نحن</a></li>
@@ -1336,10 +1381,12 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
           {/* Bottom Copyright */}
           <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-500">
             <p>© 2026 {c_storeName}. جميع الحقوق محفوظة.</p>
-            <div className="flex items-center gap-1 text-[11px] text-gray-400">
-              <span>تم التطوير والتصميم بواسطة</span>
-              <span className="text-amber-400 font-bold">DZBuild E-Commerce</span>
-            </div>
+            {!footerHideBrand && (
+              <div className="flex items-center gap-1 text-[11px] text-gray-400">
+                <span>{c_lang === "ar" ? "تم التطوير والتصميم بواسطة" : "Développé avec"}</span>
+                <span className="text-amber-400 font-bold">E-Nova</span>
+              </div>
+            )}
           </div>
         </div>
       </footer>
@@ -1680,9 +1727,9 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                       )}
 
                       {/* Main Actions before form */}
-                      <div className="flex items-center gap-3 mb-10">
+                      <div className={`flex items-center gap-3 mb-10 ${v2?.productPage.buttonSize === "large" ? "scale-105 origin-" + (isRtl ? "right" : "left") : ""}`}>
                          {/* Quantity */}
-                         <div className="flex items-center border border-gray-200 rounded-xl bg-white shadow-sm h-14 px-1">
+                         <div className={`flex items-center border border-gray-200 rounded-xl bg-white shadow-sm px-1 ${v2?.productPage.showQuantityInForm === false ? "hidden" : "h-14"}`}>
                            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-full flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors">
                              -
                            </button>
@@ -1907,9 +1954,13 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                               key={idx}
                               type="button"
                               onClick={() => setCurrentProductImage(img)}
-                              className={`relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shrink-0 border-2 transition-all ${(currentProductImage || selectedProduct.image) === img ? 'border-[#1c192b] shadow-md ring-2 ring-white ring-inset' : 'border-gray-100 hover:border-gray-300'}`}
+                              className={`relative rounded-2xl overflow-hidden border-2 transition-all ${
+                                v2?.productPage.galleryLayout === "grid"
+                                  ? "w-full aspect-square"
+                                  : "w-20 h-20 sm:w-24 sm:h-24 shrink-0"
+                              } ${(currentProductImage || selectedProduct.image) === img ? 'border-[#1c192b] shadow-md ring-2 ring-white ring-inset' : 'border-gray-100 hover:border-gray-300'}`}
                             >
-                              <img src={img} className="w-full h-full object-cover" alt="thumbnail" />
+                              <img src={img} className="w-full h-full object-cover" alt="thumbnail" loading="lazy" />
                             </button>
                           ))}
                         </div>
@@ -1927,6 +1978,30 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
              </div>
           )}
+
+            {/* T2 — barre d'achat mobile collante (page produit uniquement). */}
+            {v2?.productPage.stickyBuyBarMobile !== false && selectedProduct && (
+              <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-4 py-2.5 flex items-center gap-3" dir={isRtl ? "rtl" : "ltr"}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] text-gray-500 truncate">{selectedProduct.category}</p>
+                  <p className="text-sm font-black text-gray-900 truncate">{(c_lang === "ar" ? selectedProduct.nameAr : selectedProduct.name) || selectedProduct.name}</p>
+                  {v2?.productPage.showQuantityInBar !== false && quantity > 1 && (
+                    <p className="text-[11px] text-gray-400">{c_lang === "ar" ? "الكمية" : "Quantité"} : {quantity}</p>
+                  )}
+                </div>
+                <div className="text-sm font-black whitespace-nowrap" style={{ color: c_primaryColor }}>
+                  {(totalPrice).toLocaleString()} {c_lang === "ar" ? "دج" : "DA"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('order-form')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="px-5 py-3 rounded-xl text-white text-sm font-bold shadow-md active:scale-95 transition-transform whitespace-nowrap"
+                  style={{ backgroundColor: c_primaryColor }}
+                >
+                  {c_lang === "ar" ? "اطلب الآن" : "Commander"}
+                </button>
+              </div>
+            )}
         </div>
       )}
 

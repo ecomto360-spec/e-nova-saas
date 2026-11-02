@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   Palette,
@@ -23,6 +23,8 @@ import {
   ArrowDown,
   GripVertical,
   Undo2,
+  Redo2,
+  Tablet,
   Sparkles
 } from "lucide-react";
 import { auth, db } from "../lib/firebase";
@@ -33,8 +35,16 @@ import { STORE_THEMES } from "../data/themesData";
 import type { StoreDemoProduct } from "../data/themesData";
 import { ThemeStorePreview } from "../components/storefront/ThemeStorePreview";
 import { loadDemoStoreData, removeDemoStoreData } from "../lib/storefrontDemoService";
-import { mergeSections } from "../data/storefrontDefaults";
-import type { HomeSection } from "../types/storefrontSections";
+import { HomeSectionsList, SectionDetailEditor } from "../components/admin/customize/sectionsManager";
+import {
+  LanguageGroup, HeaderV2Group, ProductCardGroup, SortingGroup, PriceFormatGroup,
+  ProductPageGroup, CheckoutGroup, FooterGroup, HelpWidgetGroup, SeoGroup,
+} from "../components/admin/customize/groups";
+import { AssistantIAPanel, type AssistantProposal } from "../components/admin/customize/assistantIA";
+import { createHomeSection, duplicateHomeSection } from "../data/storefrontDefaults";
+import type { HomeSection, HomeSectionType, StoreV2Settings } from "../types/storefrontSections";
+import { MAX_HOME_SECTIONS } from "../types/storefrontSections";
+import { mergeSections, defaultV2Settings } from "../data/storefrontDefaults";
 import { StoreCustomizerConfig, defaultStoreConfig } from "../components/admin/StoreCustomizerConfig";
 import { resizeAndConvertImageToBase64, getImageDimensions } from "../components/admin/storefront/editorUI";
 import { HeroEditor } from "../components/admin/storefront/HeroEditor";
@@ -59,10 +69,27 @@ const SECTION_LABELS: Record<SectionId, string> = {
   featured: "Produits vedettes",
 };
 
+/** Item de groupe du panneau principal, filtré par la recherche. */
+function GroupListItem({ menu, icon, label, hint, search, onSelect }: {
+  menu: string; icon: React.ReactNode; label: string; hint: string; search: string; onSelect: () => void;
+}): React.ReactElement | null {
+  const q = search.trim().toLowerCase();
+  if (q && !label.toLowerCase().includes(q) && !hint.toLowerCase().includes(q) && !menu.toLowerCase().includes(q)) return null;
+  return (
+    <div className="flex flex-col gap-0.5 p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl cursor-pointer hover:border-neutral-600" onClick={onSelect}>
+      <div className="flex justify-between items-center">
+        <span className="text-sm font-bold text-white flex items-center gap-2">{icon} {label}</span>
+        <ChevronRight size={16} className="text-neutral-500" />
+      </div>
+      <span className="text-xs text-neutral-500 ml-6">{hint}</span>
+    </div>
+  );
+}
+
 export default function Customize() {
   const { tenantData } = useTenant();
 
-  const [deviceMode, setDeviceMode] = useState<"desktop" | "mobile">("desktop");
+  const [deviceMode, setDeviceMode] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [previewView, setPreviewView] = useState<"home" | "product" | "checkout">("home");
 
   const [activeThemeId, setActiveThemeId] = useState<string>(
@@ -96,7 +123,23 @@ export default function Customize() {
   /** T1 — données de démo (chargement / suppression en un clic). */
   const [demoBusy, setDemoBusy] = useState<"" | "load" | "remove">("");
   const [demoNotice, setDemoNotice] = useState("");
-  const sectionsV2: HomeSection[] = mergeSections(storefront as unknown as Record<string, unknown>).sections;
+
+  /** T2 — brouillon sections v2 + réglages v2, historique annuler/rétablir. */
+  const [sections, setSections] = useState<HomeSection[]>([]);
+  const [v2, setV2] = useState<StoreV2Settings>(defaultV2Settings());
+  const [savedSections, setSavedSections] = useState<HomeSection[]>([]);
+  const [savedV2, setSavedV2] = useState<StoreV2Settings>(defaultV2Settings());
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [activeV2SectionId, setActiveV2SectionId] = useState<string | null>(null);
+  const activeV2Section = activeV2SectionId ? sections.find((x) => x.id === activeV2SectionId) ?? null : null;
+  const [eyeMode, setEyeMode] = useState(false);
+  const [panelSearch, setPanelSearch] = useState("");
+  interface EditorSnapshot {
+    sections: HomeSection[]; v2: StoreV2Settings; storefront: StorefrontSettings;
+    config: StoreCustomizerConfig; themeId: string;
+  }
+  const [undoStack, setUndoStack] = useState<EditorSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<EditorSnapshot[]>([]);
 
   const handleLoadDemo = async () => {
     const user = auth.currentUser;
@@ -131,7 +174,144 @@ export default function Customize() {
   const isDirty =
     JSON.stringify(config) !== JSON.stringify(savedConfig) ||
     JSON.stringify(storefront) !== JSON.stringify(savedStorefront) ||
-    activeThemeId !== savedThemeId;
+    activeThemeId !== savedThemeId ||
+    JSON.stringify(sections) !== JSON.stringify(savedSections) ||
+    JSON.stringify(v2) !== JSON.stringify(savedV2);
+
+  /* ---------------------------------------------------------------- */
+  /* T2 — Historique annuler / rétablir (50 pas max)                   */
+  /* ---------------------------------------------------------------- */
+
+  const snapshot = (): EditorSnapshot => ({
+    sections: JSON.parse(JSON.stringify(sections)),
+    v2: JSON.parse(JSON.stringify(v2)),
+    storefront: JSON.parse(JSON.stringify(storefront)),
+    config: JSON.parse(JSON.stringify(config)),
+    themeId: activeThemeId,
+  });
+
+  const pushHistory = () => {
+    setUndoStack((prev) => [...prev.slice(-49), snapshot()]);
+    setRedoStack([]);
+  };
+
+  const applySnapshot = (snap: EditorSnapshot) => {
+    setSections(snap.sections);
+    setV2(snap.v2);
+    setStorefront(snap.storefront);
+    setConfig(snap.config);
+    setActiveThemeId(snap.themeId);
+  };
+
+  const undo = () => {
+    if (undoStack.length === 0) return;
+    const prev = [...undoStack];
+    const snap = prev.pop()!;
+    setUndoStack(prev);
+    setRedoStack((r) => [...r, snapshot()]);
+    applySnapshot(snap);
+  };
+
+  const redo = () => {
+    if (redoStack.length === 0) return;
+    const next = [...redoStack];
+    const snap = next.pop()!;
+    setRedoStack(next);
+    setUndoStack((u) => [...u, snapshot()]);
+    applySnapshot(snap);
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* T2 — Mutations sections v2 (avec historique)                      */
+  /* ---------------------------------------------------------------- */
+
+  const applySections = (next: HomeSection[]) => {
+    pushHistory();
+    setSections(next);
+  };
+
+  const handleSectionAdd = (type: HomeSectionType) => {
+    if (sections.length >= MAX_HOME_SECTIONS) return;
+    applySections([...sections, createHomeSection(type)]);
+  };
+
+  const handleSectionDuplicate = (id: string) => {
+    const sec = sections.find((x) => x.id === id);
+    if (!sec || sections.length >= MAX_HOME_SECTIONS) return;
+    applySections([...sections, duplicateHomeSection(sec)]);
+  };
+
+  const handleSectionDelete = (id: string) => {
+    applySections(sections.filter((x) => x.id !== id));
+    if (activeV2SectionId === id) setActiveV2SectionId(null);
+    if (selectedSectionId === id) setSelectedSectionId(null);
+  };
+
+  const handleSectionReorder = (from: number, to: number) => {
+    if (to < 0 || to >= sections.length) return;
+    const next = [...sections];
+    [next[from], next[to]] = [next[to], next[from]];
+    applySections(next);
+  };
+
+  const handleSectionToggleVisible = (id: string) => {
+    applySections(sections.map((x) => (x.id === id ? { ...x, visible: !x.visible } : x)));
+  };
+
+  const handleSectionChange = (next: HomeSection) => {
+    applySections(sections.map((x) => (x.id === next.id ? next : x)));
+  };
+
+  const updateV2 = (patch: Partial<StoreV2Settings>) => {
+    pushHistory();
+    setV2((prev) => ({ ...prev, ...patch }));
+  };
+
+  /** Réinitialiser un groupe v2 aux valeurs enregistrées. */
+  const resetV2Group = (group: keyof StoreV2Settings) => {
+    pushHistory();
+    setV2((prev) => ({ ...prev, [group]: JSON.parse(JSON.stringify(savedV2[group])) }));
+  };
+
+  const resetProductBlocks = () => {
+    pushHistory();
+    setV2((prev) => ({ ...prev, productPage: { ...prev.productPage, blocksOrder: [...savedV2.productPage.blocksOrder] } }));
+  };
+
+  /** Assistant IA — applique la proposition validée par le marchand. */
+  const applyAssistant = (p: AssistantProposal) => {
+    pushHistory();
+    if (p.target === "hero") {
+      setSections((prev) => prev.map((x) =>
+        x.type === "hero" ? { ...x, title: p.title, description: p.body, primaryButton: { ...x.primaryButton, text: p.cta } } : x
+      ));
+      setStorefront((prev) => ({ ...prev, hero: { ...prev.hero, title: p.title, description: p.body, primaryButton: { ...prev.hero.primaryButton, text: p.cta } } }));
+    } else if (p.target === "announcement") {
+      setConfig((prev) => ({ ...prev, announcementText: p.title.fr, showAnnouncement: true }));
+    } else if (p.target === "promoBanner") {
+      setSections((prev) => prev.map((x) =>
+        x.type === "promoBanner" ? { ...x, title: p.title, description: p.body, buttonText: p.cta } : x
+      ));
+    } else if (p.target === "faq" && p.faq) {
+      setSections((prev) => prev.map((x) =>
+        x.type === "faq"
+          ? { ...x, items: p.faq!.map((f, i) => ({ id: `ai_${Date.now().toString(36)}_${i}`, question: f.question, answer: f.answer })) }
+          : x
+      ));
+    }
+  };
+
+  /** Réinitialiser TOUT le brouillon aux dernières valeurs enregistrées. */
+  const resetAll = () => {
+    if (!isDirty) return;
+    if (!window.confirm("Réinitialiser toutes les modifications non enregistrées ?")) return;
+    pushHistory();
+    setSections(JSON.parse(JSON.stringify(savedSections)));
+    setV2(JSON.parse(JSON.stringify(savedV2)));
+    setStorefront(JSON.parse(JSON.stringify(savedStorefront)));
+    setConfig(JSON.parse(JSON.stringify(savedConfig)));
+    setActiveThemeId(savedThemeId);
+  };
 
   /* ---------------------------------------------------------------- */
   /* Chargement                                                        */
@@ -158,6 +338,7 @@ export default function Customize() {
         // 2) Contenu de la page d'accueil (/tenants/{uid}/settings/storefront)
         let loadedStorefront: StorefrontSettings;
         const sfSnap = await getDoc(doc(db, "tenants", user.uid, "settings", "storefront"));
+        const sfRaw = sfSnap.exists() ? (sfSnap.data() as Record<string, unknown>) : undefined;
         if (sfSnap.exists()) {
           loadedStorefront = mergeStorefrontSettings(sfSnap.data() as Partial<StorefrontSettings>);
         } else {
@@ -195,6 +376,15 @@ export default function Customize() {
         setSavedConfig(loadedConfig);
         setSavedStorefront(loadedStorefront);
         setSavedThemeId(themeId);
+
+        // T2 — sections v2 + réglages v2 du même doc (fallback défauts).
+        const loadedSections = mergeSections(sfRaw).sections;
+        const rawV2 = (sfRaw as { v2?: Partial<StoreV2Settings> } | undefined)?.v2;
+        const loadedV2: StoreV2Settings = rawV2 ? { ...defaultV2Settings(), ...rawV2 } : defaultV2Settings();
+        setSections(loadedSections);
+        setV2(loadedV2);
+        setSavedSections(loadedSections);
+        setSavedV2(loadedV2);
 
         // 3) Listes pour les éditeurs + aperçu fidèle
         const [catsSnap, prodsSnap, ordersSnap] = await Promise.all([
@@ -325,15 +515,21 @@ export default function Customize() {
           config: newConfig,
         }, { merge: true });
 
-        // 2) Contenu de la page d'accueil -> /tenants/{uid}/settings/storefront (merge)
-        await setDoc(doc(db, "tenants", user.uid, "settings", "storefront"),
-          JSON.parse(JSON.stringify(storefront)),
-          { merge: true });
+        // 2) Contenu de la page d'accueil + sections v2 + réglages v2 -> /tenants/{uid}/settings/storefront (merge)
+        await setDoc(doc(db, "tenants", user.uid, "settings", "storefront"), {
+          ...JSON.parse(JSON.stringify(storefront)),
+          sections: JSON.parse(JSON.stringify(sections)),
+          v2: JSON.parse(JSON.stringify(v2)),
+        }, { merge: true });
       }
       setConfig(newConfig);
       setSavedConfig(newConfig);
       setSavedStorefront(JSON.parse(JSON.stringify(storefront)));
+      setSavedSections(JSON.parse(JSON.stringify(sections)));
+      setSavedV2(JSON.parse(JSON.stringify(v2)));
       setSavedThemeId(activeThemeId);
+      setUndoStack([]);
+      setRedoStack([]);
 
       localStorage.setItem("dzbuild_active_theme", activeThemeId);
       localStorage.setItem("dzbuild_store_name", newConfig.storeName);
@@ -347,6 +543,35 @@ export default function Customize() {
       setIsSaving(false);
     }
   };
+
+  /* ---------------------------------------------------------------- */
+  /* T2 — Raccourcis clavier : Ctrl/Cmd+S enregistrer, Ctrl+Z annuler  */
+  /* ---------------------------------------------------------------- */
+
+  const shortcutsRef = useRef({ save: () => {}, undo: () => {}, redo: () => {}, dirty: false, saving: false });
+  shortcutsRef.current = { save: handleSave, undo, redo, dirty: isDirty, saving: isSaving };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      if (k === "s") {
+        e.preventDefault();
+        if (shortcutsRef.current.dirty && !shortcutsRef.current.saving) shortcutsRef.current.save();
+      } else if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        shortcutsRef.current.undo();
+      } else if ((k === "z" && e.shiftKey) || k === "y") {
+        e.preventDefault();
+        shortcutsRef.current.redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+
 
   const handleCancel = () => {
     setConfig(savedConfig);
@@ -387,131 +612,58 @@ export default function Customize() {
               <div className="space-y-3">
                 <div className="relative mb-4">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                  <input type="text" placeholder="Rechercher une section..." className="w-full bg-[#1e1e24] border border-neutral-800 rounded-xl py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  <input type="text" value={panelSearch} onChange={(e) => setPanelSearch(e.target.value)} placeholder="Rechercher une section..." className="w-full bg-[#1e1e24] border border-neutral-800 rounded-xl py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" aria-label="Rechercher une section" />
                 </div>
 
                 {/* Réglages globaux */}
                 <div className="flex flex-col gap-2">
-                  <div className="flex flex-col gap-0.5 p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl cursor-pointer hover:border-neutral-600" onClick={() => setActiveMenu("colors")}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-white flex items-center gap-2">
-                        <span className="text-base">🇦🇪</span> Langue de la boutique
-                      </span>
-                      <ChevronRight size={16} className="text-neutral-500" />
-                    </div>
-                    <span className="text-xs text-neutral-500 ml-6">Arabe ou Français</span>
-                  </div>
+                  <GroupListItem menu="language" icon={<span className="text-base">🌐</span>} label="Langue de la boutique" hint="Arabe (RTL) ou Français" search={panelSearch} onSelect={() => setActiveMenu("language")} />
+                  <GroupListItem menu="header" icon={<Store size={16} className="text-neutral-400" />} label="En-tête et Logo" hint="Logo, couleurs, styles de barre" search={panelSearch} onSelect={() => setActiveMenu("header")} />
+                  <GroupListItem menu="headerV2" icon={<Menu size={16} className="text-neutral-400" />} label="Éléments de l'en-tête" hint="Recherche, panier, sticky, langue" search={panelSearch} onSelect={() => setActiveMenu("headerV2")} />
+                  <GroupListItem menu="colors" icon={<div className="w-4 h-4 rounded-full bg-gradient-to-br from-amber-500 to-purple-500"></div>} label="Couleurs et Police" hint="Couleurs principales et polices" search={panelSearch} onSelect={() => setActiveMenu("colors")} />
 
-                  <div className="flex flex-col gap-0.5 p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl cursor-pointer hover:border-neutral-600" onClick={() => setActiveMenu("header")}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-white flex items-center gap-2">
-                        <Store size={16} className="text-neutral-400" /> En-tête et Logo
-                      </span>
-                      <ChevronRight size={16} className="text-neutral-500" />
-                    </div>
-                    <span className="text-xs text-neutral-500 ml-6">Logo et barre de navigation</span>
-                  </div>
-
-                  <div className="flex flex-col gap-0.5 p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl cursor-pointer hover:border-neutral-600" onClick={() => setActiveMenu("colors")}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-white flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-amber-500 to-purple-500"></div> Couleurs et Police
-                      </span>
-                      <ChevronRight size={16} className="text-neutral-500" />
-                    </div>
-                    <span className="text-xs text-neutral-500 ml-6">Couleurs principales et polices</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl">
+                  <div className="flex items-center justify-between p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl cursor-pointer hover:border-neutral-600" onClick={() => updateV2({ header: { ...v2.header, showSearch: !v2.header.showSearch } })} role="button" tabIndex={0} aria-label="Barre de recherche">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center text-neutral-400">
                         <Search size={16} />
                       </div>
                       <span className="text-sm font-bold text-white">Barre de recherche</span>
                     </div>
-                    <div
-                      className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${config.showSearch ? "bg-amber-500" : "bg-neutral-600"}`}
-                      onClick={() => updateConfig("showSearch", !config.showSearch)}
-                    >
-                      <div className={`absolute top-0.5 left-0.5 bottom-0.5 w-4 rounded-full bg-white transition-transform ${config.showSearch ? "translate-x-5" : "translate-x-0"}`} />
+                    <div className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${v2.header.showSearch ? "bg-amber-500" : "bg-neutral-600"}`}>
+                      <div className={`absolute top-0.5 left-0.5 bottom-0.5 w-4 rounded-full bg-white transition-transform ${v2.header.showSearch ? "translate-x-5" : "translate-x-0"}`} />
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-0.5 p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl cursor-pointer hover:border-neutral-600" onClick={() => setActiveMenu("announcement")}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-white flex items-center gap-2">
-                        <div className="w-4 h-3 border-2 border-neutral-400 rounded-sm flex items-center justify-center">
-                          <div className="w-1.5 h-0.5 bg-neutral-400"></div>
-                        </div> Barre d'annonce
-                      </span>
-                      <ChevronRight size={16} className="text-neutral-500" />
-                    </div>
-                    <span className="text-xs text-neutral-500 ml-6">Message en haut de la boutique</span>
-                  </div>
+                  <GroupListItem menu="announcement" icon={<div className="w-4 h-3 border-2 border-neutral-400 rounded-sm flex items-center justify-center"><div className="w-1.5 h-0.5 bg-neutral-400"></div></div>} label="Barre d'annonce" hint="Message en haut de la boutique" search={panelSearch} onSelect={() => setActiveMenu("announcement")} />
+
+                  <GroupListItem menu="productCard" icon={<ShoppingBag size={16} className="text-neutral-400" />} label="Carte produit" hint="Apparence des cartes produits" search={panelSearch} onSelect={() => setActiveMenu("productCard")} />
+                  <GroupListItem menu="sorting" icon={<ArrowDown size={16} className="text-neutral-400" />} label="Tri des produits" hint="Ordre par défaut du catalogue" search={panelSearch} onSelect={() => setActiveMenu("sorting")} />
+                  <GroupListItem menu="priceFormat" icon={<Type size={16} className="text-neutral-400" />} label="Format des prix" hint="15000 DA · 15,000 DA · 15 000 DA" search={panelSearch} onSelect={() => setActiveMenu("priceFormat")} />
+                  <GroupListItem menu="productPage" icon={<Menu size={16} className="text-neutral-400" />} label="Page produit" hint="Ordre des blocs, galerie, barre mobile" search={panelSearch} onSelect={() => setActiveMenu("productPage")} />
+                  <GroupListItem menu="checkout" icon={<ShoppingBag size={16} className="text-neutral-400" />} label="Page de paiement" hint="Champs, disposition, textes" search={panelSearch} onSelect={() => setActiveMenu("checkout")} />
+                  <GroupListItem menu="footer" icon={<ExternalLink size={16} className="text-neutral-400" />} label="Pied de page" hint="À propos, réseaux, marque" search={panelSearch} onSelect={() => setActiveMenu("footer")} />
+                  <GroupListItem menu="helpWidget" icon={<Sparkles size={16} className="text-neutral-400" />} label="Widget d'aide" hint="Bouton flottant, canaux, FAQ" search={panelSearch} onSelect={() => setActiveMenu("helpWidget")} />
+                  <GroupListItem menu="seo" icon={<Search size={16} className="text-neutral-400" />} label="SEO" hint="Title, description, partage" search={panelSearch} onSelect={() => setActiveMenu("seo")} />
                 </div>
 
-                {/* Gestion des sections de la page d'accueil */}
+                {/* Assistant IA (validation marchand avant application) */}
                 <div className="pt-3">
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">
-                      Sections de la page d'accueil
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {storefront.sectionsOrder.map((sid, idx) => {
-                      // "trust" (sectionsOrder) correspond à la clé "trustBar" des réglages.
-                      // Garde "?." : une section inconnue ne doit jamais faire planter la page.
-                      const sectionKey: SectionKey = sid === "trust" ? "trustBar" : sid;
-                      const visible = storefront[sectionKey]?.visible ?? true;
-                      return (
-                        <div
-                          key={sid}
-                          className="flex items-center justify-between p-3 bg-[#1e1e24] border border-neutral-800 rounded-xl hover:border-neutral-600 transition-colors"
-                        >
-                          <div
-                            className="flex items-center gap-2.5 flex-1 cursor-pointer"
-                            onClick={() => setActiveMenu(sid)}
-                          >
-                            <GripVertical size={14} className="text-neutral-600" />
-                            <span className="text-sm font-bold text-white">{SECTION_LABELS[sid]}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => moveSection(sid, -1)}
-                              disabled={idx === 0}
-                              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30 transition-colors"
-                              title="Monter"
-                            >
-                              <ArrowUp size={14} />
-                            </button>
-                            <button
-                              onClick={() => moveSection(sid, 1)}
-                              disabled={idx === storefront.sectionsOrder.length - 1}
-                              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30 transition-colors"
-                              title="Descendre"
-                            >
-                              <ArrowDown size={14} />
-                            </button>
-                            <div
-                              className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${visible ? "bg-amber-500" : "bg-neutral-600"}`}
-                              onClick={() => setSectionVisible(sid, !visible)}
-                              title={visible ? "Masquer la section" : "Afficher la section"}
-                            >
-                              <div className={`absolute top-0.5 left-0.5 bottom-0.5 w-4 rounded-full bg-white transition-transform ${visible ? "translate-x-5" : "translate-x-0"}`} />
-                            </div>
-                            <ChevronRight
-                              size={16}
-                              className="text-neutral-500 cursor-pointer hover:text-neutral-300"
-                              onClick={() => setActiveMenu(sid)}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-neutral-500 mt-2 px-1">
-                    Flèches = réordonner · Interrupteur = afficher/masquer · Clic = modifier le contenu
-                  </p>
+                  <AssistantIAPanel storeName={config.storeName || ""} onApply={applyAssistant} />
+                </div>
+
+                {/* Gestion des sections de la page d'accueil (modèle v2) */}
+                <div className="pt-3">
+                  <HomeSectionsList
+                    sections={sections}
+                    search={panelSearch}
+                    activeSectionId={activeV2SectionId}
+                    onSelect={(id) => { setActiveV2SectionId(id); setSelectedSectionId(id); setActiveMenu("section_detail"); }}
+                    onReorder={handleSectionReorder}
+                    onToggleVisible={handleSectionToggleVisible}
+                    onDuplicate={handleSectionDuplicate}
+                    onDelete={handleSectionDelete}
+                    onAdd={handleSectionAdd}
+                  />
                 </div>
               </div>
             ) : (
@@ -830,52 +982,149 @@ export default function Customize() {
                     </div>
                   </div>
                 )}
+
+                {activeMenu === "language" && (
+                  <LanguageGroup
+                    language={(config.language === "fr" ? "fr" : "ar") as "fr" | "ar"}
+                    onLanguageChange={(v) => updateConfig("language", v)}
+                  />
+                )}
+
+                {activeMenu === "headerV2" && (
+                  <HeaderV2Group v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "productCard" && (
+                  <ProductCardGroup v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "sorting" && (
+                  <SortingGroup v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "priceFormat" && (
+                  <PriceFormatGroup v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "productPage" && (
+                  <ProductPageGroup v2={v2} onChange={updateV2} onResetBlocks={resetProductBlocks} />
+                )}
+
+                {activeMenu === "checkout" && (
+                  <CheckoutGroup v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "footer" && (
+                  <FooterGroup v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "helpWidget" && (
+                  <HelpWidgetGroup v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "seo" && (
+                  <SeoGroup v2={v2} onChange={updateV2} />
+                )}
+
+                {activeMenu === "section_detail" && activeV2Section && (
+                  <SectionDetailEditor
+                    section={activeV2Section}
+                    products={editorProducts.map((p) => ({ id: p.id, name: p.name || p.nameAr || p.id }))}
+                    categories={editorCategories.map((c) => ({ id: c.id, name: c.name || c.id }))}
+                    onChange={handleSectionChange}
+                    onBack={() => { setActiveV2SectionId(null); setActiveMenu("main"); }}
+                  />
+                )}
               </div>
             )}
           </div>
 
-          <div className="p-4 border-t border-neutral-800 bg-[#1a1a24] flex items-center justify-between gap-2">
-            <button
-              onClick={handleCancel}
-              disabled={!isDirty || isSaving}
-              className={`px-3 py-2 border rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
-                isDirty && !isSaving
-                  ? "border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800"
-                  : "border-neutral-800 text-neutral-600 cursor-not-allowed"
-              }`}
-              title="Restaurer la dernière version enregistrée"
-            >
-              <Undo2 size={14} />
-              {cancelledFlash ? "Annulé !" : "Annuler"}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving || !isDirty}
-              className={`flex-1 bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                isSaving || !isDirty ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              {isSaving ? <RotateCw className="w-4 h-4 animate-spin" /> : (savedSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />)}
-              {savedSuccess ? "Enregistré !" : isDirty ? "Enregistrer les modifications" : "À jour"}
-            </button>
-            <button
-              onClick={handleLoadDemo}
-              disabled={Boolean(demoBusy)}
-              title="Charger des catégories, produits, avis et FAQ de démonstration (supprimables en un clic)"
-              className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-sm py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-            >
-              {demoBusy === "load" ? <RotateCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {demoBusy === "load" ? "Chargement…" : "Charger les données de démo"}
-            </button>
-            <button
-              onClick={handleRemoveDemo}
-              disabled={Boolean(demoBusy)}
-              title="Supprimer uniquement les produits et catégories de démonstration"
-              className="bg-transparent hover:bg-red-500/10 text-red-400 font-bold text-sm py-2 px-3 rounded-lg border border-red-500/30 transition-colors disabled:opacity-50"
-            >
-              {demoBusy === "remove" ? "…" : "Supprimer la démo"}
-            </button>
-            {demoNotice && <span className="text-[11px] text-neutral-400 max-w-[240px] truncate" title={demoNotice}>{demoNotice}</span>}
+          <div className="p-3 border-t border-neutral-800 bg-[#1a1a24] flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={resetAll}
+                disabled={!isDirty || isSaving}
+                title="Réinitialiser toutes les modifications non enregistrées"
+                className={`px-3 py-2 border rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                  isDirty && !isSaving
+                    ? "border-red-500/40 text-red-400 hover:bg-red-500/10"
+                    : "border-neutral-800 text-neutral-600 cursor-not-allowed"
+                }`}
+              >
+                <RotateCw size={14} /> Réinitialiser
+              </button>
+              <button
+                onClick={undo}
+                disabled={undoStack.length === 0 || isSaving}
+                title="Annuler (Ctrl+Z)"
+                className={`p-2 rounded-lg transition-colors ${undoStack.length > 0 && !isSaving ? "border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800" : "text-neutral-700 cursor-not-allowed"}`}
+                aria-label="Annuler"
+              >
+                <Undo2 size={14} />
+              </button>
+              <button
+                onClick={redo}
+                disabled={redoStack.length === 0 || isSaving}
+                title="Rétablir (Ctrl+Shift+Z)"
+                className={`p-2 rounded-lg transition-colors ${redoStack.length > 0 && !isSaving ? "border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800" : "text-neutral-700 cursor-not-allowed"}`}
+                aria-label="Rétablir"
+              >
+                <Redo2 size={14} />
+              </button>
+              <button
+                onClick={() => setEyeMode((e) => !e)}
+                title={eyeMode ? "Réafficher les repères d'édition" : "Prévisualiser sans repères d'édition"}
+                className={`p-2 rounded-lg transition-colors ${eyeMode ? "bg-amber-500 text-black" : "border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800"}`}
+                aria-pressed={eyeMode}
+                aria-label="Mode aperçu sans repères"
+              >
+                <Eye size={14} />
+              </button>
+              <span className={`text-[11px] font-bold px-2 py-1 rounded-md ${isDirty ? "bg-amber-500/15 text-amber-400" : "bg-neutral-800 text-neutral-500"}`} title={isDirty ? "Pense à enregistrer (Ctrl+S)" : "Tout est enregistré"}>
+                {isDirty ? "● Non enregistré" : "✓ À jour"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-1 justify-end flex-wrap">
+              <button
+                onClick={handleLoadDemo}
+                disabled={Boolean(demoBusy)}
+                title="Charger des catégories, produits, avis et FAQ de démonstration (supprimables en un clic)"
+                className="px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              >
+                {demoBusy === "load" ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                {demoBusy === "load" ? "Chargement…" : "Données de démo"}
+              </button>
+              <button
+                onClick={handleRemoveDemo}
+                disabled={Boolean(demoBusy)}
+                title="Supprimer uniquement les produits et catégories de démonstration"
+                className="px-2.5 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              >
+                {demoBusy === "remove" ? "…" : "Suppr. démo"}
+              </button>
+              <a
+                href={`/store/${tenantData?.storeUrl || ""}`}
+                target="_blank"
+                rel="noreferrer"
+                title="Ouvrir la boutique publique dans un nouvel onglet"
+                className="px-3 py-2 rounded-lg border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-bold flex items-center gap-1.5 transition-colors"
+              >
+                <ExternalLink size={14} /> Voir la boutique
+              </a>
+              <button
+                onClick={handleSave}
+                disabled={isSaving || !isDirty}
+                className={`px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm flex items-center justify-center gap-2 transition-colors ${
+                  isSaving || !isDirty ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                title="Enregistrer (Ctrl+S)"
+              >
+                {isSaving ? <RotateCw className="w-4 h-4 animate-spin" /> : (savedSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />)}
+                {savedSuccess ? "Enregistré !" : isDirty ? "Enregistrer" : "À jour"}
+              </button>
+            </div>
+            {demoNotice && <span className="text-[11px] text-neutral-400 max-w-[240px] truncate w-full" title={demoNotice}>{demoNotice}</span>}
           </div>
         </div>
 
@@ -892,7 +1141,15 @@ export default function Customize() {
                 <Monitor size={16} />
               </button>
               <button
+                onClick={() => setDeviceMode("tablet")}
+                title="Aperçu tablette"
+                className={`p-1.5 rounded-md transition-colors ${deviceMode === "tablet" ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"}`}
+              >
+                <Tablet size={16} />
+              </button>
+              <button
                 onClick={() => setDeviceMode("mobile")}
+                title="Aperçu mobile"
                 className={`p-1.5 rounded-md transition-colors ${deviceMode === "mobile" ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"}`}
               >
                 <Smartphone size={16} />
@@ -932,24 +1189,37 @@ export default function Customize() {
           </div>
           {/* Interactive Live Theme Store View */}
           <div className={`flex-1 overflow-y-auto bg-[#fafafa] flex justify-center ${deviceMode === "mobile" ? "p-4" : ""}`}>
-            <div className={`transition-all duration-300 ${deviceMode === "mobile" ? "w-[390px] border-4 border-neutral-800 rounded-3xl shadow-xl overflow-hidden bg-white my-auto" : "w-full"}`}>
+            <div className={`transition-all duration-300 ${
+              deviceMode === "mobile" ? "w-[390px] border-4 border-neutral-800 rounded-3xl shadow-xl overflow-hidden bg-white my-auto"
+              : deviceMode === "tablet" ? "w-[768px] border-4 border-neutral-800 rounded-2xl shadow-xl overflow-hidden bg-white my-auto"
+              : "w-full"}`}>
               <ThemeStorePreview
                 theme={currentTheme}
                 config={{ ...config, isActivated: true }}
                 storefront={storefront}
-                sectionsV2={sectionsV2}
+                sectionsV2={sections}
+                v2Settings={v2}
+                selectedSectionId={selectedSectionId}
+                disableEditorOverlays={eyeMode}
                 storeSlug={auth.currentUser?.uid}
                 currentView={previewView}
                 actualProducts={editorProducts}
                 actualCategories={editorCategories}
                 soldCounts={soldCounts}
                 onSectionSelect={(sectionId) => {
-                  if (sectionId === "header") { setActiveMenu("header"); }
-                  if (sectionId === "hero_banner") { setActiveMenu("hero"); }
-                  if (sectionId === "trust") { setActiveMenu("trust"); }
-                  if (sectionId === "categories") { setActiveMenu("categories"); }
-                  if (sectionId === "featured") { setActiveMenu("featured"); }
-                  if (sectionId === "announcement") { setActiveMenu("announcement"); }
+                  if (sectionId === "header") { setActiveMenu("header"); setSelectedSectionId("header"); return; }
+                  if (sectionId === "hero_banner") { setActiveMenu("hero"); setSelectedSectionId("hero_banner"); return; }
+                  if (sectionId === "trust") { setActiveMenu("trust"); setSelectedSectionId("trust"); return; }
+                  if (sectionId === "categories") { setActiveMenu("categories"); setSelectedSectionId("categories"); return; }
+                  if (sectionId === "featured") { setActiveMenu("featured"); setSelectedSectionId("featured"); return; }
+                  if (sectionId === "announcement") { setActiveMenu("announcement"); setSelectedSectionId("announcement"); return; }
+                  // Sections v2 : sélection + ouverture de l'éditeur dédié
+                  const sec = sections.find((x) => x.id === sectionId);
+                  if (sec) {
+                    setSelectedSectionId(sectionId);
+                    setActiveV2SectionId(sectionId);
+                    setActiveMenu("section_detail");
+                  }
                 }}
               />
             </div>

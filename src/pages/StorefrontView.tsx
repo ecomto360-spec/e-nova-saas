@@ -110,6 +110,46 @@ export default function StorefrontView() {
     return () => window.clearTimeout(t);
   }, [loading]);
 
+  /* T2 — SEO : title, meta description, Open Graph et schema.org (v2.seo). */
+  useEffect(() => {
+    const seo = v2Settings?.seo;
+    const title = seo?.title?.trim() ? seo.title : `${storeName} — Boutique en ligne`;
+    const desc = seo?.description?.trim() ? seo.description : "Boutique en ligne algérienne : paiement à la livraison et livraison dans les 58 wilayas.";
+    document.title = title;
+    const setMeta = (attr: string, key: string, content: string) => {
+      let el = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+    setMeta("name", "description", desc);
+    if (seo?.keywords?.trim()) setMeta("name", "keywords", seo.keywords);
+    setMeta("property", "og:title", title);
+    setMeta("property", "og:description", desc);
+    setMeta("property", "og:type", "website");
+    if (seo?.shareImage?.trim()) setMeta("property", "og:image", seo.shareImage);
+    setMeta("name", "twitter:card", "summary_large_image");
+    let ld = document.getElementById("enova-store-schema");
+    if (!ld) {
+      ld = document.createElement("script");
+      ld.id = "enova-store-schema";
+      (ld as HTMLScriptElement).type = "application/ld+json";
+      document.head.appendChild(ld);
+    }
+    ld.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "OnlineStore",
+      name: storeName,
+      description: desc,
+      areaServed: "DZ",
+      currenciesAccepted: "DZD",
+      paymentAccepted: "Cash on delivery",
+    });
+  }, [v2Settings, storeName]);
+
   useEffect(() => {
     let unsubscribeAuth: (() => void) | undefined;
 
