@@ -23,6 +23,7 @@ import {
   ArrowDown,
   GripVertical,
   Undo2,
+  Sparkles
 } from "lucide-react";
 import { auth, db } from "../lib/firebase";
 import { useTenant } from "../contexts/TenantContext";
@@ -31,6 +32,9 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase
 import { STORE_THEMES } from "../data/themesData";
 import type { StoreDemoProduct } from "../data/themesData";
 import { ThemeStorePreview } from "../components/storefront/ThemeStorePreview";
+import { loadDemoStoreData, removeDemoStoreData } from "../lib/storefrontDemoService";
+import { mergeSections } from "../data/storefrontDefaults";
+import type { HomeSection } from "../types/storefrontSections";
 import { StoreCustomizerConfig, defaultStoreConfig } from "../components/admin/StoreCustomizerConfig";
 import { resizeAndConvertImageToBase64, getImageDimensions } from "../components/admin/storefront/editorUI";
 import { HeroEditor } from "../components/admin/storefront/HeroEditor";
@@ -89,6 +93,40 @@ export default function Customize() {
   const [editorCategories, setEditorCategories] = useState<EditorCategoryLite[]>([]);
   const [editorProducts, setEditorProducts] = useState<StoreDemoProduct[]>([]);
   const [soldCounts, setSoldCounts] = useState<Record<string, number>>({});
+  /** T1 — données de démo (chargement / suppression en un clic). */
+  const [demoBusy, setDemoBusy] = useState<"" | "load" | "remove">("");
+  const [demoNotice, setDemoNotice] = useState("");
+  const sectionsV2: HomeSection[] = mergeSections(storefront as unknown as Record<string, unknown>).sections;
+
+  const handleLoadDemo = async () => {
+    const user = auth.currentUser;
+    if (!user?.uid || demoBusy) return;
+    setDemoBusy("load");
+    setDemoNotice("");
+    try {
+      const res = await loadDemoStoreData(user.uid);
+      setDemoNotice(`Démo chargée : ${res.products} produits, ${res.categories} catégories, avis et FAQ. Rechargez pour voir la boutique publique.`);
+      window.location.reload();
+    } catch {
+      setDemoNotice("Échec du chargement de la démo. Réessayez.");
+      setDemoBusy("");
+    }
+  };
+
+  const handleRemoveDemo = async () => {
+    const user = auth.currentUser;
+    if (!user?.uid || demoBusy) return;
+    setDemoBusy("remove");
+    setDemoNotice("");
+    try {
+      const res = await removeDemoStoreData(user.uid);
+      setDemoNotice(`Démo supprimée (${res.products} produits, ${res.categories} catégories).`);
+      window.location.reload();
+    } catch {
+      setDemoNotice("Échec de la suppression. Réessayez.");
+      setDemoBusy("");
+    }
+  };
 
   const isDirty =
     JSON.stringify(config) !== JSON.stringify(savedConfig) ||
@@ -820,6 +858,24 @@ export default function Customize() {
               {isSaving ? <RotateCw className="w-4 h-4 animate-spin" /> : (savedSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />)}
               {savedSuccess ? "Enregistré !" : isDirty ? "Enregistrer les modifications" : "À jour"}
             </button>
+            <button
+              onClick={handleLoadDemo}
+              disabled={Boolean(demoBusy)}
+              title="Charger des catégories, produits, avis et FAQ de démonstration (supprimables en un clic)"
+              className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-sm py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            >
+              {demoBusy === "load" ? <RotateCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {demoBusy === "load" ? "Chargement…" : "Charger les données de démo"}
+            </button>
+            <button
+              onClick={handleRemoveDemo}
+              disabled={Boolean(demoBusy)}
+              title="Supprimer uniquement les produits et catégories de démonstration"
+              className="bg-transparent hover:bg-red-500/10 text-red-400 font-bold text-sm py-2 px-3 rounded-lg border border-red-500/30 transition-colors disabled:opacity-50"
+            >
+              {demoBusy === "remove" ? "…" : "Supprimer la démo"}
+            </button>
+            {demoNotice && <span className="text-[11px] text-neutral-400 max-w-[240px] truncate" title={demoNotice}>{demoNotice}</span>}
           </div>
         </div>
 
@@ -881,6 +937,8 @@ export default function Customize() {
                 theme={currentTheme}
                 config={{ ...config, isActivated: true }}
                 storefront={storefront}
+                sectionsV2={sectionsV2}
+                storeSlug={auth.currentUser?.uid}
                 currentView={previewView}
                 actualProducts={editorProducts}
                 actualCategories={editorCategories}

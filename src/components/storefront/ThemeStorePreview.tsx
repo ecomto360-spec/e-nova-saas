@@ -57,6 +57,18 @@ import { ALGERIAN_WILAYAS as WILAYAS_LIST } from "../../data/landingData";
 import { getCommunesForWilaya } from "../../data/algerianCommunes";
 import { isPhoneBlacklisted } from "../../lib/blacklist";
 import { cleanAndLimitPhone, getPhoneMaxLength, validatePhoneNumber } from "../../lib/phoneUtils";
+// T1 — système de sections v2, panier, modale options, widget d'aide.
+import { useStorefrontCart } from "../../lib/storefrontCart";
+import { ProductCardV2 } from "./sections/ProductCardV2";
+import { OptionsModal } from "./sections/OptionsModal";
+import { MiniCart } from "./sections/MiniCart";
+import { CartCheckoutModal } from "./sections/CartCheckoutModal";
+import { ReviewsSectionView, FaqSectionView, PromoBannerSectionView, BrandInfoSectionView, TrustSectionView } from "./sections/ContentSections";
+import { HelpWidget } from "./HelpWidget";
+import type { StorefrontProductLite } from "./sections/sectionTypes";
+import type { HomeSection, StoreV2Settings } from "../../types/storefrontSections";
+import { migrateLegacySettings, defaultV2Settings } from "../../data/storefrontDefaults";
+import { CollectionView } from "./sections/CollectionView";
 
 const RenderStars = ({ count, reviewsCount }: { count?: number; reviewsCount?: number }) => {
   if (!count) return null;
@@ -79,6 +91,8 @@ const RenderStars = ({ count, reviewsCount }: { count?: number; reviewsCount?: n
   );
 };
 
+const defaultV2Card = defaultV2Settings().productCard;
+
 interface ThemeStorePreviewProps {
   config?: StoreCustomizerConfig;
   theme: StoreTheme;
@@ -95,10 +109,16 @@ interface ThemeStorePreviewProps {
   storefront?: StorefrontSettings;
   /** Nombre de ventes par productId (calculé depuis les commandes). */
   soldCounts?: Record<string, number>;
+  /** T1 — sections v2 (page d'accueil ordonnée). Absent -> migration v1. */
+  sectionsV2?: HomeSection[];
+  /** T1 — réglages globaux v2 (footer, widget d'aide, carte produit, prix). */
+  v2Settings?: StoreV2Settings;
+  /** Slug public (clé du panier localStorage). */
+  storeSlug?: string;
 }
 
 export function ThemeStorePreview({ theme, config, customStoreName, customLogoUrl, isStandaloneView = false, actualProducts,
-  actualCategories, currentView = "home", onSectionSelect, initialProductId, tenantId, storefront, soldCounts }: ThemeStorePreviewProps) {
+  actualCategories, currentView = "home", onSectionSelect, initialProductId, tenantId, storefront, soldCounts, sectionsV2, v2Settings, storeSlug }: ThemeStorePreviewProps) {
   
   const isActivated = config?.isActivated || false;
 
@@ -285,12 +305,16 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   const displayCategories = useMemo(() => {
     if (actualCategories !== undefined) {
-      const mapped = actualCategories.map(c => ({
-        id: c.name, // The product.category usually matches the category name in the db
-        name: c.name,
-        nameAr: c.name,
-        image: c.imageUrl,
-        productCount: c.productCount || 0
+      const rawCats = actualCategories as Array<Record<string, unknown>>;
+      const mapped = rawCats.map(c => ({
+        id: String(c.name ?? ""), // product.category = nom de la catégorie dans le modèle réel
+        name: String(c.name ?? ""),
+        nameAr: String((c as { nameAr?: string }).nameAr ?? c.name ?? ""),
+        image: (c.imageUrl as string) || (c.image as string) || undefined,
+        // Compteur recalculé depuis les produits (le champ productCount bd peut être périmé)
+        productCount: (actualProducts ?? []).filter(
+          (pr) => pr && typeof pr === "object" && String((pr as { category?: string }).category ?? "") === String(c.name ?? "")
+        ).length
       }));
       // Aucune catégorie enregistrée en base : on les déduit des produits
       // (ex. « Vêtements », « Général ») pour ne jamais montrer une section vide.
@@ -577,6 +601,206 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
     }
   };
 
+  // ===== T1 — sections v2, panier, modale options, toast, widget d'aide =====
+  const v2Sections = useMemo<HomeSection[]>(
+    () => (sectionsV2 && sectionsV2.length > 0 ? sectionsV2 : migrateLegacySettings(sf).sections),
+    [sectionsV2, sf]
+  );
+  const v2 = v2Settings;
+
+  const effectiveSlug = storeSlug || tenantId || "preview";
+  const cart = useStorefrontCart(effectiveSlug);
+  const [optionsProduct, setOptionsProduct] = useState<StorefrontProductLite | null>(null);
+  const [miniCartOpen, setMiniCartOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [cartCheckoutOpen, setCartCheckoutOpen] = useState(false);
+
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = window.setTimeout(() => setToastMsg(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [toastMsg]);
+
+  /** Produits normalisés pour les composants v2 (cartes, modale, mini-panier). */
+  const categoryNameOf = (raw: string, isReal: boolean): string => {
+    if (!isReal) return raw; // produits du thème : category = nom lisible
+    const cat = (actualCategories as Array<Record<string, unknown>> | undefined)?.find(
+      (c) => String(c.id ?? "") === raw || String(c.name ?? "") === raw
+    );
+    if (!cat) return raw;
+    return c_lang === "ar" ? String(cat.nameAr ?? cat.name ?? raw) : String(cat.name ?? raw);
+  };
+  const liteProducts = useMemo<StorefrontProductLite[]>(() => {
+    const src = actualProducts ? actualProducts : theme.products;
+    return (src as Array<Record<string, unknown>>).map((p, i) => {
+      const raw = p as {
+        id?: string; name?: string; nameAr?: string; price?: number; originalPrice?: number;
+        image?: string; images?: string[]; category?: string; isFeatured?: boolean; stock?: number;
+        description?: string; descriptionAr?: string; variants?: unknown; status?: string;
+      };
+      return {
+        id: String(raw.id ?? "p" + i),
+        name: String(raw.name ?? ""),
+        nameAr: String(raw.nameAr ?? raw.name ?? ""),
+        price: Number(raw.price ?? 0),
+        oldPrice: raw.originalPrice ? Number(raw.originalPrice) : null,
+        images: raw.images && raw.images.length > 0 ? raw.images.map(String) : raw.image ? [String(raw.image)] : [],
+        category: categoryNameOf(String(raw.category ?? ""), Boolean(actualProducts)),
+        isFeatured: Boolean(raw.isFeatured),
+        stock: typeof raw.stock === "number" ? raw.stock : 99,
+        variants: Array.isArray(raw.variants)
+          ? (raw.variants as Array<Record<string, unknown>>).map((v) => ({
+              name: String(v.name ?? ""),
+              nameAr: String(v.nameAr ?? v.name ?? ""),
+              options: Array.isArray(v.options)
+                ? (v.options as Array<unknown>).map((o) => {
+                    const opt = typeof o === "string" ? { value: o } : (o as Record<string, unknown>);
+                    return { label: String(opt.value ?? opt.label ?? ""), labelAr: String(opt.valueAr ?? opt.labelAr ?? opt.value ?? opt.label ?? "") };
+                })
+                : [],
+            }))
+          : [],
+        description: String(raw.description ?? ""),
+        descriptionAr: String(raw.descriptionAr ?? raw.description ?? ""),
+        isDemo: !actualProducts,
+      };
+    });
+  }, [actualProducts, theme.products]);
+
+  const relatedProducts = useMemo(() => {
+    const inCart = new Set(cart.items.map((i) => i.productId));
+    return liteProducts
+      .filter((p) => !inCart.has(p.id) && p.stock > 0)
+      .sort((a, b) => (soldCounts?.[b.id] ?? 0) - (soldCounts?.[a.id] ?? 0))
+      .slice(0, 3)
+      .map((p) => ({ id: p.id, name: c_lang === "ar" ? p.nameAr : p.name, image: p.images[0] || "", price: p.price }));
+  }, [liteProducts, cart.items, soldCounts, c_lang]);
+
+  /** Normalise un produit brut (bd ou thème) en StorefrontProductLite. */
+  const toLiteProduct = (product: unknown, i = 0): StorefrontProductLite => {
+    const raw = product as Record<string, unknown>;
+    const v = liteProducts.find((lp) => lp.id === String(raw.id ?? ""));
+    if (v) return v;
+    return {
+      id: String(raw.id ?? "p" + i),
+      name: String(raw.name ?? ""),
+      nameAr: String(raw.nameAr ?? raw.name ?? ""),
+      price: Number(raw.price ?? 0),
+      oldPrice: raw.originalPrice ? Number(raw.originalPrice) : null,
+      images: Array.isArray(raw.images) && raw.images.length ? raw.images.map(String) : raw.image ? [String(raw.image)] : [],
+      category: categoryNameOf(String(raw.category ?? ""), Boolean(actualProducts)),
+      isFeatured: Boolean(raw.featured ?? raw.isFeatured),
+      stock: typeof raw.stock === "number" ? raw.stock : 99,
+      variants: [],
+      description: String(raw.description ?? ""),
+      descriptionAr: String(raw.descriptionAr ?? raw.description ?? ""),
+      isDemo: !actualProducts,
+    };
+  };
+
+  const handleQuickAdd = (p: StorefrontProductLite): void => {
+    if (p.stock <= 0) return;
+    if (p.variants && p.variants.length > 0) { setOptionsProduct(p); return; }
+    cart.addItem({
+      productId: p.id,
+      name: c_lang === "ar" ? p.nameAr : p.name,
+      image: p.images[0] || "",
+      price: p.price,
+      oldPrice: p.oldPrice,
+      qty: 1,
+      variantLabel: "",
+      category: p.category,
+    });
+    setToastMsg(c_lang === "ar" ? "تمت الإضافة إلى السلة ✓" : "Ajouté au panier ✓");
+  };
+
+  const handleOptionsAdd = (qty: number, variantLabel: string): void => {
+    if (!optionsProduct) return;
+    cart.addItem({
+      productId: optionsProduct.id,
+      name: c_lang === "ar" ? optionsProduct.nameAr : optionsProduct.name,
+      image: optionsProduct.images[0] || "",
+      price: optionsProduct.price,
+      oldPrice: optionsProduct.oldPrice,
+      qty,
+      variantLabel,
+      category: optionsProduct.category,
+    });
+    setOptionsProduct(null);
+    setToastMsg(c_lang === "ar" ? "تمت الإضافة إلى السلة ✓" : "Ajouté au panier ✓");
+  };
+
+  /** Ouverture de la fiche produit existante depuis une carte v2. */
+  const handleOpenLite = (p: StorefrontProductLite): void => {
+    const src = actualProducts ? actualProducts : theme.products;
+    const found = (src as Array<Record<string, unknown>>).find((x) => String(x.id ?? "") === p.id);
+    if (found) handleOpenProduct(found as unknown as StoreDemoProduct);
+  };
+
+  /** T1 — commande panier : crée la commande COD multi-articles (mêmes
+   * collections que la commande rapide), capture le panier abandonné,
+   * vide le panier. Retourne true en cas de succès. */
+  const handleCartOrder = async (form: {
+    name: string; phone: string; email: string; wilayaCode: number; commune: string;
+    address: string; notes: string; deliveryType: "home" | "office"; deliveryPrice: number;
+  }): Promise<boolean> => {
+    const effectiveTenantId = tenantId || auth.currentUser?.uid;
+    if (!effectiveTenantId || cart.items.length === 0) return false;
+    try {
+      if (await isPhoneBlacklisted(effectiveTenantId, form.phone)) {
+        alert(c_lang === "ar" ? "عذراً، هذا الرقم محظور من إتمام الطلبات في هذا المتجر." : "Désolé, ce numéro est sur liste noire pour cette boutique.");
+        return false;
+      }
+      const generatedOrderId = `ORD-${Math.floor(Math.random() * 90000) + 10000}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.random().toString(16).substring(2, 10).toUpperCase()}`;
+      const w = WILAYAS_LIST.find((x) => x.code === form.wilayaCode);
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const items = cart.items.map((it) => ({
+        productId: it.productId,
+        name: it.name,
+        price: it.price,
+        quantity: it.qty,
+        variants: { selection: it.variantLabel },
+        image: it.image,
+      }));
+      const orderData = {
+        orderNumber: generatedOrderId.substring(4, 10),
+        reference: generatedOrderId,
+        userId: effectiveTenantId,
+        client: form.name,
+        phone: form.phone,
+        email: form.email || "",
+        wilaya: w ? `${String(w.code).padStart(2, "0")} - ${w.arName}` : "",
+        commune: form.commune,
+        address: form.address || (form.deliveryType === "home" ? "Livraison à domicile" : "Point de relais"),
+        notes: form.notes,
+        itemsSummary: cart.items.map((it) => `${it.qty}x ${it.name}`).join(" + ").slice(0, 180),
+        total: cart.totalDA + form.deliveryPrice,
+        status: "En attente",
+        date: `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
+        createdAt: serverTimestamp(),
+        image: cart.items[0]?.image || "",
+        productImage: cart.items[0]?.image || "",
+        items,
+        shippingMethod: form.deliveryType === "home" ? "Livraison à domicile" : "Point de relais",
+        shippingCost: form.deliveryPrice,
+        source: "cart",
+      };
+      await addDoc(collection(db, "orders"), orderData);
+      await addDoc(collection(db, "tenants", effectiveTenantId, "orders"), orderData);
+      notifyCartRecovered(effectiveTenantId, form.phone, generatedOrderId);
+      try {
+        window.dispatchEvent(new CustomEvent("order_created", { detail: { ...orderData, createdAt: Date.now() } }));
+        localStorage.setItem("last_order_alert", JSON.stringify({ ...orderData, createdAt: Date.now() }));
+      } catch { /* alerte best-effort */ }
+      cart.clear();
+      return true;
+    } catch {
+      alert(c_lang === "ar" ? "حدث خطأ أثناء إرسال الطلب، حاول مرة أخرى." : "Erreur lors de l'envoi de la commande, réessayez.");
+      return false;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#fafafa] text-gray-800 flex flex-col font-sans" dir={isRtl ? "rtl" : "ltr"}>
       {/* Top Announcement Bar */}
@@ -649,11 +873,9 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
           <div className={`flex items-center gap-3 ${c_navStyle === 'centered' ? 'absolute right-4' : ''}`}>
             {c_showCartIcon && (
               <button 
-                onClick={() => {
-                  if ((actualProducts ? actualProducts : theme.products).length > 0) handleOpenProduct((actualProducts ? actualProducts : theme.products)[0]);
-                }}
+                onClick={() => setMiniCartOpen(true)}
                 className="relative p-2.5 rounded-full hover:bg-black/5 transition-colors"
-                title="السلة"
+                title={c_lang === "ar" ? "السلة" : "Panier"}
                 style={{ color: c_navTextColor }}
               >
                 {c_cartIconStyle === 'filled' ? (
@@ -664,12 +886,12 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                   <ShoppingBag className="w-5 h-5" />
                 )}
                 
-                {cartCount > 0 && (
+                {cart.count > 0 && (
                   <span 
                     className="absolute -top-1 -right-1 text-white text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center ring-2 ring-white shadow-sm"
                     style={{ backgroundColor: c_primaryColor }}
                   >
-                    {cartCount}
+                    {cart.count}
                   </span>
                 )}
               </button>
@@ -891,73 +1113,20 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-                    {featuredProducts.map((product) => (
-                      <div
-                        key={product.id}
-                        className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col group"
-                      >
-                        {/* Product Image Box */}
-                        <div className="relative aspect-[3/4] bg-gray-50 overflow-hidden cursor-pointer" onClick={() => handleOpenProduct(product)}>
-                          {product.image ? (
-                            <img
-                              src={product.image} alt={product.nameAr || product.name}
-                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-300">
-                              <ImageIcon size={32} />
-                            </div>
-                          )}
-                          {/* Badges */}
-                          {product.discountBadge && (
-                            <span className="absolute top-2.5 right-2.5 bg-amber-500 text-black text-[11px] font-black px-2.5 py-1 rounded-md shadow-sm">
-                              {product.discountBadge}
-                            </span>
-                          )}
-                          {product.originalPrice && product.originalPrice > product.price && (
-                            <span className="absolute top-2.5 left-2.5 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">
-                              -{Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}%
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Product Details */}
-                        <div className="p-4 flex-1 flex flex-col justify-between text-right">
-                          <div>
-                            <span className="text-[11px] text-gray-400 font-medium block mb-1">
-                              {product.categoryAr || product.category || (c_lang === "ar" ? "التصنيف" : "Catégorie")}
-                            </span>
-                            <h4
-                              onClick={() => handleOpenProduct(product)}
-                              className="font-bold text-sm text-gray-900 line-clamp-2 hover:text-amber-600 transition-colors cursor-pointer mb-2"
-                            >
-                              {product.nameAr || product.name || (c_lang === "ar" ? "منتج تجريبي" : "Produit")}
-                            </h4>
-                            <RenderStars count={product.rating} reviewsCount={product.reviewsCount} />
-                          </div>
-
-                          <div className="mt-2 pt-2 border-t border-gray-50 flex flex-col gap-3">
-                            <div className="flex items-baseline gap-2 justify-start">
-                              <span className="text-base sm:text-lg font-black text-gray-900">
-                                {product.price ? product.price.toLocaleString() : "0"} د.ج
-                              </span>
-                              {product.originalPrice && (
-                                <span className="text-xs text-gray-400 line-through">
-                                  {product.originalPrice.toLocaleString()} د.ج
-                                </span>
-                              )}
-                            </div>
-
-                            <button
-                              onClick={() => handleOpenProduct(product)}
-                              className="w-full py-2.5 px-3 rounded-xl text-xs font-bold text-white transition-all transform active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
-                            >
-                              <ShoppingBag className="w-3.5 h-3.5" />
-                              <span>{c_lang === "ar" ? "اختر الخيارات / اطلب" : "Choisir / Commander"}</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                    {featuredProducts.map((product, i) => (
+                      <React.Fragment key={product.id}>
+                      <ProductCardV2
+                        product={toLiteProduct(product, i)}
+                        card={defaultV2Card}
+                        priceFormat={v2Settings?.priceFormat ?? "plain"}
+                        lang={c_lang}
+                        isRtl={isRtl}
+                        primaryColor={c_primaryColor}
+                        onChooseOptions={(p) => setOptionsProduct(p)}
+                        onOpenProduct={handleOpenLite}
+                        onQuickAdd={handleQuickAdd}
+                      />
+                      </React.Fragment>
                     ))}
                   </div>
                 </div>
@@ -966,9 +1135,68 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
           ) : null,
         };
 
-        return sf.sectionsOrder.map((id) => (
-          <React.Fragment key={id}>{renderSection[id]}</React.Fragment>
-        ));
+        // T1 — rendu piloté par le tableau v2 (ordre + visibilité), avec
+        // rétro-compatibilité v1 (hero/trust/categories/featured existants).
+        const legacyByType: Record<string, React.ReactElement | null> = {
+          hero: renderSection.hero,
+          trust: renderSection.trust,
+          categories: renderSection.categories,
+          featured: renderSection.featured,
+        };
+        return v2Sections.map((sec) => {
+          if (!sec.visible) return null;
+          if (sec.type === "allProducts") return null; // bloc dédié existant plus bas
+          const legacy = legacyByType[sec.type];
+          if (legacy !== undefined) return <React.Fragment key={sec.id}>{legacy}</React.Fragment>;
+          switch (sec.type) {
+            case "promoBanner":
+              return (<React.Fragment key={sec.id}><PromoBannerSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "reviews":
+              return (<React.Fragment key={sec.id}><ReviewsSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} productReviews={[]} isPublicView={isStandaloneView} /></React.Fragment>);
+            case "faq":
+              return (<React.Fragment key={sec.id}><FaqSectionView section={sec} lang={c_lang} isRtl={isRtl} /></React.Fragment>);
+            case "brandInfo":
+              return (
+                <React.Fragment key={sec.id}>
+                <BrandInfoSectionView
+                  section={sec}
+                  lang={c_lang}
+                  isRtl={isRtl}
+                  storeName={c_storeName}
+                  logoUrl={c_logoUrl}
+                  stats={{
+                    products: liteProducts.length,
+                    orders: Object.values(soldCounts || {}).reduce((a, b) => a + (Number(b) || 0), 0),
+                    reviews: 0,
+                  }}
+                />
+                </React.Fragment>
+              );
+            case "collection":
+              return (
+                <React.Fragment key={sec.id}>
+                <CollectionView
+                  section={sec}
+                  sectionId={sec.id}
+                  lang={c_lang}
+                  isRtl={isRtl}
+                  primaryColor={c_primaryColor}
+                  headingColor="#111827"
+                  products={liteProducts}
+                  categories={sectionCategories.map((c) => ({ id: c.id, name: c.name, nameAr: c.nameAr || c.name, image: c.image, productCount: 0 }))}
+                  card={v2?.productCard ?? defaultV2Card}
+                  priceFormat={v2?.priceFormat ?? "space"}
+                  onChooseOptions={setOptionsProduct}
+                  onOpenProduct={handleOpenLite}
+                  onQuickAdd={handleQuickAdd}
+                  soldCounts={soldCounts}
+                />
+                </React.Fragment>
+              );
+            default:
+              return null; // textImage / vidéo : T2
+          }
+        });
       })()}
 
       {/* All Products Catalog with Filter Tabs (Matching Screenshot 4) */}
@@ -1001,90 +1229,28 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
         {filteredProducts.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
             {filteredProducts.map((product) => (
-              <div 
-                key={product.id}
-                className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col group"
-              >
-                {/* Product Image */}
-                <div 
-                  className="relative aspect-[3/4] bg-gray-50 overflow-hidden cursor-pointer" 
-                  onClick={() => handleOpenProduct(product)}
-                >
-                  
-                    {product.image ? (
-    <img 
-      src={product.image} alt={product.nameAr || product.name}
-      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-    />
-  ) : (
-    <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-300">
-      <ImageIcon size={32} />
-    </div>
-  )}
-                  {product.discountBadge && (
-                    <span className="absolute top-2.5 right-2.5 bg-amber-500 text-black text-[11px] font-black px-2.5 py-1 rounded-md shadow-sm">
-                      {product.discountBadge}
-                    </span>
-                  )}
-                  {product.originalPrice && product.originalPrice > product.price && (
-                    <span className="absolute top-2.5 left-2.5 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">
-                      -{Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}%
-                    </span>
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="p-4 flex-1 flex flex-col justify-between text-right">
-                  <div>
-                    <span className="text-[11px] text-gray-400 font-medium block mb-1">
-                      {product.categoryAr || product.category || "التصنيف"}
-                    </span>
-                    <h4 
-                      onClick={() => handleOpenProduct(product)}
-                      className="font-bold text-sm text-gray-900 line-clamp-2 hover:text-amber-600 transition-colors cursor-pointer mb-2"
-                    >
-                      {product.nameAr || product.name || "منتج تجريبي"}
-                    </h4>
-                    <RenderStars count={product.rating} reviewsCount={product.reviewsCount} />
-                  </div>
-
-                  <div className="mt-2 pt-2 border-t border-gray-50 flex flex-col gap-3">
-                    <div className="flex items-baseline gap-2 justify-start">
-                      <span className="text-base sm:text-lg font-black text-gray-900">
-                        {product.price ? product.price.toLocaleString() : "0"} د.ج
-                      </span>
-                      {product.originalPrice && (
-                        <span className="text-xs text-gray-400 line-through">
-                          {product.originalPrice.toLocaleString()} د.ج
-                        </span>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => handleOpenProduct(product)}
-                      className="w-full py-2.5 px-3 rounded-xl text-xs font-bold text-white transition-all transform active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
-                    >
-                      <ShoppingBag className="w-3.5 h-3.5" />
-                      <span>اختر الخيارات</span>
-                    </button>
-                  </div>
-                </div>
+              <div key={product.id || product.name}>
+              <ProductCardV2
+                product={liteProducts.find((lp) => lp.id === String(product.id ?? "")) || liteProducts[0]}
+                lang={c_lang}
+                isRtl={isRtl}
+                primaryColor={c_primaryColor}
+                card={v2?.productCard ?? defaultV2Card}
+                priceFormat={v2?.priceFormat ?? "space"}
+                onChooseOptions={setOptionsProduct}
+                onOpenProduct={handleOpenLite}
+                onQuickAdd={handleQuickAdd}
+              />
               </div>
             ))}
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center my-8">
-            <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <h4 className="text-base font-bold text-gray-800">لا توجد منتجات في هذا القسم</h4>
-            <p className="text-xs text-gray-500 mt-1">جرب اختيار قسم آخر أو مسح البحث</p>
-            <button
-              onClick={() => { setSelectedCategory("all"); setSearchQuery(""); }}
-              className="mt-4 px-4 py-2 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
-            >
-              عرض جميع المنتجات
-            </button>
+          <div className="col-span-full text-center py-16 text-gray-400">
+            {c_lang === "ar" ? "لا توجد منتجات مطابقة" : "Aucun produit correspondant"}
           </div>
         )}
+
+        {/* cartes produits v2 : ProductCardV2 ci-dessus */}
       </section></EditableSection>
 
       {/* Store Footer (Matching Screenshot 5) */}
@@ -1762,6 +1928,114 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
              </div>
           )}
         </div>
+      )}
+
+      {/* ===== T1 — modale options, mini-panier, commande panier, toast, widget d'aide ===== */}
+      {optionsProduct && (
+        <OptionsModal
+          product={optionsProduct}
+          lang={c_lang}
+          isRtl={isRtl}
+          primaryColor={c_primaryColor}
+          priceFormat={v2?.priceFormat ?? "space"}
+          onClose={() => setOptionsProduct(null)}
+          onAddToCart={handleOptionsAdd}
+          onOrderNow={(qty, variantLabel) => {
+            cart.addItem({
+              productId: optionsProduct.id,
+              name: c_lang === "ar" ? optionsProduct.nameAr : optionsProduct.name,
+              image: optionsProduct.images[0] || "",
+              price: optionsProduct.price,
+              oldPrice: optionsProduct.oldPrice,
+              qty,
+              variantLabel,
+              category: optionsProduct.category,
+            });
+            setOptionsProduct(null);
+            setMiniCartOpen(false);
+            setCartCheckoutOpen(true);
+          }}
+        />
+      )}
+
+      <MiniCart
+        open={miniCartOpen}
+        onClose={() => setMiniCartOpen(false)}
+        items={cart.items}
+        totalDA={cart.totalDA}
+        lang={c_lang}
+        isRtl={isRtl}
+        primaryColor={c_primaryColor}
+        priceFormat={v2?.priceFormat ?? "space"}
+        relatedProducts={relatedProducts}
+        onSetQty={cart.setQty}
+        onRemove={cart.removeItem}
+        onAddRelated={(rp) => {
+          const lite = liteProducts.find((x) => x.id === rp.id);
+          if (lite) handleQuickAdd(lite);
+        }}
+        onCheckout={() => {
+          setMiniCartOpen(false);
+          setCartCheckoutOpen(true);
+        }}
+        onContinueShopping={() => setMiniCartOpen(false)}
+      />
+
+      <CartCheckoutModal
+        /* La modale reste ouverte après succès même si le panier est vidé. */
+        open={cartCheckoutOpen}
+        items={cart.items}
+        subtotalDA={cart.totalDA}
+        lang={c_lang}
+        isRtl={isRtl}
+        primaryColor={c_primaryColor}
+        priceFormat={v2?.priceFormat ?? "space"}
+        texts={(() => {
+          const ct = (v2?.checkout.texts) ?? defaultV2Settings().checkout.texts;
+          return {
+            pageTitle: c_lang === "ar" ? ct.pageTitle.ar : ct.pageTitle.fr,
+            personalInfo: c_lang === "ar" ? ct.personalInfo.ar : ct.personalInfo.fr,
+            address: c_lang === "ar" ? ct.address.ar : ct.address.fr,
+            deliveryMethod: c_lang === "ar" ? ct.deliveryMethod.ar : ct.deliveryMethod.fr,
+            summary: c_lang === "ar" ? ct.summary.ar : ct.summary.fr,
+            confirmButton: c_lang === "ar" ? ct.confirmButton.ar : ct.confirmButton.fr,
+            paymentMode: c_lang === "ar" ? ct.paymentMode.ar : ct.paymentMode.fr,
+            successMessage: c_lang === "ar" ? ct.successMessage.ar : ct.successMessage.fr,
+          };
+        })()}
+        hideEmail={v2?.checkout.hideEmail ?? false}
+        hideAddress={v2?.checkout.hideAddress ?? false}
+        hideNotes={v2?.checkout.hideNotes ?? false}
+        addressRequired={v2?.checkout.addressRequired ?? true}
+        layout={v2?.checkout.layout ?? "twoColumns"}
+        wilayas={WILAYAS_LIST}
+        communesForWilaya={(code) => (getCommunesForWilaya(code) || []).map((c) => (typeof c === "string" ? c : String((c as { name?: string }).name ?? c)))}
+        onValidatePhone={(ph) => validatePhoneNumber(ph, "ar")}
+        onClose={() => setCartCheckoutOpen(false)}
+        onSubmit={handleCartOrder}
+      />
+
+      {toastMsg && (
+        <div
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] px-5 py-3 rounded-2xl bg-gray-900 text-white text-sm font-bold shadow-2xl flex items-center gap-2 animate-[fadeIn_0.2s_ease-out]"
+          role="status"
+          dir={isRtl ? "rtl" : "ltr"}
+        >
+          <ShoppingCart className="w-4 h-4" aria-hidden />
+          {toastMsg}
+        </div>
+      )}
+
+      {v2 && isStandaloneView && (
+        <HelpWidget
+          settings={v2.helpWidget}
+          lang={c_lang}
+          isRtl={isRtl}
+          storeSlug={effectiveSlug}
+          productName={optionsProduct ? (c_lang === "ar" ? optionsProduct.nameAr : optionsProduct.name) : undefined}
+          productPrice={optionsProduct?.price}
+          whatsappNumber={v2.footer.whatsapp || undefined}
+        />
       )}
 </div>
   );

@@ -10,6 +10,8 @@ import { StoreCustomizerConfig, defaultStoreConfig } from "../components/admin/S
 import { isTenantExpired } from "../lib/checkExpiration";
 import { StoreUnavailable } from "../components/storefront/StoreUnavailable";
 import { StorefrontSettings, mergeStorefrontSettings } from "../types/storefront";
+import type { HomeSection, StoreV2Settings } from "../types/storefrontSections";
+import { mergeSections, defaultV2Settings } from "../data/storefrontDefaults";
 import { STORE_WINDOW_NAME } from "../lib/openStore";
 import { BUNDLE_ID } from "../version";
 
@@ -41,6 +43,9 @@ export default function StorefrontView() {
   const [actualCategories, setActualCategories] = useState<any[]>([]);
   const [storeConfig, setStoreConfig] = useState<StoreCustomizerConfig | undefined>(undefined);
   const [storefront, setStorefront] = useState<StorefrontSettings | undefined>(undefined);
+  /** T1 — sections v2 + réglages globaux (même document Firestore). */
+  const [sectionsV2, setSectionsV2] = useState<HomeSection[] | undefined>(undefined);
+  const [v2Settings, setV2Settings] = useState<StoreV2Settings | undefined>(undefined);
   const [soldCounts, setSoldCounts] = useState<Record<string, number>>({});
   const [isExpired, setIsExpired] = useState(false);
   /** Mode maintenance global (super admin) — bannière + page dédiée. */
@@ -192,9 +197,12 @@ export default function StorefrontView() {
           // Fetch Storefront Settings (contenu éditable de la page d'accueil)
           const sfRef = doc(dbPublic, "tenants", targetUserId, "settings", "storefront");
           const sfSnap = await getDocFromServer(sfRef);
-          setStorefront(
-            mergeStorefrontSettings(sfSnap.exists() ? (sfSnap.data() as Partial<StorefrontSettings>) : undefined)
-          );
+          const sfData = sfSnap.exists() ? (sfSnap.data() as Record<string, unknown>) : undefined;
+          setStorefront(mergeStorefrontSettings(sfData as Partial<StorefrontSettings> | undefined));
+          // Sections v2 (si présentes) sinon migration automatique v1 -> v2.
+          setSectionsV2(mergeSections(sfData).sections);
+          const rawV2 = (sfData as { v2?: Partial<StoreV2Settings> } | undefined)?.v2;
+          setV2Settings(rawV2 ? { ...defaultV2Settings(), ...rawV2 } : defaultV2Settings());
 
           // Compute sold counts per product (source "meilleures ventes")
           const ordersQuery = query(collection(dbPublic, "orders"), where("userId", "==", targetUserId));
@@ -416,6 +424,9 @@ export default function StorefrontView() {
           config={storeConfig ? { ...storeConfig, isActivated: true } : undefined}
           storefront={storefront}
           soldCounts={soldCounts}
+          sectionsV2={sectionsV2}
+          v2Settings={v2Settings}
+          storeSlug={storeSlug || tenantId}
         />
       </div>
     </div>
