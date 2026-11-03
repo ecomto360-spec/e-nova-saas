@@ -62,18 +62,34 @@ export default function StorefrontView() {
   const [storeNotFound, setStoreNotFound] = useState(false);
   /** Route /store SANS slug : contexte manquant explicite (jamais de grille vide muette). */
   const [missingStoreUrl, setMissingStoreUrl] = useState<"anonymous" | "no-tenant" | null>(null);
-  /** Vrai uniquement si un compte est connecté (barre d'outils propriétaire). */
-  const [ownerSignedIn, setOwnerSignedIn] = useState(false);
+  /** Compte connecté dans CE navigateur (uid + email) — sert UNIQUEMENT à
+   *  afficher la barre d'outils, jamais à charger les données de la boutique. */
+  const [authUser, setAuthUser] = useState<{ uid: string; email: string | null } | null>(null);
+  /** Email propriétaire du tenant chargé (vérification d'appartenance). */
+  const [tenantOwnerEmail, setTenantOwnerEmail] = useState("");
+
+  /** Vrai uniquement si le compte connecté dans ce navigateur est le
+   *  PROPRIÉTAIRE de la boutique affichée. La barre d'outils (« Retour au
+   *  tableau de bord », « Changer de thème », « Personnaliser ») est
+   *  réservée à lui ; les clients/visiteurs ne la voient jamais. */
+  const isStoreOwner = Boolean(
+    authUser &&
+    tenantId &&
+    (tenantId === authUser.uid ||
+      (tenantOwnerEmail && authUser.email && tenantOwnerEmail.toLowerCase() === authUser.email.toLowerCase()))
+  );
 
   // Fenêtre unique réutilisée par tous les boutons « Voir la boutique » du dashboard.
   useEffect(() => {
     window.name = STORE_WINDOW_NAME;
   }, []);
 
-  // Barre d'outils propriétaire : affichée SEULEMENT si un compte est
-  // connecté. Elle ne modifie JAMAIS les données affichées (voir contrat).
+  // Barre d'outils propriétaire : le compte connecté doit être le PROPRIÉTAIRE
+  // de cette boutique (uid du doc tenant ou email propriétaire). Un visiteur
+  // anonyme ou connecté sur un AUTRE compte ne voit jamais cette barre.
+  // Elle ne modifie JAMAIS les données affichées (voir contrat).
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => setOwnerSignedIn(Boolean(user)));
+    const unsubscribe = onAuthStateChanged(auth, (user) => setAuthUser(user ? { uid: user.uid, email: user.email } : null));
     return () => unsubscribe();
   }, []);
 
@@ -179,6 +195,7 @@ export default function StorefrontView() {
                setIsSuspended(true);
             }
             if (data.storeName) setStoreName(data.storeName);
+            if (data.ownerEmail) setTenantOwnerEmail(String(data.ownerEmail));
             if (data.activeTheme) {
               const found = STORE_THEMES.find(t => t.id === data.activeTheme);
               if (found) setActiveTheme(found);
@@ -211,6 +228,7 @@ export default function StorefrontView() {
                  setIsSuspended(true);
              }
              if (data.storeName) setStoreName(data.storeName);
+            if (data.ownerEmail) setTenantOwnerEmail(String(data.ownerEmail));
              if (data.activeTheme) {
                const found = STORE_THEMES.find(t => t.id === data.activeTheme);
                if (found) setActiveTheme(found);
@@ -418,9 +436,12 @@ export default function StorefrontView() {
           </button>
         </div>
       )}
-      {/* Top Admin Quick Bar for Store Owner — affichée UNIQUEMENT si un
-          compte est connecté. Elle n'altère jamais les données affichées. */}
-      {ownerSignedIn && (
+      {/* Top Admin Quick Bar for Store Owner — affichée UNIQUEMENT au
+          PROPRIÉTAIRE de cette boutique (compte connecté dont l'uid est
+          l'id du tenant, ou email propriétaire identique). Un visiteur
+          anonyme, ou connecté sur un autre compte, ne voit jamais cette
+          barre. Elle n'altère jamais les données affichées. */}
+      {isStoreOwner && (
       <div className="bg-[#18181b] text-neutral-300 px-4 py-2 text-xs flex items-center justify-between border-b border-neutral-800 z-40 sticky top-0">
         <div className="flex items-center gap-3">
           <Link
