@@ -233,7 +233,20 @@ export default function StorefrontView() {
 
           // Fetch Custom Store Config
           const confRef = doc(dbPublic, "store_config", targetUserId);
-          const confSnap = await getDocFromServer(confRef);
+          /* Recette finale — LCP : les 5 lectures indépendantes sont PARALLÉLISÉES
+             (avant : 5 allers-retours Firestore séquentiels ≈ 3 s ; maintenant : 1). */
+          const sfRef = doc(dbPublic, "tenants", targetUserId, "settings", "storefront");
+          const ordersQuery = query(collection(dbPublic, "orders"), where("userId", "==", targetUserId));
+          const productsQuery = query(collection(dbPublic, "products"), where("userId", "==", targetUserId));
+          const categoriesQuery = query(collection(dbPublic, "categories"), where("userId", "==", targetUserId), where("status", "==", "active"));
+          const [confSnap, sfSnap, ordersSnap, productsSnap, categoriesSnap] = await Promise.all([
+            getDocFromServer(confRef),
+            getDocFromServer(sfRef),
+            getDocsFromServer(ordersQuery),
+            getDocsFromServer(productsQuery),
+            getDocsFromServer(categoriesQuery),
+          ]);
+
           if (confSnap.exists()) {
             const confData = confSnap.data();
             if (confData.activeThemeId) {
@@ -245,9 +258,7 @@ export default function StorefrontView() {
             }
           }
 
-          // Fetch Storefront Settings (contenu éditable de la page d'accueil)
-          const sfRef = doc(dbPublic, "tenants", targetUserId, "settings", "storefront");
-          const sfSnap = await getDocFromServer(sfRef);
+          // Storefront Settings (contenu éditable de la page d'accueil)
           const sfData = sfSnap.exists() ? (sfSnap.data() as Record<string, unknown>) : undefined;
           setStorefront(mergeStorefrontSettings(sfData as Partial<StorefrontSettings> | undefined));
           // Sections v2 (si présentes) sinon migration automatique v1 -> v2.
@@ -256,8 +267,6 @@ export default function StorefrontView() {
           setV2Settings(rawV2 ? { ...defaultV2Settings(), ...rawV2 } : defaultV2Settings());
 
           // Compute sold counts per product (source "meilleures ventes")
-          const ordersQuery = query(collection(dbPublic, "orders"), where("userId", "==", targetUserId));
-          const ordersSnap = await getDocsFromServer(ordersQuery);
           const counts: Record<string, number> = {};
           ordersSnap.forEach(d => {
             const items = (d.data() as { items?: Array<{ productId?: string; quantity?: number }> }).items ?? [];
@@ -269,15 +278,9 @@ export default function StorefrontView() {
           });
           setSoldCounts(counts);
 
-          // Fetch products
-          const productsQuery = query(collection(dbPublic, "products"), where("userId", "==", targetUserId));
-          const productsSnap = await getDocsFromServer(productsQuery);
           const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setActualProducts(productsData);
 
-          // Fetch categories
-          const categoriesQuery = query(collection(dbPublic, "categories"), where("userId", "==", targetUserId), where("status", "==", "active"));
-          const categoriesSnap = await getDocsFromServer(categoriesQuery);
           const categoriesData = categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setActualCategories(categoriesData);
         } catch (err) {

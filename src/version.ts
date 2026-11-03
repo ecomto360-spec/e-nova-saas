@@ -14,4 +14,4 @@
  *
  * À METTRE À JOUR À CHAQUE LIVRAISON (format : lot<N>-<AAAA>-<MM>-<JJ>).
  */
-export const BUNDLE_ID = "t3-themes-verticaux-2026-11-02";
+export const BUNDLE_ID = "t3b-lcp-parallel-2026-11-03";
