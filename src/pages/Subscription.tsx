@@ -515,7 +515,7 @@ export default function Subscription() {
               </div>
               <div className="flex items-center gap-2 text-gray-400 dark:text-neutral-500">
                 <X className="w-4 h-4 shrink-0 text-red-500/70" />
-                <span>Suppression du logo DZBuild</span>
+                <span>Suppression du logo E-Nova</span>
               </div>
               <div className="flex items-center gap-2 text-gray-400 dark:text-neutral-500">
                 <X className="w-4 h-4 shrink-0 text-red-500/70" />
@@ -622,7 +622,7 @@ export default function Subscription() {
               </div>
               <div className="flex items-center gap-2 text-gray-700 dark:text-neutral-300 font-medium">
                 <Check className="w-4 h-4 shrink-0 text-emerald-500" />
-                <span>Supprimer la marque DZBuild</span>
+                <span>Supprimer la marque E-Nova</span>
               </div>
               <div className="flex items-center gap-2 text-gray-700 dark:text-neutral-300 font-medium">
                 <Check className="w-4 h-4 shrink-0 text-emerald-500" />
@@ -729,7 +729,7 @@ export default function Subscription() {
               </div>
               <div className="flex items-center gap-2 text-gray-700 dark:text-neutral-300">
                 <Check className="w-4 h-4 shrink-0 text-emerald-500" />
-                <span>Supprimer la marque DZBuild</span>
+                <span>Supprimer la marque E-Nova</span>
               </div>
               <div className="flex items-center gap-2 text-gray-700 dark:text-neutral-300">
                 <Check className="w-4 h-4 shrink-0 text-emerald-500" />
@@ -1449,7 +1449,7 @@ export default function Subscription() {
             </div>
             <div className="flex gap-2">
               <a
-                href="https://api.whatsapp.com/send?phone=213555123456&text=Bonjour%20Support%20DZBuild"
+                href="https://api.whatsapp.com/send?phone=213555123456&text=Bonjour%20Support%20E-Nova"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"

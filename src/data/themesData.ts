@@ -61,6 +61,8 @@ export interface StoreTheme {
   bannerSubheadlineAr?: string;
   bannerImage?: string;
   bannerCtaAr?: string;
+  heroBadge?: string;
+  heroBadgeAr?: string;
   categories: StoreDemoCategory[];
   products: StoreDemoProduct[];
 }
@@ -686,7 +688,273 @@ export const STORE_THEMES: StoreTheme[] = [
         ]
       }
     ]
-  }
+  },
+  {
+    id: "organic_bio",
+    name: "Organic Bio",
+    nameAr: "العضوي الطبيعي",
+    version: "Bio V1",
+    type: "store",
+    badge: "Bio & Naturel",
+    description: "Thème chaleureux pour produits bio, alimentation naturelle et cosmétique écologique",
+    features: [
+      "Palette naturelle verte et terre",
+      "Badges bio et labels naturels",
+      "Idéal huiles, miel, dattes, savons",
+      "Typo douce El Messiri / Almarai"
+    ],
+    primaryColor: "#16a34a",
+    accentColor: "#4d7c0f",
+    thumbnail: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23166534%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2365a30d%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2090%20C%20120%20120%2C%20100%20230%2C%20200%20290%20C%20300%20230%2C%20280%20120%2C%20200%2090%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3Cpath%20d%3D%22M200%20110%20L%20200%20270%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2210%22%20opacity%3D%220.35%22%2F%3E%3C%2Fsvg%3E",
+    demoUrl: "https://e-nova.vercel.app/store/demo-organic",
+    bannerHeadline: "Le meilleur de la nature, livré chez vous",
+    bannerHeadlineAr: "خيرات الطبيعة إلى باب منزلك",
+    bannerSubheadline: "Huiles, miel et dattes 100 % naturels, sourcés auprès de producteurs algériens",
+    bannerSubheadlineAr: "زيوت وعسل وتمور طبيعية 100% من منتجين جزائريين موثوقين",
+    bannerImage: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23166534%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2365a30d%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2090%20C%20120%20120%2C%20100%20230%2C%20200%20290%20C%20300%20230%2C%20280%20120%2C%20200%2090%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3Cpath%20d%3D%22M200%20110%20L%20200%20270%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2210%22%20opacity%3D%220.35%22%2F%3E%3C%2Fsvg%3E",
+    bannerCtaAr: "اكتشف منتجاتنا",
+    heroBadge: "✅ Produits bio certifiés",
+    heroBadgeAr: "✅ منتجات عضوية معتمدة",
+    categories: [
+      { id: "huiles", name: "Huiles & Olives", nameAr: "زيوت وزيتون", productCount: 3, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23166534%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2322c55e%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2090%20C%20120%20120%2C%20100%20230%2C%20200%20290%20C%20300%20230%2C%20280%20120%2C%20200%2090%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3Cpath%20d%3D%22M200%20110%20L%20200%20270%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2210%22%20opacity%3D%220.35%22%2F%3E%3C%2Fsvg%3E" },
+      { id: "miel", name: "Miel & Sirops", nameAr: "عسل ومربى", productCount: 2, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23854d0e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23facc15%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%22105%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.22%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2270%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.25%22%2F%3E%3C%2Fsvg%3E" },
+      { id: "naturels", name: "Cosmétiques naturels", nameAr: "مستحضرات طبيعية", productCount: 2, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2314532d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%234ade80%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2080%20C%20260%20170%2C%20290%20220%2C%20200%20295%20C%20110%20220%2C%20140%20170%2C%20200%2080%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3C%2Fsvg%3E" }
+    ],
+    products: [
+      {
+        id: "bio-1",
+        name: "Huile d'olive extra vierge bio 1L",
+        nameAr: "زيت زيتون بكر ممتاز عضوي 1ل",
+        price: 1400,
+        originalPrice: 1700,
+        discountBadge: "-17%",
+        isFeatured: true,
+        category: "huiles",
+        categoryAr: "زيوت وزيتون",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233f6212%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2384cc16%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2080%20C%20260%20170%2C%20290%20220%2C%20200%20295%20C%20110%20220%2C%20140%20170%2C%20200%2080%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3C%2Fsvg%3E",
+        description: "زيت زيتون بكر ممتاز معصور على البارد من زيتون منتقى من بساتين القبائل، غني بمضادات الأكسدة ومثالي للطبخ والتغذية الصحية.",
+        rating: 4.9,
+        reviewsCount: 37,
+        reviews: [
+          { id: "bo1", author: "فاطمة ز.", rating: 5, date: "18 أوت 2026", text: "زيت زيتون أصلي بطعم رائع، يذكرني بزيت الجدة." },
+          { id: "bo2", author: "رشيد م.", rating: 5, date: "02 أوت 2026", text: "جودة ممتازة والتغليف محكم جدا." }
+        ],
+        variants: [{ name: "الحجم (Contenance)", options: ["500 مل", "1 لتر", "5 لتر"] }]
+      },
+      {
+        id: "bio-2",
+        name: "Miel de montagne pur 500g",
+        nameAr: "عسل جبلي طبيعي 500غ",
+        price: 2200,
+        originalPrice: 2600,
+        isFeatured: true,
+        category: "miel",
+        categoryAr: "عسل ومربى",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23a16207%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fbbf24%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%22105%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.22%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2270%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.25%22%2F%3E%3C%2Fsvg%3E",
+        description: "عسل جبلي طبيعي 100% من مناحل الأوراس، بدون أي إضافات أو سكر، مثالي للمناعة والصحة اليومية.",
+        rating: 5,
+        reviewsCount: 51,
+        reviews: [
+          { id: "bo3", author: "أمل ب.", rating: 5, date: "25 جويلية 2026", text: "عسل صافي وطعمه لا يقاوم، أنصح به بقوة." }
+        ],
+        variants: [{ name: "النوع (Variété)", options: ["عسل السدر", "عسل الزهور", "عسل الأوكاليبتوس"] }]
+      },
+      {
+        id: "bio-3",
+        name: "Dattes Deglet Nour premium 1kg",
+        nameAr: "تمور دقلة نور فاخرة 1كغ",
+        price: 950,
+        category: "huiles",
+        categoryAr: "زيوت وزيتون",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%237c2d12%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ea580c%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2090%20C%20120%20120%2C%20100%20230%2C%20200%20290%20C%20300%20230%2C%20280%20120%2C%20200%2090%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3Cpath%20d%3D%22M200%20110%20L%20200%20270%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2210%22%20opacity%3D%220.35%22%2F%3E%3C%2Fsvg%3E",
+        description: "تمور دقلة نور فاخرة منتقاة حبة بحبة من واحات الجنوب الجزائري، طبيعية بدون مواد حافظة.",
+        rating: 4.8,
+        reviewsCount: 64,
+        reviews: [
+          { id: "bo4", author: "ياسين ع.", rating: 5, date: "10 أوت 2026", text: "تمر طازج ولذيذ، وصل بتغليف أنيق." }
+        ],
+        variants: [{ name: "الوزن (Poids)", options: ["500 غ", "1 كغ", "2 كغ"] }]
+      },
+      {
+        id: "bio-4",
+        name: "Savon naturel à l'huile d'olive",
+        nameAr: "صابون طبيعي بزيت الزيتون",
+        price: 350,
+        originalPrice: 450,
+        discountBadge: "طبيعي",
+        category: "naturels",
+        categoryAr: "مستحضرات طبيعية",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23065f46%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2334d399%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%22105%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.22%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2270%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.25%22%2F%3E%3C%2Fsvg%3E",
+        description: "صابون طبيعي مصنوع يدويا بزيت الزيتون والغار، لطيف على البشرة وخالٍ من المواد الكيميائية.",
+        rating: 4.7,
+        reviewsCount: 28,
+        reviews: [],
+        variants: [{ name: "العبوة (Lot)", options: ["قطعة", "3 قطع", "5 قطع"] }]
+      }
+    ]
+  },
+  {
+    id: "corporate_showcase",
+    name: "Vitrine Entreprise",
+    nameAr: "واجهة الشركات",
+    version: "Corporate V1",
+    type: "store",
+    badge: "Vitrine & Devis",
+    description: "Présentation institutionnelle sobre : services, réalisations et demande de devis",
+    features: [
+      "Design institutionnel bleu marine",
+      "Sections services + réalisations",
+      "Demande de devis sans panier",
+      "Typo classique Amiri / Tajawal"
+    ],
+    primaryColor: "#1d4ed8",
+    accentColor: "#1e3a8a",
+    thumbnail: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231d4ed8%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%231e3a8a%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%22105%22%20y%3D%22150%22%20width%3D%22190%22%20height%3D%22140%22%20rx%3D%2210%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.26%22%2F%3E%3Cpolygon%20points%3D%22200%2C85%20320%2C155%2080%2C155%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.34%22%2F%3E%3Crect%20x%3D%22170%22%20y%3D%22210%22%20width%3D%2260%22%20height%3D%2280%22%20fill%3D%22%231e3a8a%22%20opacity%3D%220.85%22%2F%3E%3C%2Fsvg%3E",
+    demoUrl: "https://e-nova.vercel.app/store/demo-corporate",
+    bannerHeadline: "Votre partenaire de confiance depuis 2010",
+    bannerHeadlineAr: "شريككم الموثوق منذ 2010",
+    bannerSubheadline: "Ingénierie, études et réalisation de projets clés en main partout en Algérie",
+    bannerSubheadlineAr: "هندسة ودراسات وتنفيذ مشاريع جاهزة في جميع ولايات الوطن",
+    bannerImage: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231d4ed8%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%231e3a8a%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%22105%22%20y%3D%22150%22%20width%3D%22190%22%20height%3D%22140%22%20rx%3D%2210%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.26%22%2F%3E%3Cpolygon%20points%3D%22200%2C85%20320%2C155%2080%2C155%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.34%22%2F%3E%3Crect%20x%3D%22170%22%20y%3D%22210%22%20width%3D%2260%22%20height%3D%2280%22%20fill%3D%22%231e3a8a%22%20opacity%3D%220.85%22%2F%3E%3C%2Fsvg%3E",
+    bannerCtaAr: "اطلب عرض سعر",
+    heroBadge: "Partenaire de confiance depuis 2010",
+    heroBadgeAr: "شريك موثوق منذ 2010",
+    categories: [
+      { id: "etudes", name: "Études & Conseil", nameAr: "دراسات واستشارات", productCount: 3, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231e3a8a%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233b82f6%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%2290%22%20y%3D%2290%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.28%22%2F%3E%3Crect%20x%3D%22210%22%20y%3D%2290%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.18%22%2F%3E%3Crect%20x%3D%2290%22%20y%3D%22210%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.18%22%2F%3E%3Crect%20x%3D%22210%22%20y%3D%22210%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.28%22%2F%3E%3C%2Fsvg%3E" },
+      { id: "realisations", name: "Réalisations", nameAr: "إنجازات", productCount: 3, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23172554%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%22105%22%20y%3D%22150%22%20width%3D%22190%22%20height%3D%22140%22%20rx%3D%2210%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.26%22%2F%3E%3Cpolygon%20points%3D%22200%2C85%20320%2C155%2080%2C155%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.34%22%2F%3E%3Crect%20x%3D%22170%22%20y%3D%22210%22%20width%3D%2260%22%20height%3D%2280%22%20fill%3D%22%2360a5fa%22%20opacity%3D%220.85%22%2F%3E%3C%2Fsvg%3E" },
+      { id: "formation", name: "Formation", nameAr: "تكوين", productCount: 2, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231e40af%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2393c5fd%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%22105%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.22%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2270%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.25%22%2F%3E%3C%2Fsvg%3E" }
+    ],
+    products: [
+      {
+        id: "corp-1",
+        name: "Étude technique & faisabilité",
+        nameAr: "دراسة تقنية ودراسة جدوى",
+        price: 150000,
+        isFeatured: true,
+        category: "etudes",
+        categoryAr: "دراسات واستشارات",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231e3a8a%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233b82f6%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%2290%22%20y%3D%2290%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.28%22%2F%3E%3Crect%20x%3D%22210%22%20y%3D%2290%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.18%22%2F%3E%3Crect%20x%3D%2290%22%20y%3D%22210%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.18%22%2F%3E%3Crect%20x%3D%22210%22%20y%3D%22210%22%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.28%22%2F%3E%3C%2Fsvg%3E",
+        description: "دراسة تقنية واقتصادية شاملة لمشروعك مع تحليل التكاليف والجدوى ومرافقة كاملة حتى الانطلاق.",
+        rating: 4.9,
+        reviewsCount: 19,
+        reviews: [
+          { id: "cr1", author: "شركة الأمل", rating: 5, date: "05 أوت 2026", text: "دراسة دقيقة ومهنية، ساعدتنا كثيرا في قرار الاستثمار." }
+        ],
+        variants: [{ name: "نطاق الدراسة (Périmètre)", options: ["مشروع صغير", "مشروع متوسط", "مشروع كبير"] }]
+      },
+      {
+        id: "corp-2",
+        name: "Réalisation clé en main",
+        nameAr: "إنجاز مشاريع جاهزة",
+        price: 0,
+        category: "realisations",
+        categoryAr: "إنجازات",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23172554%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%22105%22%20y%3D%22150%22%20width%3D%22190%22%20height%3D%22140%22%20rx%3D%2210%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.26%22%2F%3E%3Cpolygon%20points%3D%22200%2C85%20320%2C155%2080%2C155%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.34%22%2F%3E%3Crect%20x%3D%22170%22%20y%3D%22210%22%20width%3D%2260%22%20height%3D%2280%22%20fill%3D%22%2360a5fa%22%20opacity%3D%220.85%22%2F%3E%3C%2Fsvg%3E",
+        description: "إنجاز مشاريع سكنية وتجارية جاهزة للتشغيل مع احترام المعايير الدولية وضمان سنوات على الأشغال.",
+        rating: 5,
+        reviewsCount: 12,
+        reviews: []
+      },
+      {
+        id: "corp-3",
+        name: "Programme de formation entreprise",
+        nameAr: "برنامج تكوين للمؤسسات",
+        price: 45000,
+        isFeatured: true,
+        category: "formation",
+        categoryAr: "تكوين",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231e40af%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2393c5fd%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%22105%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.22%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2270%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.25%22%2F%3E%3C%2Fsvg%3E",
+        description: "برامج تكوين مخصصة لفرقكم في التسيير والسلامة والجودة، بمدربين معتمدين وشواهد مشاركة.",
+        rating: 4.8,
+        reviewsCount: 8,
+        reviews: []
+      }
+    ]
+  },
+  {
+    id: "pro_services",
+    name: "Services Pro",
+    nameAr: "خدمات احترافية",
+    version: "Services V1",
+    type: "store",
+    badge: "Prestations",
+    description: "Thème prestataires : nettoyage, réparation et rénovation avec prise de rendez-vous",
+    features: [
+      "Prise de rendez-vous rapide",
+      "Devis clair par prestation",
+      "Badges intervention 24/7",
+      "Typo moderne El Messiri / Cairo"
+    ],
+    primaryColor: "#0f766e",
+    accentColor: "#115e59",
+    thumbnail: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230f766e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23115e59%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2280%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2226%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2234%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.4%22%2F%3E%3C%2Fsvg%3E",
+    demoUrl: "https://e-nova.vercel.app/store/demo-services",
+    bannerHeadline: "Des pros à votre service en 24h",
+    bannerHeadlineAr: "محترفون في خدمتك خلال 24 ساعة",
+    bannerSubheadline: "Nettoyage, réparation et rénovation — devis gratuit, intervention rapide",
+    bannerSubheadlineAr: "تنظيف وصيانة وترميم — عرض سعر مجاني وتدخل سريع",
+    bannerImage: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230f766e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23115e59%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2280%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2226%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2234%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.4%22%2F%3E%3C%2Fsvg%3E",
+    bannerCtaAr: "احجز موعدك",
+    heroBadge: "Intervention rapide sous 24h",
+    heroBadgeAr: "استجابة سريعة خلال 24 ساعة",
+    categories: [
+      { id: "nettoyage", name: "Nettoyage", nameAr: "تنظيف", productCount: 3, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23134e4a%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%232dd4bf%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2080%20C%20260%20170%2C%20290%20220%2C%20200%20295%20C%20110%20220%2C%20140%20170%2C%20200%2080%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3C%2Fsvg%3E" },
+      { id: "reparation", name: "Réparation", nameAr: "صيانة وإصلاح", productCount: 2, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23115e59%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%235eead4%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2280%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2226%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2234%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.4%22%2F%3E%3C%2Fsvg%3E" },
+      { id: "renovation", name: "Rénovation", nameAr: "ترميم", productCount: 2, image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230f766e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2399f6e4%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%22105%22%20y%3D%22150%22%20width%3D%22190%22%20height%3D%22140%22%20rx%3D%2210%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.26%22%2F%3E%3Cpolygon%20points%3D%22200%2C85%20320%2C155%2080%2C155%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.34%22%2F%3E%3Crect%20x%3D%22170%22%20y%3D%22210%22%20width%3D%2260%22%20height%3D%2280%22%20fill%3D%22%2399f6e4%22%20opacity%3D%220.85%22%2F%3E%3C%2Fsvg%3E" }
+    ],
+    products: [
+      {
+        id: "srv-1",
+        name: "Nettoyage complet appartement",
+        nameAr: "تنظيف شامل للشقق",
+        price: 5500,
+        originalPrice: 7000,
+        discountBadge: "-21%",
+        isFeatured: true,
+        category: "nettoyage",
+        categoryAr: "تنظيف",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23134e4a%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%232dd4bf%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M200%2080%20C%20260%20170%2C%20290%20220%2C%20200%20295%20C%20110%20220%2C%20140%20170%2C%20200%2080%20Z%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.3%22%2F%3E%3C%2Fsvg%3E",
+        description: "تنظيف شامل للمنزل يشمل الأرضيات والزجاج والمطبخ والحمامات، بمنظفات احترافية وآمنة على الأطفال.",
+        rating: 4.8,
+        reviewsCount: 44,
+        reviews: [
+          { id: "sv1", author: "نبيلة ح.", rating: 5, date: "20 أوت 2026", text: "فريق منظم وسريع، البيت رجع كالجديد." },
+          { id: "sv2", author: "كريم د.", rating: 4, date: "08 أوت 2026", text: "خدمة جيدة جدا، فقط تأخروا 15 دقيقة." }
+        ],
+        variants: [{ name: "عدد الغرف (Surface)", options: ["غرفتان", "3 غرف", "فيلا"] }]
+      },
+      {
+        id: "srv-2",
+        name: "Réparation électroménager à domicile",
+        nameAr: "إصلاح الأجهزة المنزلية بالمنزل",
+        price: 2500,
+        isFeatured: true,
+        category: "reparation",
+        categoryAr: "صيانة وإصلاح",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23115e59%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%235eead4%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2280%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2226%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22190%22%20r%3D%2234%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.4%22%2F%3E%3C%2Fsvg%3E",
+        description: "تشخيص وإصلاح جميع الأجهزة المنزلية في المنزل: ثلاجات، غسالات، أفران — مع ضمان على الإصلاح.",
+        rating: 4.9,
+        reviewsCount: 31,
+        reviews: [
+          { id: "sv3", author: "مراد ل.", rating: 5, date: "14 أوت 2026", text: "أصلحوا غسالتي في نفس اليوم، سعر معقول." }
+        ],
+        variants: [{ name: "الجهاز (Appareil)", options: ["ثلاجة", "غسالة", "فرن", "مكيف"] }]
+      },
+      {
+        id: "srv-3",
+        name: "Rénovation peinture & plomberie",
+        nameAr: "ترميم دهان وسباكة",
+        price: 0,
+        category: "renovation",
+        categoryAr: "ترميم",
+        image: "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230f766e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2399f6e4%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22400%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Crect%20x%3D%22105%22%20y%3D%22150%22%20width%3D%22190%22%20height%3D%22140%22%20rx%3D%2210%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.26%22%2F%3E%3Cpolygon%20points%3D%22200%2C85%20320%2C155%2080%2C155%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.34%22%2F%3E%3Crect%20x%3D%22170%22%20y%3D%22210%22%20width%3D%2260%22%20height%3D%2280%22%20fill%3D%22%2399f6e4%22%20opacity%3D%220.85%22%2F%3E%3C%2Fsvg%3E",
+        description: "أشغال الترميم والدهان والسباكة بإتقان، مع فريق محترف ومواد عالية الجودة وضمان على العمل.",
+        rating: 4.7,
+        reviewsCount: 17,
+        reviews: []
+      }
+    ]
+  },
 ];
 
 export const CHECKOUT_DESIGNS: CheckoutDesign[] = [

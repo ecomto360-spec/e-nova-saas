@@ -16,7 +16,7 @@ export default function ApiSettings() {
               <Code2 className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white mb-1">DZBuild API</h2>
+              <h2 className="text-xl font-bold text-white mb-1">E-Nova API</h2>
               <p className="text-sm text-neutral-400 mb-2">
                 Pilotez votre boutique par programmation : produits, commandes, clients et pages de destination — depuis vos propres systèmes.
               </p>

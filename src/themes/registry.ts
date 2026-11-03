@@ -232,7 +232,7 @@ export const THEME_REGISTRY: EnovaThemeManifest[] = [
     layoutVariants: { heroStyle: "split", productCard: "standard", categoryStyle: "cards", gridColumns: 3 },
     supportsCart: true,
     supportsQuote: false,
-    legacyStoreThemeId: "starter",
+    legacyStoreThemeId: "organic_bio",
     isNew: true,
   },
   {
@@ -318,7 +318,7 @@ export const THEME_REGISTRY: EnovaThemeManifest[] = [
     layoutVariants: { heroStyle: "minimal", productCard: "standard", categoryStyle: "cards", gridColumns: 3 },
     supportsCart: false,
     supportsQuote: true,
-    legacyStoreThemeId: "starter",
+    legacyStoreThemeId: "corporate_showcase",
     isNew: true,
   },
   {
@@ -348,7 +348,7 @@ export const THEME_REGISTRY: EnovaThemeManifest[] = [
     layoutVariants: { heroStyle: "minimal", productCard: "standard", categoryStyle: "cards", gridColumns: 3 },
     supportsCart: false,
     supportsQuote: true,
-    legacyStoreThemeId: "starter",
+    legacyStoreThemeId: "pro_services",
     isNew: true,
   },
   {

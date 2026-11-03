@@ -2380,7 +2380,7 @@ export default function LandingPages({ defaultView = "list" }: LandingPagesProps
               <div className="w-16 h-16 rounded-full bg-red-600/20 text-red-500 flex items-center justify-center mb-3">
                 <Youtube className="w-8 h-8" />
               </div>
-              <h4 className="text-sm font-bold text-white mb-1">Tutoriel Express : Vendre avec DZBuild Landing Pages</h4>
+              <h4 className="text-sm font-bold text-white mb-1">Tutoriel Express : Vendre avec E-Nova Landing Pages</h4>
               <p className="text-xs text-neutral-400 max-w-md">
                 Découvrez comment lier votre Pixel TikTok / Facebook, créer un formulaire COD avec 58 wilayas et doubler vos commandes en ligne.
               </p>

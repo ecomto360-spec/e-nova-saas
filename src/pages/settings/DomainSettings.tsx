@@ -184,7 +184,7 @@ export default function DomainSettings() {
       { title: "Validation du format et syntaxe", desc: `Vérification du domaine ${raw}`, status: "running" as const },
       { title: "Résolution DNS CNAME", desc: "Interrogation des serveurs DNS mondiaux vers cname.vercel-dns.com", status: "pending" as const },
       { title: "Génération du certificat SSL", desc: "Sécurisation HTTPS automatique (Let's Encrypt / Cloudflare)", status: "pending" as const },
-      { title: "Liaison au serveur DZBuild", desc: "Routage du trafic de votre boutique", status: "pending" as const }
+      { title: "Liaison au serveur E-Nova", desc: "Routage du trafic de votre boutique", status: "pending" as const }
     ];
     setVerificationSteps(stepsInit);
 
@@ -560,7 +560,7 @@ export default function DomainSettings() {
 
                           {dom.type === "purchased" && (
                             <span className="text-[10px] font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded">
-                              Acheté sur DZBuild
+                              Acheté sur E-Nova
                             </span>
                           )}
                         </div>
@@ -667,7 +667,7 @@ export default function DomainSettings() {
 
               <p className="text-xs text-neutral-500 mt-2.5 flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5 text-neutral-400" />
-                Vous devez au préalable pointer votre DNS vers DZBuild (voir instructions ci-dessous).
+                Vous devez au préalable pointer votre DNS vers E-Nova (voir instructions ci-dessous).
               </p>
             </div>
           </div>
@@ -806,7 +806,7 @@ export default function DomainSettings() {
               </div>
               <h2 className="text-2xl sm:text-3xl font-bold text-white">Trouvez le nom parfait pour votre marque</h2>
               <p className="text-sm text-neutral-300 leading-relaxed">
-                Achetez votre domaine directement sur DZBuild : nous le connectons instantanément à votre boutique sans aucune configuration DNS complexe de votre part.
+                Achetez votre domaine directement sur E-Nova : nous le connectons instantanément à votre boutique sans aucune configuration DNS complexe de votre part.
               </p>
             </div>
           </div>

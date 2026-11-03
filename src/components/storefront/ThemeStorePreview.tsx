@@ -172,7 +172,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   const c_heroTitle = !isActivated ? (theme.bannerHeadlineAr || theme.bannerHeadline || "") : bt(sf.hero.title);
   const c_heroSubtitle = !isActivated ? (theme.bannerSubheadlineAr || theme.bannerSubheadline || "") : bt(sf.hero.description);
   const c_heroBadgeShow = !isActivated ? true : sf.hero.badge.visible;
-  const c_heroBadge = !isActivated ? "تشكيلة الموسم الجديدة 2026" : bt(sf.hero.badge.text);
+  const c_heroBadge = !isActivated ? (theme.heroBadgeAr || theme.heroBadge || "تشكيلة الموسم الجديدة 2026") : bt(sf.hero.badge.text);
   const c_heroBtnShow = !isActivated ? true : sf.hero.primaryButton.visible;
   const c_heroBtn = !isActivated ? (theme.bannerCtaAr || "تسوق الآن") : bt(sf.hero.primaryButton.text);
   const c_heroBtnLink = !isActivated ? "#all-products" : (sf.hero.primaryButton.link || "#all-products");
