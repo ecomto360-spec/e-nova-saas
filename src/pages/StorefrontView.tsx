@@ -444,7 +444,7 @@ export default function StorefrontView() {
           anonyme, ou connecté sur un autre compte, ne voit jamais cette
           barre. Elle n'altère jamais les données affichées. */}
       {isStoreOwner && (
-      <div className="enova-owner-bar bg-[#18181b] text-neutral-300 px-4 py-2 text-xs flex items-center justify-between border-b border-neutral-800 z-40 sticky top-0">
+      <div className="bg-[#18181b] text-neutral-300 px-4 py-2 text-xs flex items-center justify-between border-b border-neutral-800 z-40 sticky top-0">
         <div className="flex items-center gap-3">
           <Link
             to="/dashboard"
