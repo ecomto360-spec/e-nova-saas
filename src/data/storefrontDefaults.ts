@@ -190,6 +190,100 @@ export function createHomeSection(type: HomeSectionType, index = 0): HomeSection
         title: bi("Notre boutique en vidéo", "متجرنا بالفيديو"),
         embedUrl: "",
       };
+    case "stats":
+      return {
+        id: uid, type: "stats", visible: true, title: null,
+        items: [
+          { id: "s1", value: "5+", label: bi("années d'expérience", "سنة خبرة") },
+          { id: "s2", value: "100+", label: bi("clients satisfaits", "زبون راضٍ") },
+          { id: "s3", value: "48", label: bi("wilayas desservies", "ولاية نغطيها") },
+          { id: "s4", value: "24h", label: bi("délai de réponse", "مدة الرد") },
+        ],
+        clients: [],
+      };
+    case "servicesCards":
+      return {
+        id: uid, type: "servicesCards", visible: true,
+        title: bi("Nos services", "خدماتنا"),
+        subtitle: bi("Ce que nous faisons pour vous", "ما نقدمه لك"),
+        cards: [
+          { id: "c1", icon: "sparkles", title: bi("Service 1", "الخدمة 1"), text: bi("Décrivez votre premier service en une phrase claire.", "صف خدمتك الأولى في جملة واضحة.") },
+          { id: "c2", icon: "shield", title: bi("Service 2", "الخدمة 2"), text: bi("Décrivez votre deuxième service.", "صف خدمتك الثانية.") },
+          { id: "c3", icon: "handshake", title: bi("Service 3", "الخدمة 3"), text: bi("Décrivez votre troisième service.", "صف خدمتك الثالثة.") },
+        ],
+      };
+    case "gallery":
+      return {
+        id: uid, type: "gallery", visible: true,
+        title: bi("Nos réalisations", "إنجازاتنا"),
+        subtitle: bi("Un aperçu de nos travaux récents", "لمحة عن أعمالنا الأخيرة"),
+        items: [
+          { id: "g1", image: "", title: bi("Première réalisation", "الإنجاز الأول"), text: null, tag: null },
+          { id: "g2", image: "", title: bi("Deuxième réalisation", "الإنجاز الثاني"), text: null, tag: null },
+        ],
+      };
+    case "process":
+      return {
+        id: uid, type: "process", visible: true,
+        title: bi("Comment ça marche", "كيف نعمل"),
+        subtitle: bi("Simple et transparent", "بسيط وواضح"),
+        steps: [
+          { id: "p1", icon: "phone", title: bi("1. Contact", "1. التواصل"), text: bi("Appelez-nous ou laissez un message.", "اتصل بنا أو اترك رسالة.") },
+          { id: "p2", icon: "search", title: bi("2. Étude", "2. الدراسة"), text: bi("Nous analysons votre besoin.", "نحلل حاجتك.") },
+          { id: "p3", icon: "wrench", title: bi("3. Réalisation", "3. التنفيذ"), text: bi("Nous réalisons le travail convenu.", "ننجز العمل المتفق عليه.") },
+          { id: "p4", icon: "thumbsup", title: bi("4. Livraison", "4. التسليم"), text: bi("Vous validez, nous garantissons.", "تؤكد أنت ونضمن نحن.") },
+        ],
+      };
+    case "pricing":
+      return {
+        id: uid, type: "pricing", visible: true,
+        title: bi("Nos forfaits", "باقاتنا"),
+        subtitle: bi("Des prix clairs, sans surprise", "أسعار واضحة بلا مفاجآت"),
+        plans: [
+          { id: "pl1", name: bi("Basic", "أساسية"), price: "2 500 DA", period: bi("/ prestation", "/ للأداء"), features: [bi("Service essentiel", "الخدمة الأساسية"), bi("Devis gratuit", "عرض سعر مجاني")], buttonText: bi("Réserver", "احجز") },
+          { id: "pl2", name: bi("Pro", "احترافية"), price: "6 500 DA", period: bi("/ prestation", "/ للأداء"), highlighted: true, features: [bi("Service complet", "الخدمة الكاملة"), bi("Priorité d'intervention", "أولوية التدخل"), bi("Garantie 30 jours", "ضمان 30 يوماً")], buttonText: bi("Réserver", "احجز") },
+          { id: "pl3", name: bi("Premium", "بريميوم"), price: "Sur devis", period: null, features: [bi("Équipe dédiée", "فريق مخصص"), bi("Garantie 90 jours", "ضمان 90 يوماً")], buttonText: bi("Nous contacter", "اتصل بنا") },
+        ],
+      };
+    case "ctaBanner":
+      return {
+        id: uid, type: "ctaBanner", visible: true,
+        title: bi("Prêt à démarrer ?", "جاهز للبدء؟"),
+        text: bi("Contactez-nous aujourd'hui — réponse sous 24h.", "تواصل معنا اليوم — الرد خلال 24 ساعة."),
+        image: "",
+        buttonText: bi("Nous contacter", "اتصل بنا"),
+        buttonLink: "#contact",
+        whatsappText: null,
+      };
+    case "contactForm":
+      return {
+        id: uid, type: "contactForm", visible: true, kind: "quote",
+        title: bi("Demander un devis", "اطلب عرض سعر"),
+        subtitle: bi("Décrivez votre besoin, nous revenons vers vous sous 24h", "صف لنا حاجتك، نعود إليك خلال 24 ساعة"),
+        formTitle: bi("Formulaire de devis", "استمارة عرض السعر"),
+        nameLabel: bi("Nom et prénom *", "الاسم واللقب *"),
+        phoneLabel: bi("Téléphone *", "الهاتف *"),
+        emailLabel: bi("Email (optionnel)", "البريد الإلكتروني (اختياري)"),
+        needLabel: bi("Votre besoin", "حاجتك"),
+        dateLabel: null,
+        messageLabel: bi("Décrivez votre projet", "صف مشروعك"),
+        submitText: bi("Envoyer la demande", "أرسل الطلب"),
+        successText: bi("Demande envoyée ! Nous vous rappelons sous 24h.", "تم إرسال الطلب! سنتصل بك خلال 24 ساعة."),
+        services: [bi("Devis général", "عرض سعر عام")],
+        info: { address: bi("Votre adresse", "عنوانك"), hours: bi("Saman — Jeudi : 8h00 - 17h00", "السبت — الخميس: 8:00 - 17:00"), phone: "", email: "" },
+        showWhatsApp: true,
+      };
+    case "team":
+      return {
+        id: uid, type: "team", visible: true,
+        title: bi("Notre équipe", "فريقنا"),
+        subtitle: bi("Des experts à votre écoute", "خبراء في خدمتك"),
+        image: "",
+        members: [
+          { id: "m1", initials: "AB", name: bi("Prénom Nom", "الاسم واللقب"), role: bi("Fonction", "الوظيفة") },
+          { id: "m2", initials: "CD", name: bi("Prénom Nom", "الاسم واللقب"), role: bi("Fonction", "الوظيفة") },
+        ],
+      };
     default:
       return { ...defaultPromoBannerSection(), id: uid };
   }

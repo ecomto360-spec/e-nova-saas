@@ -9,11 +9,14 @@ import {
   GripVertical, ArrowUp, ArrowDown, ChevronRight, Eye, EyeOff, Copy, Trash2, Plus, X, Search,
   Image as ImageIcon, Layers, Star, ShieldCheck, Megaphone, LayoutGrid, MessageSquare,
   HelpCircle, Package, Info, FileText, Video,
+  BarChart3, Briefcase, Images, ListOrdered, Wallet, Zap, CalendarClock, Users,
 } from "lucide-react";
 import type {
   HomeSection, HomeSectionType, CollectionSection, TextImageSection, VideoSection,
   FaqSection, ReviewsSection, TrustSection, PromoBannerSection, BrandInfoSection,
   AllProductsSection, HeroSection, CategoriesSection, FeaturedSection,
+  StatsSection, ServicesCardsSection, GallerySection, ProcessSection,
+  PricingSection, CtaBannerSection, ContactFormSection, TeamSection,
 } from "../../../types/storefrontSections";
 import { createHomeSection, duplicateHomeSection } from "../../../data/storefrontDefaults";
 import { Field, TextInput, NumberInput, SelectInput, BiTextInput, SegmentedInput, ToggleRow, RepeatCard } from "./editorUI";
@@ -32,6 +35,14 @@ export const SECTION_TYPE_META: Array<{ type: HomeSectionType; label: string; ic
   { type: "brandInfo", label: "Infos de la marque", icon: <Info className="w-4 h-4" />, description: "Logo, description, stats, réseaux" },
   { type: "textImage", label: "Texte + image", icon: <FileText className="w-4 h-4" />, description: "Bloc éditorial avec visuel" },
   { type: "video", label: "Vidéo", icon: <Video className="w-4 h-4" />, description: "YouTube, Dailymotion, Vimeo" },
+  { type: "stats", label: "Chiffres clés", icon: <BarChart3 className="w-4 h-4" />, description: "Valeurs fortes + bande de clients (T6)" },
+  { type: "servicesCards", label: "Cartes services", icon: <Briefcase className="w-4 h-4" />, description: "Services avec image ou icône (T6)" },
+  { type: "gallery", label: "Galerie", icon: <Images className="w-4 h-4" />, description: "Réalisations / cas clients imagés (T6)" },
+  { type: "process", label: "Processus", icon: <ListOrdered className="w-4 h-4" />, description: "Étapes numérotées avec icônes (T6)" },
+  { type: "pricing", label: "Forfaits", icon: <Wallet className="w-4 h-4" />, description: "Basic / Pro / Premium, plan mis en avant (T6)" },
+  { type: "ctaBanner", label: "Bande CTA", icon: <Zap className="w-4 h-4" />, description: "Appel à l'action avec image de fond (T6)" },
+  { type: "contactForm", label: "Formulaire devis/RDV", icon: <CalendarClock className="w-4 h-4" />, description: "Crée un lead dans le dashboard (T6)" },
+  { type: "team", label: "Équipe", icon: <Users className="w-4 h-4" />, description: "Membres avec avatars à initiales (T6)" },
 ];
 
 function metaOf(type: HomeSectionType): { label: string; icon: React.ReactNode } {
@@ -193,6 +204,9 @@ export function SectionDetailEditor({
 }): React.ReactElement {
   const set = (patch: Partial<HomeSection>) => onChange({ ...section, ...patch } as HomeSection);
   const title = "title" in section ? (section as { title: { fr: string; ar: string } }).title : null;
+  /* T6 — les sections riches gèrent elles-mêmes leur titre/sous-titre
+   * (champs optionnels nullable) : pas de double édition. */
+  const RICH_T6 = new Set(["stats", "servicesCards", "gallery", "process", "pricing", "ctaBanner", "contactForm", "team"]);
 
   return (
     <div className="space-y-4">
@@ -203,12 +217,12 @@ export function SectionDetailEditor({
         {metaOf(section.type).icon} {sectionTitleLabel(section)}
       </h3>
 
-      {title && (
+      {title && !RICH_T6.has(section.type) && (
         <Field label="Titre (FR / AR)">
           <BiTextInput fr={title.fr} ar={title.ar} onChange={(next) => set({ title: next } as Partial<HomeSection>)} maxLength={80} />
         </Field>
       )}
-      {"subtitle" in section && section.subtitle && (
+      {"subtitle" in section && section.subtitle && !RICH_T6.has(section.type) && (
         <Field label="Sous-titre (FR / AR)">
           <BiTextInput fr={section.subtitle.fr} ar={section.subtitle.ar} onChange={(next) => set({ subtitle: next } as Partial<HomeSection>)} maxLength={120} />
         </Field>
@@ -563,6 +577,397 @@ function SectionTypeFields({
       </>
     );
   }
+
+/* ========================================================================== */
+/* T6 — Champs spécifiques des sections riches                                */
+/* ========================================================================== */
+
+/** Icônes disponibles dans les vues RichSections (clés du dictionnaire ICONS). */
+const RICH_ICON_OPTIONS: Array<{ value: string; label: string }> = [
+  "trending", "award", "users", "building", "wrench", "sparkles", "clipboard",
+  "calendar", "search", "handshake", "shield", "thumbsup", "phone",
+].map((v) => ({ value: v, label: v }));
+
+if (section.type === "stats") {
+  const sec = section as StatsSection;
+  const set = (patch: Partial<StatsSection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Titre (optionnel, FR / AR)">
+        <BiTextInput fr={sec.title?.fr ?? ""} ar={sec.title?.ar ?? ""} onChange={(next) => set({ title: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={80} />
+      </Field>
+      <div className="space-y-1.5">
+        <span className="text-xs font-bold text-neutral-300">Chiffres clés ({sec.items.length})</span>
+        {sec.items.map((it, i) => (
+          <React.Fragment key={it.id}>
+          <RepeatCard index={i}
+            onMoveUp={() => { if (i > 0) { const n = [...sec.items]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set({ items: n }); } }}
+            onMoveDown={() => { if (i < sec.items.length - 1) { const n = [...sec.items]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; set({ items: n }); } }}
+            onRemove={() => set({ items: sec.items.filter((x) => x.id !== it.id) })}
+          >
+            <div className="grid grid-cols-3 gap-2">
+              <Field label="Valeur"><TextInput value={it.value} onChange={(v) => { const n = [...sec.items]; n[i] = { ...it, value: v }; set({ items: n }); }} maxLength={12} placeholder="15+" /></Field>
+              <div className="col-span-2">
+                <Field label="Libellé (FR / AR)">
+                  <BiTextInput fr={it.label.fr} ar={it.label.ar} onChange={(next) => { const n = [...sec.items]; n[i] = { ...it, label: next }; set({ items: n }); }} maxLength={60} />
+                </Field>
+              </div>
+            </div>
+          </RepeatCard>
+          </React.Fragment>
+        ))}
+        <button type="button" onClick={() => set({ items: [...sec.items, { id: `s${Date.now().toString(36)}`, value: "100+", label: { fr: "Clients satisfaits", ar: "زبون راضٍ" } }] })} className="w-full py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+          + Ajouter un chiffre
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        <span className="text-xs font-bold text-neutral-300">Bande de clients ({(sec.clients ?? []).length}) — noms texte, aucun logo</span>
+        {(sec.clients ?? []).map((c, i) => (
+          <React.Fragment key={i}>
+          <RepeatCard index={i} onRemove={() => set({ clients: (sec.clients ?? []).filter((_, j) => j !== i) })}>
+            <Field label={`Client ${i + 1} (FR / AR)`}>
+              <BiTextInput fr={c.fr} ar={c.ar} onChange={(next) => { const n = [...(sec.clients ?? [])]; n[i] = next; set({ clients: n }); }} maxLength={40} />
+            </Field>
+          </RepeatCard>
+          </React.Fragment>
+        ))}
+        <button type="button" onClick={() => set({ clients: [...(sec.clients ?? []), { fr: "Nom du client", ar: "اسم العميل" }] })} className="w-full py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+          + Ajouter un client
+        </button>
+      </div>
+    </>
+  );
+}
+
+if (section.type === "servicesCards") {
+  const sec = section as ServicesCardsSection;
+  const set = (patch: Partial<ServicesCardsSection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Titre (FR / AR)">
+        <BiTextInput fr={sec.title.fr} ar={sec.title.ar} onChange={(next) => set({ title: next })} maxLength={80} />
+      </Field>
+      <Field label="Sous-titre (FR / AR, optionnel)">
+        <BiTextInput fr={sec.subtitle?.fr ?? ""} ar={sec.subtitle?.ar ?? ""} onChange={(next) => set({ subtitle: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={120} />
+      </Field>
+      <div className="space-y-1.5">
+      <span className="text-xs font-bold text-neutral-300">Cartes ({sec.cards.length})</span>
+      {sec.cards.map((c, i) => (
+        <React.Fragment key={c.id}>
+          <RepeatCard index={i}
+          onMoveUp={() => { if (i > 0) { const n = [...sec.cards]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set({ cards: n }); } }}
+          onMoveDown={() => { if (i < sec.cards.length - 1) { const n = [...sec.cards]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; set({ cards: n }); } }}
+          onRemove={() => set({ cards: sec.cards.filter((x) => x.id !== c.id) })}
+        >
+          <Field label="Titre de la carte (FR / AR)">
+            <BiTextInput fr={c.title.fr} ar={c.title.ar} onChange={(next) => { const n = [...sec.cards]; n[i] = { ...c, title: next }; set({ cards: n }); }} maxLength={60} />
+          </Field>
+          <Field label="Description (FR / AR)">
+            <BiTextInput fr={c.text.fr} ar={c.text.ar} onChange={(next) => { const n = [...sec.cards]; n[i] = { ...c, text: next }; set({ cards: n }); }} maxLength={220} />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Icône (si pas d'image)">
+              <SelectInput value={c.icon ?? "sparkles"} onChange={(v) => { const n = [...sec.cards]; n[i] = { ...c, icon: v }; set({ cards: n }); }} options={RICH_ICON_OPTIONS} />
+            </Field>
+            <Field label="Image (URL, optionnel)">
+              <TextInput value={c.image ?? ""} onChange={(v) => { const n = [...sec.cards]; n[i] = { ...c, image: v }; set({ cards: n }); }} placeholder="/themes/… ou https://…" dir="ltr" />
+            </Field>
+          </div>
+        </RepeatCard>
+        </React.Fragment>
+      ))}
+      <button type="button" onClick={() => set({ cards: [...sec.cards, { id: `sv${Date.now().toString(36)}`, icon: "sparkles", title: { fr: "Nouveau service", ar: "خدمة جديدة" }, text: { fr: "Décrivez ce service en une phrase.", ar: "صف هذه الخدمة في جملة واحدة." } }] })} className="w-full py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+        + Ajouter une carte
+      </button>
+      </div>
+    </>
+  );
+}
+
+if (section.type === "gallery") {
+  const sec = section as GallerySection;
+  const set = (patch: Partial<GallerySection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Titre (FR / AR)">
+        <BiTextInput fr={sec.title.fr} ar={sec.title.ar} onChange={(next) => set({ title: next })} maxLength={80} />
+      </Field>
+      <Field label="Sous-titre (FR / AR, optionnel)">
+        <BiTextInput fr={sec.subtitle?.fr ?? ""} ar={sec.subtitle?.ar ?? ""} onChange={(next) => set({ subtitle: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={120} />
+      </Field>
+      <div className="space-y-1.5">
+      <span className="text-xs font-bold text-neutral-300">Réalisations ({sec.items.length})</span>
+      {sec.items.map((it, i) => (
+        <React.Fragment key={it.id}>
+          <RepeatCard index={i}
+          onMoveUp={() => { if (i > 0) { const n = [...sec.items]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set({ items: n }); } }}
+          onMoveDown={() => { if (i < sec.items.length - 1) { const n = [...sec.items]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; set({ items: n }); } }}
+          onRemove={() => set({ items: sec.items.filter((x) => x.id !== it.id) })}
+        >
+          <Field label="Titre (FR / AR)">
+            <BiTextInput fr={it.title.fr} ar={it.title.ar} onChange={(next) => { const n = [...sec.items]; n[i] = { ...it, title: next }; set({ items: n }); }} maxLength={80} />
+          </Field>
+          <Field label="Légende (FR / AR, optionnel)">
+            <BiTextInput fr={it.text?.fr ?? ""} ar={it.text?.ar ?? ""} onChange={(next) => { const n = [...sec.items]; n[i] = { ...it, text: next.fr.trim() || next.ar.trim() ? next : null }; set({ items: n }); }} maxLength={120} />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Étiquette (FR / AR)">
+              <BiTextInput fr={it.tag?.fr ?? ""} ar={it.tag?.ar ?? ""} onChange={(next) => { const n = [...sec.items]; n[i] = { ...it, tag: next.fr.trim() || next.ar.trim() ? next : null }; set({ items: n }); }} maxLength={30} />
+            </Field>
+            <Field label="Image (URL)">
+              <TextInput value={it.image} onChange={(v) => { const n = [...sec.items]; n[i] = { ...it, image: v }; set({ items: n }); }} placeholder="/themes/… ou https://…" dir="ltr" />
+            </Field>
+          </div>
+        </RepeatCard>
+        </React.Fragment>
+      ))}
+      <button type="button" onClick={() => set({ items: [...sec.items, { id: `g${Date.now().toString(36)}`, image: "", title: { fr: "Nouvelle réalisation", ar: "إنجاز جديد" }, text: null, tag: null }] })} className="w-full py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+        + Ajouter une réalisation
+      </button>
+      </div>
+    </>
+  );
+}
+
+if (section.type === "process") {
+  const sec = section as ProcessSection;
+  const set = (patch: Partial<ProcessSection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Titre (FR / AR)">
+        <BiTextInput fr={sec.title.fr} ar={sec.title.ar} onChange={(next) => set({ title: next })} maxLength={80} />
+      </Field>
+      <Field label="Sous-titre (FR / AR, optionnel)">
+        <BiTextInput fr={sec.subtitle?.fr ?? ""} ar={sec.subtitle?.ar ?? ""} onChange={(next) => set({ subtitle: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={120} />
+      </Field>
+      <div className="space-y-1.5">
+      <span className="text-xs font-bold text-neutral-300">Étapes ({sec.steps.length})</span>
+      {sec.steps.map((st, i) => (
+        <React.Fragment key={st.id}>
+          <RepeatCard index={i}
+          onMoveUp={() => { if (i > 0) { const n = [...sec.steps]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set({ steps: n }); } }}
+          onMoveDown={() => { if (i < sec.steps.length - 1) { const n = [...sec.steps]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; set({ steps: n }); } }}
+          onRemove={() => set({ steps: sec.steps.filter((x) => x.id !== st.id) })}
+        >
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Icône">
+              <SelectInput value={st.icon ?? "phone"} onChange={(v) => { const n = [...sec.steps]; n[i] = { ...st, icon: v }; set({ steps: n }); }} options={RICH_ICON_OPTIONS} />
+            </Field>
+            <div className="col-span-2">
+              <Field label="Titre de l'étape (FR / AR)">
+                <BiTextInput fr={st.title.fr} ar={st.title.ar} onChange={(next) => { const n = [...sec.steps]; n[i] = { ...st, title: next }; set({ steps: n }); }} maxLength={60} />
+              </Field>
+            </div>
+          </div>
+          <Field label="Description (FR / AR)">
+            <BiTextInput fr={st.text.fr} ar={st.text.ar} onChange={(next) => { const n = [...sec.steps]; n[i] = { ...st, text: next }; set({ steps: n }); }} maxLength={180} />
+          </Field>
+        </RepeatCard>
+        </React.Fragment>
+      ))}
+      <button type="button" onClick={() => set({ steps: [...sec.steps, { id: `p${Date.now().toString(36)}`, icon: "clipboard", title: { fr: `Étape ${sec.steps.length + 1}`, ar: `المرحلة ${sec.steps.length + 1}` }, text: { fr: "Décrivez cette étape.", ar: "صف هذه المرحلة." } }] })} className="w-full py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+        + Ajouter une étape
+      </button>
+      </div>
+    </>
+  );
+}
+
+if (section.type === "pricing") {
+  const sec = section as PricingSection;
+  const set = (patch: Partial<PricingSection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Titre (FR / AR)">
+        <BiTextInput fr={sec.title.fr} ar={sec.title.ar} onChange={(next) => set({ title: next })} maxLength={80} />
+      </Field>
+      <Field label="Sous-titre (FR / AR, optionnel)">
+        <BiTextInput fr={sec.subtitle?.fr ?? ""} ar={sec.subtitle?.ar ?? ""} onChange={(next) => set({ subtitle: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={120} />
+      </Field>
+      <div className="space-y-1.5">
+      <span className="text-xs font-bold text-neutral-300">Forfaits ({sec.plans.length})</span>
+      {sec.plans.map((pl, i) => (
+        <React.Fragment key={pl.id}>
+          <RepeatCard index={i}
+          onMoveUp={() => { if (i > 0) { const n = [...sec.plans]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set({ plans: n }); } }}
+          onMoveDown={() => { if (i < sec.plans.length - 1) { const n = [...sec.plans]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; set({ plans: n }); } }}
+          onRemove={() => set({ plans: sec.plans.filter((x) => x.id !== pl.id) })}
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Nom du forfait (FR / AR)">
+              <BiTextInput fr={pl.name.fr} ar={pl.name.ar} onChange={(next) => { const n = [...sec.plans]; n[i] = { ...pl, name: next }; set({ plans: n }); }} maxLength={30} />
+            </Field>
+            <Field label="Prix affiché">
+              <TextInput value={pl.price} onChange={(v) => { const n = [...sec.plans]; n[i] = { ...pl, price: v }; set({ plans: n }); }} maxLength={24} placeholder="6 500 DA ou Sur devis" />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Période (FR / AR, optionnel)">
+              <BiTextInput fr={pl.period?.fr ?? ""} ar={pl.period?.ar ?? ""} onChange={(next) => { const n = [...sec.plans]; n[i] = { ...pl, period: next.fr.trim() || next.ar.trim() ? next : null }; set({ plans: n }); }} maxLength={24} />
+            </Field>
+            <Field label="Texte du bouton (FR / AR)">
+              <BiTextInput fr={pl.buttonText?.fr ?? ""} ar={pl.buttonText?.ar ?? ""} onChange={(next) => { const n = [...sec.plans]; n[i] = { ...pl, buttonText: next.fr.trim() || next.ar.trim() ? next : null }; set({ plans: n }); }} maxLength={24} />
+            </Field>
+          </div>
+          <ToggleRow label="Forfait mis en avant" value={Boolean(pl.highlighted)} onChange={(v) => { const n = [...sec.plans]; n[i] = { ...pl, highlighted: v }; set({ plans: n }); }} />
+          <div className="space-y-1.5">
+            <span className="text-xs font-bold text-neutral-300">Inclus ({pl.features.length})</span>
+            {pl.features.map((f, j) => (
+              <div key={j} className="flex items-end gap-2">
+                <div className="flex-1">
+                  <BiTextInput fr={f.fr} ar={f.ar} onChange={(next) => { const nf = [...pl.features]; nf[j] = next; const n = [...sec.plans]; n[i] = { ...pl, features: nf }; set({ plans: n }); }} maxLength={80} />
+                </div>
+                <button type="button" onClick={() => { const nf = pl.features.filter((_, k) => k !== j); const n = [...sec.plans]; n[i] = { ...pl, features: nf }; set({ plans: n }); }} className="mb-1 p-2 rounded-lg text-neutral-500 hover:text-red-400 cursor-pointer" title="Retirer">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={() => { const nf = [...pl.features, { fr: "Nouvel avantage", ar: "ميزة جديدة" }]; const n = [...sec.plans]; n[i] = { ...pl, features: nf }; set({ plans: n }); }} className="w-full py-1.5 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+              + Ajouter un avantage
+            </button>
+          </div>
+        </RepeatCard>
+        </React.Fragment>
+      ))}
+      <button type="button" onClick={() => set({ plans: [...sec.plans, { id: `pl${Date.now().toString(36)}`, name: { fr: "Nouveau forfait", ar: "باقة جديدة" }, price: "Sur devis", period: null, features: [{ fr: "Avantage 1", ar: "الميزة 1" }], buttonText: { fr: "Réserver", ar: "احجز" } }] })} className="w-full py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+        + Ajouter un forfait
+      </button>
+      </div>
+    </>
+  );
+}
+
+if (section.type === "ctaBanner") {
+  const sec = section as CtaBannerSection;
+  const set = (patch: Partial<CtaBannerSection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Titre (FR / AR)">
+        <BiTextInput fr={sec.title.fr} ar={sec.title.ar} onChange={(next) => set({ title: next })} maxLength={80} />
+      </Field>
+      <Field label="Texte d'accroche (FR / AR)">
+        <BiTextInput fr={sec.text.fr} ar={sec.text.ar} onChange={(next) => set({ text: next })} maxLength={200} />
+      </Field>
+      <Field label="Image de fond (URL, optionnel)">
+        <TextInput value={sec.image ?? ""} onChange={(v) => set({ image: v })} placeholder="/themes/… ou https://…" dir="ltr" />
+      </Field>
+      <Field label="Texte du bouton (FR / AR)">
+        <BiTextInput fr={sec.buttonText.fr} ar={sec.buttonText.ar} onChange={(next) => set({ buttonText: next })} maxLength={30} />
+      </Field>
+      <Field label="Lien du bouton">
+        <TextInput value={sec.buttonLink} onChange={(v) => set({ buttonLink: v })} placeholder="#contact" dir="ltr" />
+      </Field>
+      <Field label="Texte WhatsApp (FR / AR, optionnel)">
+        <BiTextInput fr={sec.whatsappText?.fr ?? ""} ar={sec.whatsappText?.ar ?? ""} onChange={(next) => set({ whatsappText: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={30} />
+      </Field>
+    </>
+  );
+}
+
+if (section.type === "contactForm") {
+  const sec = section as ContactFormSection;
+  const set = (patch: Partial<ContactFormSection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Titre (FR / AR)">
+        <BiTextInput fr={sec.title.fr} ar={sec.title.ar} onChange={(next) => set({ title: next })} maxLength={80} />
+      </Field>
+      <Field label="Sous-titre (FR / AR, optionnel)">
+        <BiTextInput fr={sec.subtitle?.fr ?? ""} ar={sec.subtitle?.ar ?? ""} onChange={(next) => set({ subtitle: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={120} />
+      </Field>
+      <Field label="Type de formulaire">
+        <SegmentedInput value={sec.kind} onChange={(v) => set({ kind: v })} options={[{ value: "quote", label: "Devis" }, { value: "appointment", label: "Rendez-vous" }]} />
+      </Field>
+      <Field label="Titre du formulaire (FR / AR)">
+        <BiTextInput fr={sec.formTitle.fr} ar={sec.formTitle.ar} onChange={(next) => set({ formTitle: next })} maxLength={60} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Champ nom (FR / AR)"><BiTextInput fr={sec.nameLabel.fr} ar={sec.nameLabel.ar} onChange={(next) => set({ nameLabel: next })} maxLength={40} /></Field>
+        <Field label="Champ téléphone (FR / AR)"><BiTextInput fr={sec.phoneLabel.fr} ar={sec.phoneLabel.ar} onChange={(next) => set({ phoneLabel: next })} maxLength={40} /></Field>
+        <Field label="Champ email (FR / AR)"><BiTextInput fr={sec.emailLabel.fr} ar={sec.emailLabel.ar} onChange={(next) => set({ emailLabel: next })} maxLength={40} /></Field>
+        <Field label="Champ besoin (FR / AR)"><BiTextInput fr={sec.needLabel.fr} ar={sec.needLabel.ar} onChange={(next) => set({ needLabel: next })} maxLength={40} /></Field>
+        <Field label="Champ message (FR / AR)"><BiTextInput fr={sec.messageLabel.fr} ar={sec.messageLabel.ar} onChange={(next) => set({ messageLabel: next })} maxLength={40} /></Field>
+        <Field label="Bouton envoyer (FR / AR)"><BiTextInput fr={sec.submitText.fr} ar={sec.submitText.ar} onChange={(next) => set({ submitText: next })} maxLength={40} /></Field>
+      </div>
+      {sec.kind === "appointment" ? (
+        <Field label="Champ date/heure (FR / AR)">
+          <BiTextInput fr={sec.dateLabel?.fr ?? ""} ar={sec.dateLabel?.ar ?? ""} onChange={(next) => set({ dateLabel: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={40} />
+        </Field>
+      ) : null}
+      <Field label="Message de succès (FR / AR)">
+        <BiTextInput fr={sec.successText.fr} ar={sec.successText.ar} onChange={(next) => set({ successText: next })} maxLength={140} />
+      </Field>
+      <div className="space-y-1.5">
+        <span className="text-xs font-bold text-neutral-300">Options du champ besoin ({(sec.services ?? []).length})</span>
+        {(sec.services ?? []).map((sv, i) => (
+          <div key={i} className="flex items-end gap-2">
+            <div className="flex-1">
+              <BiTextInput fr={sv.fr} ar={sv.ar} onChange={(next) => { const n = [...(sec.services ?? [])]; n[i] = next; set({ services: n }); }} maxLength={40} />
+            </div>
+            <button type="button" onClick={() => set({ services: (sec.services ?? []).filter((_, j) => j !== i) })} className="mb-1 p-2 rounded-lg text-neutral-500 hover:text-red-400 cursor-pointer" title="Retirer">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+        <button type="button" onClick={() => set({ services: [...(sec.services ?? []), { fr: "Nouvelle option", ar: "خيار جديد" }] })} className="w-full py-1.5 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+          + Ajouter une option
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Adresse (FR / AR)"><BiTextInput fr={sec.info.address.fr} ar={sec.info.address.ar} onChange={(next) => set({ info: { ...sec.info, address: next } })} maxLength={80} /></Field>
+        <Field label="Horaires (FR / AR)"><BiTextInput fr={sec.info.hours.fr} ar={sec.info.hours.ar} onChange={(next) => set({ info: { ...sec.info, hours: next } })} maxLength={80} /></Field>
+        <Field label="Téléphone"><TextInput value={sec.info.phone} onChange={(v) => set({ info: { ...sec.info, phone: v } })} maxLength={24} dir="ltr" /></Field>
+        <Field label="Email"><TextInput value={sec.info.email ?? ""} onChange={(v) => set({ info: { ...sec.info, email: v } })} maxLength={60} dir="ltr" /></Field>
+      </div>
+      <ToggleRow label="Afficher le bouton WhatsApp direct" value={sec.showWhatsApp} onChange={(v) => set({ showWhatsApp: v })} />
+    </>
+  );
+}
+
+if (section.type === "team") {
+  const sec = section as TeamSection;
+  const set = (patch: Partial<TeamSection>) => onChange({ ...sec, ...patch });
+  return (
+    <>
+      <Field label="Photo d'équipe (URL, optionnel)">
+        <TextInput value={sec.image ?? ""} onChange={(v) => set({ image: v })} placeholder="/themes/… ou https://…" dir="ltr" />
+      </Field>
+      <Field label="Titre (FR / AR)">
+        <BiTextInput fr={sec.title.fr} ar={sec.title.ar} onChange={(next) => set({ title: next })} maxLength={80} />
+      </Field>
+      <Field label="Sous-titre (FR / AR, optionnel)">
+        <BiTextInput fr={sec.subtitle?.fr ?? ""} ar={sec.subtitle?.ar ?? ""} onChange={(next) => set({ subtitle: next.fr.trim() || next.ar.trim() ? next : null })} maxLength={120} />
+      </Field>
+      <div className="space-y-1.5">
+        <span className="text-xs font-bold text-neutral-300">Membres ({sec.members.length}) — avatars à initiales, jamais de visage</span>
+        {sec.members.map((m, i) => (
+          <React.Fragment key={m.id}>
+          <RepeatCard index={i}
+            onMoveUp={() => { if (i > 0) { const n = [...sec.members]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set({ members: n }); } }}
+            onMoveDown={() => { if (i < sec.members.length - 1) { const n = [...sec.members]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; set({ members: n }); } }}
+            onRemove={() => set({ members: sec.members.filter((x) => x.id !== m.id) })}
+          >
+            <div className="grid grid-cols-4 gap-2">
+              <Field label="Initiales"><TextInput value={m.initials} onChange={(v) => { const n = [...sec.members]; n[i] = { ...m, initials: v.slice(0, 3).toUpperCase() }; set({ members: n }); }} maxLength={3} /></Field>
+              <div className="col-span-3">
+                <Field label="Nom (FR / AR)">
+                  <BiTextInput fr={m.name.fr} ar={m.name.ar} onChange={(next) => { const n = [...sec.members]; n[i] = { ...m, name: next }; set({ members: n }); }} maxLength={40} />
+                </Field>
+              </div>
+            </div>
+            <Field label="Rôle (FR / AR)">
+              <BiTextInput fr={m.role.fr} ar={m.role.ar} onChange={(next) => { const n = [...sec.members]; n[i] = { ...m, role: next }; set({ members: n }); }} maxLength={60} />
+            </Field>
+          </RepeatCard>
+          </React.Fragment>
+        ))}
+        <button type="button" onClick={() => set({ members: [...sec.members, { id: `m${Date.now().toString(36)}`, initials: "AB", name: { fr: "Prénom Nom", ar: "الاسم واللقب" }, role: { fr: "Fonction", ar: "الوظيفة" } }] })} className="w-full py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 text-xs font-bold hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer">
+          + Ajouter un membre
+        </button>
+      </div>
+    </>
+  );
+}
 
   return null;
 }

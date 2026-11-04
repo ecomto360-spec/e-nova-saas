@@ -19,6 +19,7 @@ import OrderDetails from "./pages/OrderDetails";
 import Customers from "./pages/Customers";
 import Reviews from "./pages/Reviews";
 import AbandonedCarts from "./pages/AbandonedCarts";
+import Leads from "./pages/Leads";
 import WaCartAction from "./pages/WaCartAction";
 import WaOrderAction from "./pages/WaOrderAction";
 import TrackOrder from "./pages/TrackOrder";
@@ -123,6 +124,7 @@ export default function App() {
                 <Route path="customers" element={<Customers />} />
                 <Route path="reviews" element={<Reviews />} />
                 <Route path="abandoned-carts" element={<AbandonedCarts />} />
+                <Route path="leads" element={<Leads />} />
                 
                 <Route path="shipping" element={<Navigate to="/shipping/rates" replace />} />
                 <Route path="shipping/rates" element={<ShippingRates />} />

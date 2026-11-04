@@ -47,7 +47,7 @@ export function ThemePreviewModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#121214] text-white animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] md:left-64 flex flex-col bg-[#121214] text-white animate-in fade-in duration-200">
       {/* Top Floating Control Bar */}
       <header className="h-16 bg-[#1a1a1e] border-b border-neutral-800 flex items-center justify-between px-4 sm:px-6 shrink-0 z-20 shadow-md">
         {/* Left: Theme Info */}
@@ -172,8 +172,8 @@ export function ThemePreviewModal({
             deviceMode === "desktop"
               ? "w-full max-w-full rounded-none"
               : deviceMode === "tablet"
-              ? "w-[768px] my-4 rounded-2xl border-4 border-neutral-800 shadow-2xl"
-              : "w-[414px] my-4 rounded-3xl border-8 border-neutral-800 shadow-2xl"
+              ? "w-full max-w-[768px] my-4 rounded-2xl border-4 border-neutral-800 shadow-2xl"
+              : "w-full max-w-[414px] my-4 rounded-3xl border-8 border-neutral-800 shadow-2xl"
           }`}
         >
           {/* Mobile Phone Speaker/Notch simulation in mobile mode */}

@@ -2,8 +2,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { cn } from "../../lib/utils";
 import { auth, db } from "../../lib/firebase";
-import { signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useTenant } from "../../contexts/TenantContext";
 import { openStoreWindow } from "../../lib/openStore";
@@ -33,7 +33,8 @@ import {
   Code,
   Paintbrush,
   SlidersHorizontal,
-  Copy
+  Copy,
+  Target
 } from "lucide-react";
 
 export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
@@ -45,6 +46,26 @@ export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
     return tenantData?.storeName || localStorage.getItem("dzbuild_store_name") || "Boutique Enova";
   });
   const [copied, setCopied] = useState(false);
+  /* T6 — badge live du nombre de leads non lus (écoute Firestore légère). */
+  const [newLeadsCount, setNewLeadsCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsubSnap: (() => void) | null = null;
+    const unsub = onAuthStateChanged(auth, (user) => {
+      unsubSnap?.();
+      unsubSnap = null;
+      if (!user) { setNewLeadsCount(0); return; }
+      try {
+        unsubSnap = onSnapshot(
+          query(collection(db, "tenants", user.uid, "leads"), where("status", "==", "new")),
+          (snap) => { if (!cancelled) setNewLeadsCount(snap.size); },
+          () => { /* lecture impossible -> pas de badge */ }
+        );
+      } catch { /* best-effort */ }
+    });
+    return () => { cancelled = true; unsub(); unsubSnap?.(); };
+  }, []);
 
   useEffect(() => {
     if (tenantData?.storeName) {
@@ -68,6 +89,7 @@ export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
     { name: t("sidebar.products"), href: "/dashboard/products", icon: Package },
     { name: t("sidebar.orders"), href: "/dashboard/orders", icon: ShoppingCart },
     { name: t("sidebar.abandonedCarts"), href: "/dashboard/abandoned-carts", icon: Ghost },
+    { name: "Leads & Devis", href: "/dashboard/leads", icon: Target, badge: newLeadsCount > 0 ? String(newLeadsCount) : undefined, badgeColor: "amber" },
     { name: t("sidebar.customers"), href: "/dashboard/customers", icon: Users },
     { 
       name: t("sidebar.delivery"), 
@@ -264,6 +286,8 @@ export function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
                   "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase font-bold",
                   (item as any).badgeColor === 'red' 
                     ? "bg-red-500/10 text-red-500" 
+                    : (item as any).badgeColor === 'amber'
+                    ? "bg-amber-500/10 text-amber-600"
                     : "bg-emerald-500/10 text-emerald-500"
                 )}>
                   {item.badge}

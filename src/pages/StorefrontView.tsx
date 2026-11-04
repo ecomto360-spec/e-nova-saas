@@ -280,7 +280,9 @@ export default function StorefrontView() {
           const sfData = sfSnap.exists() ? (sfSnap.data() as Record<string, unknown>) : undefined;
           setStorefront(mergeStorefrontSettings(sfData as Partial<StorefrontSettings> | undefined));
           // Sections v2 (si présentes) sinon migration automatique v1 -> v2.
-          setSectionsV2(mergeSections(sfData).sections);
+          // T6 : boutique fraîche (aucun snapshot) -> tableau VIDE pour laisser
+          // ThemeStorePreview rendre les sections riches du thème par défaut.
+          setSectionsV2(sfSnap.exists() ? mergeSections(sfData).sections : []);
           const rawV2 = (sfData as { v2?: Partial<StoreV2Settings> } | undefined)?.v2;
           setV2Settings(rawV2 ? { ...defaultV2Settings(), ...rawV2 } : defaultV2Settings());
 

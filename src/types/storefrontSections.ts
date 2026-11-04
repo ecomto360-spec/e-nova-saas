@@ -34,7 +34,15 @@ export type HomeSectionType =
   | "allProducts" // Tous les produits : pastilles, tri, « Afficher plus »
   | "brandInfo" // Infos de la marque (logo, description, stats, réseaux)
   | "textImage" // Bloc texte + image (T2)
-  | "video"; // Bloc vidéo (T2)
+  | "video" // Bloc vidéo (T2)
+  | "stats" // Chiffres clés + bande clients (T6)
+  | "servicesCards" // Cartes services avec image/icône (T6)
+  | "gallery" // Galerie réalisations / cas clients (T6)
+  | "process" // Processus en étapes (T6)
+  | "pricing" // Forfaits / tarifs (T6)
+  | "ctaBanner" // Bande CTA pleine largeur avec image (T6)
+  | "contactForm" // Formulaire devis / rendez-vous -> leads (T6)
+  | "team"; // Équipe (photo + rôles, avatars à initiales) (T6)
 
 /** Base commune à toute section de la page d'accueil. */
 export interface HomeSectionBase {
@@ -203,6 +211,135 @@ export interface VideoSection extends HomeSectionBase {
   embedUrl: string;
 }
 
+/* ------------------- SECTIONS RICHES THÈMES T6 ---------------------------- */
+
+export interface StatsItem {
+  id: string;
+  /** Valeur affichée en gros (« 15+ », « 300 », « 58 »). */
+  value: string;
+  label: BilingualText;
+}
+
+export interface StatsSection extends HomeSectionBase {
+  type: "stats";
+  title?: BilingualText | null;
+  items: StatsItem[];
+  /** Bande de clients : simples noms textuels neutres (aucun logo de marque). */
+  clients?: BilingualText[];
+}
+
+export interface ServiceCard {
+  id: string;
+  /** Photo locale (optionnelle) — sinon icône. */
+  image?: string;
+  icon?: string;
+  title: BilingualText;
+  text: BilingualText;
+}
+
+export interface ServicesCardsSection extends HomeSectionBase {
+  type: "servicesCards";
+  title: BilingualText;
+  subtitle?: BilingualText | null;
+  cards: ServiceCard[];
+}
+
+export interface GalleryItem {
+  id: string;
+  image: string;
+  title: BilingualText;
+  text?: BilingualText | null;
+  tag?: BilingualText | null;
+}
+
+export interface GallerySection extends HomeSectionBase {
+  type: "gallery";
+  title: BilingualText;
+  subtitle?: BilingualText | null;
+  items: GalleryItem[];
+}
+
+export interface ProcessStep {
+  id: string;
+  icon?: string;
+  title: BilingualText;
+  text: BilingualText;
+}
+
+export interface ProcessSection extends HomeSectionBase {
+  type: "process";
+  title: BilingualText;
+  subtitle?: BilingualText | null;
+  steps: ProcessStep[];
+}
+
+export interface PricingPlan {
+  id: string;
+  name: BilingualText;
+  /** Prix affiché tel quel (« 15 000 DA », « Sur devis »). */
+  price: string;
+  period?: BilingualText | null;
+  features: BilingualText[];
+  highlighted?: boolean;
+  buttonText?: BilingualText | null;
+}
+
+export interface PricingSection extends HomeSectionBase {
+  type: "pricing";
+  title: BilingualText;
+  subtitle?: BilingualText | null;
+  plans: PricingPlan[];
+}
+
+export interface CtaBannerSection extends HomeSectionBase {
+  type: "ctaBanner";
+  title: BilingualText;
+  text: BilingualText;
+  image?: string;
+  buttonText: BilingualText;
+  buttonLink: string;
+  whatsappText?: BilingualText | null;
+}
+
+export type LeadFormKind = "quote" | "appointment";
+
+export interface ContactFormSection extends HomeSectionBase {
+  type: "contactForm";
+  kind: LeadFormKind;
+  title: BilingualText;
+  subtitle?: BilingualText | null;
+  formTitle: BilingualText;
+  nameLabel: BilingualText;
+  phoneLabel: BilingualText;
+  emailLabel: BilingualText;
+  needLabel: BilingualText;
+  /** Uniquement pour kind = "appointment". */
+  dateLabel?: BilingualText | null;
+  messageLabel: BilingualText;
+  submitText: BilingualText;
+  successText: BilingualText;
+  /** Options du champ besoin / service souhaité. */
+  services?: BilingualText[];
+  info: { address: BilingualText; hours: BilingualText; phone: string; email?: string };
+  showWhatsApp: boolean;
+}
+
+export interface TeamMember {
+  id: string;
+  /** Avatar à initiales — jamais de photo de visage. */
+  initials: string;
+  name: BilingualText;
+  role: BilingualText;
+}
+
+export interface TeamSection extends HomeSectionBase {
+  type: "team";
+  title: BilingualText;
+  subtitle?: BilingualText | null;
+  image?: string;
+  members: TeamMember[];
+}
+
 /* -------------------------------------------------------------------------- */
 /* Union + conteneur                                                          */
 /* -------------------------------------------------------------------------- */
@@ -219,7 +356,15 @@ export type HomeSection =
   | AllProductsSection
   | BrandInfoSection
   | TextImageSection
-  | VideoSection;
+  | VideoSection
+  | StatsSection
+  | ServicesCardsSection
+  | GallerySection
+  | ProcessSection
+  | PricingSection
+  | CtaBannerSection
+  | ContactFormSection
+  | TeamSection;
 
 export const MAX_HOME_SECTIONS = 25;
 

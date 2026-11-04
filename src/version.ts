@@ -14,4 +14,4 @@
  *
  * À METTRE À JOUR À CHAQUE LIVRAISON (format : lot<N>-<AAAA>-<MM>-<JJ>).
  */
-export const BUNDLE_ID = "t5-owner-bar-2026-11-03";
+export const BUNDLE_ID = "t6-rich-themes-2026-11-03";

@@ -36,3 +36,9 @@
 .dark ::-webkit-scrollbar-thumb:hover {
   @apply bg-[#52525b];
 }
+
+/* T6 — Ancres de navigation : les sections ciblées (#contact, #section-…)
+   doivent rester visibles sous le header sticky de la vitrine. */
+.enova-storefront section[id] {
+  scroll-margin-top: 96px;
+}

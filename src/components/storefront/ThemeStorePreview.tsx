@@ -66,9 +66,10 @@ import { OptionsModal } from "./sections/OptionsModal";
 import { MiniCart } from "./sections/MiniCart";
 import { CartCheckoutModal } from "./sections/CartCheckoutModal";
 import { ReviewsSectionView, FaqSectionView, PromoBannerSectionView, BrandInfoSectionView, TrustSectionView, TextImageSectionView, VideoSectionView } from "./sections/ContentSections";
+import { StatsSectionView, ServicesCardsSectionView, GallerySectionView, ProcessSectionView, PricingSectionView, CtaBannerSectionView, TeamSectionView, ContactFormSectionView } from "./sections/RichSections";
 import { HelpWidget } from "./HelpWidget";
 import type { StorefrontProductLite } from "./sections/sectionTypes";
-import type { HomeSection, StoreV2Settings } from "../../types/storefrontSections";
+import type { HomeSection, StoreV2Settings, AllProductsSection, TrustSection } from "../../types/storefrontSections";
 import { migrateLegacySettings, defaultV2Settings } from "../../data/storefrontDefaults";
 import { CollectionView } from "./sections/CollectionView";
 
@@ -150,11 +151,21 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   const headingFontFamily = fontStack(themeManifest.defaultFonts.heading);
   const bodyFontFamily = fontStack(themeManifest.defaultFonts.body);
   const isDigitalTheme = themeManifest.id === "digital_products";
+  /* T6 — thèmes riches : mode vitrine (sans panier) + navigation par ancres. */
+  const isShowcase = theme.mode === "showcase";
+  const themeNavItems = !isActivated && theme.navItems && theme.navItems.length > 0 ? theme.navItems : null;
 
   const c_primaryColor = getVal(config?.primaryColor, theme.primaryColor, "#dddddd");
   const c_fontFamily = getVal(config?.fontFamily, "sans", "sans");
   const c_lang = getVal(config?.language, "ar", "ar");
   const isRtl = c_lang === "ar";
+
+  /* T6 — produits réellement affichés : si la boutique n'a NI produits NI
+   * activation (vitrine de démo /store/:slug fraîche), on montre les produits
+   * du thème au lieu d'une page vide. Une boutique activée sans produits
+   * montre son catalogue réel (vide). */
+  const hasRealProducts = Array.isArray(actualProducts) && actualProducts.length > 0;
+  const effectiveProducts = hasRealProducts ? actualProducts : (!isActivated ? theme.products : (actualProducts || theme.products));
 
   // ===== Contenu éditable de la page d'accueil (StorefrontSettings) =====
   // Fusion tolérante : champs absents -> valeurs par défaut propres (jamais de placeholder).
@@ -168,7 +179,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
   // Hero (contenu piloté par StorefrontSettings ; thème de démo si non activé)
   const c_heroShow = !isActivated ? true : sf.hero.visible;
   const c_heroBg = !isActivated ? (theme.bannerImage || "") : (sf.hero.desktopImage || theme.bannerImage || "");
-  const c_heroBgMobile = !isActivated ? (theme.bannerImage || "") : (sf.hero.mobileImage || sf.hero.desktopImage || theme.bannerImage || "");
+  const c_heroBgMobile = !isActivated ? (theme.bannerImageMobile || theme.bannerImage || "") : (sf.hero.mobileImage || sf.hero.desktopImage || theme.bannerImageMobile || theme.bannerImage || "");
   const c_heroTitle = !isActivated ? (theme.bannerHeadlineAr || theme.bannerHeadline || "") : bt(sf.hero.title);
   const c_heroSubtitle = !isActivated ? (theme.bannerSubheadlineAr || theme.bannerSubheadline || "") : bt(sf.hero.description);
   const c_heroBadgeShow = !isActivated ? true : sf.hero.badge.visible;
@@ -223,7 +234,16 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   // Trust (items pilotés par StorefrontSettings)
   const c_trustShow = !isActivated ? true : sf.trustBar.visible;
-  const trustItems = !isActivated ? defaultStorefrontSettings.trustBar.items : sf.trustBar.items.filter(i => i.visible);
+  /* T6 — items de confiance : la section v2 (éditeur T2 ou thème) est la
+   * source de vérité dès qu'elle existe (corrige : les éditions T2 des items
+   * n'apparaissaient pas en vitrine) ; sinon modèle v1 / démo. */
+  const v2TrustSource = (sectionsV2 && sectionsV2.length > 0
+    ? sectionsV2
+    : (theme.defaultSections && theme.defaultSections.length > 0 ? theme.defaultSections : null)
+  )?.find((sec): sec is TrustSection => sec.type === "trust");
+  const trustItems = v2TrustSource && v2TrustSource.items.length > 0
+    ? v2TrustSource.items
+    : (!isActivated ? defaultStorefrontSettings.trustBar.items : sf.trustBar.items.filter(i => i.visible));
 
   // Categories
   const c_categoriesShow = !isActivated ? true : sf.categories.visible;
@@ -356,12 +376,18 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
             .map((p) => (p && typeof p === "object" ? (p as { category?: string }).category : undefined))
             .filter((n): n is string => Boolean(n))
         ));
-        return names.map((n) => ({ id: n, name: n, nameAr: n, image: undefined, productCount: 0 }));
+        if (names.length > 0) {
+          return names.map((n) => ({ id: n, name: n, nameAr: n, image: undefined, productCount: 0 }));
+        }
+        // T6 — vitrine de démo (aucun contenu réel, boutique non activée) :
+        // rayons du thème pour ne jamais montrer une section vide.
+        if (!isActivated && theme.categories.length > 0) return theme.categories;
+        return [];
       }
       return mapped;
     }
     return theme.categories;
-  }, [actualCategories, actualProducts, theme.categories]);
+  }, [actualCategories, actualProducts, theme.categories, isActivated]);
 
   // Catégories affichées dans la SECTION Catégories (sélection éditable + maximum)
   const sectionCategories = useMemo(() => {
@@ -381,7 +407,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
-    const base = (actualProducts ? actualProducts : theme.products).filter(product => {
+    const base = effectiveProducts.filter(product => {
       // Un produit réel marqué inactif/brouillon ne doit JAMAIS apparaître en
       // boutique publique (les produits de démo n'ont pas de statut -> actifs).
       const isActive = !product.status || product.status === "active";
@@ -401,11 +427,11 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
     if (sortMode === "stockFirst") return [...base].sort((a, b) => (Number(b.stock ?? 99) > 0 ? 1 : 0) - (Number(a.stock ?? 99) > 0 ? 1 : 0));
     // « recent » et « manual » : ordre du catalogue (inséré/défini par le marchand).
     return withStock(base);
-  }, [(actualProducts ? actualProducts : theme.products), selectedCategory, searchQuery, v2Settings?.defaultProductSort, v2Settings?.stockFirst, soldCounts]);
+  }, [effectiveProducts, selectedCategory, searchQuery, v2Settings?.defaultProductSort, v2Settings?.stockFirst, soldCounts]);
 
   // Featured products (source : meilleures ventes ou sélection manuelle)
   const featuredProducts = useMemo(() => {
-    const rawSource = actualProducts ? actualProducts : theme.products;
+    const rawSource = effectiveProducts;
     // Même règle : pas de produit inactif en vedette.
     const source = rawSource.filter(p => !p.status || p.status === "active");
     if (!isActivated) {
@@ -645,10 +671,18 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   // ===== T1 — sections v2, panier, modale options, toast, widget d'aide =====
   const v2Sections = useMemo<HomeSection[]>(
-    () => (sectionsV2 && sectionsV2.length > 0 ? sectionsV2 : migrateLegacySettings(sf).sections),
-    [sectionsV2, sf]
+    () => (sectionsV2 && sectionsV2.length > 0
+      ? sectionsV2
+      : (theme.defaultSections && theme.defaultSections.length > 0
+          ? theme.defaultSections
+          : migrateLegacySettings(sf).sections)),
+    [sectionsV2, sf, theme]
   );
   const v2 = v2Settings;
+  /* T6 — le bloc dédié « Tous les produits » suit la section v2 allProducts. */
+  const allProductsSec = v2Sections.find((s): s is AllProductsSection => s.type === "allProducts");
+  const c_allTitle = allProductsSec ? bt(allProductsSec.title, "جميع المنتجات") : "جميع المنتجات";
+  const c_allSubtitle = allProductsSec ? bt(allProductsSec.subtitle, "تصفح التشكيلة الكاملة بأفضل الأسعار") : "تصفح التشكيلة الكاملة بأفضل الأسعار";
 
   /* T2 — Réglages pied de page (v2) avec défauts sûrs. */
   const footerSettings = v2?.footer ?? defaultV2Settings().footer;
@@ -689,7 +723,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
     return c_lang === "ar" ? String(cat.nameAr ?? cat.name ?? raw) : String(cat.name ?? raw);
   };
   const liteProducts = useMemo<StorefrontProductLite[]>(() => {
-    const src = actualProducts ? actualProducts : theme.products;
+    const src = effectiveProducts;
     return (src as Array<Record<string, unknown>>).map((p, i) => {
       const raw = p as {
         id?: string; name?: string; nameAr?: string; price?: number; originalPrice?: number;
@@ -790,7 +824,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   /** Ouverture de la fiche produit existante depuis une carte v2. */
   const handleOpenLite = (p: StorefrontProductLite): void => {
-    const src = actualProducts ? actualProducts : theme.products;
+    const src = effectiveProducts;
     const found = (src as Array<Record<string, unknown>>).find((x) => String(x.id ?? "") === p.id);
     if (found) handleOpenProduct(found as unknown as StoreDemoProduct);
   };
@@ -919,7 +953,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
           </div>
 
           {/* Desktop Search Bar */}
-          <div className={`hidden md:flex flex-1 max-w-md mx-6 relative ${c_navStyle === 'centered' ? 'absolute right-20 w-64' : ''} ${c_showSearch ? "" : "md:hidden"}`}>
+          <div className={`hidden md:flex flex-1 max-w-md mx-6 relative ${c_navStyle === 'centered' ? 'absolute right-20 w-64' : ''} ${c_showSearch && !isShowcase ? "" : "md:hidden"}`}>
             <input 
               type="text"
               placeholder="ابحث عن منتج، قسم، أو فئة..."
@@ -933,7 +967,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
           {/* Header Action Buttons */}
           <div className={`flex items-center gap-3 ${c_navStyle === 'centered' ? 'absolute right-4' : ''}`}>
-            {c_showCartIcon && (
+            {c_showCartIcon && !isShowcase && (
               <button 
                 onClick={() => setMiniCartOpen(true)}
                 className="relative p-2.5 rounded-full hover:bg-black/5 transition-colors"
@@ -959,11 +993,21 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
               </button>
             )}
             
+            {isShowcase ? (
+              <a
+                href="#contact"
+                className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white shadow-sm hover:opacity-95 transition-all transform active:scale-95"
+                style={{ backgroundColor: c_primaryColor }}
+              >
+                <span>{c_lang === "ar" ? "اطلب عرض سعر" : "Demander un devis"}</span>
+                <ChevronLeft className="w-4 h-4" />
+              </a>
+            ) : (
             <a 
               href="#order-now"
               onClick={(e) => {
                 e.preventDefault();
-                if ((actualProducts ? actualProducts : theme.products).length > 0) handleOpenProduct((actualProducts ? actualProducts : theme.products)[0]);
+                if (effectiveProducts.length > 0) handleOpenProduct(effectiveProducts[0]);
               }}
               className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white shadow-sm hover:opacity-95 transition-all transform active:scale-95"
               style={{ backgroundColor: c_primaryColor }}
@@ -971,6 +1015,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
               <span>اطلب الآن</span>
               <ChevronLeft className="w-4 h-4" />
             </a>
+            )}
           </div>
         </div>
 
@@ -978,6 +1023,19 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
         <div className={`hidden lg:block border-t border-black/5 ${c_hideOnProductPage && selectedProduct ? 'hidden' : ''}`} style={{ backgroundColor: c_navBgColor }}>
           <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${c_navStyle === 'centered' ? 'flex justify-center' : ''}`}>
             <div className="flex items-center gap-8 py-2 text-sm font-semibold">
+              {themeNavItems ? (
+                themeNavItems.map((nv) => (
+                  <a
+                    key={nv.id}
+                    href={nv.anchor}
+                    className="opacity-75 hover:opacity-100 transition-opacity py-1.5 font-semibold"
+                    style={{ color: c_navTextColor }}
+                  >
+                    {c_lang === "ar" ? nv.label.ar : nv.label.fr}
+                  </a>
+                ))
+              ) : (
+                <>
               <button 
                 onClick={() => setSelectedCategory("all")}
                 className={`transition-colors ${selectedCategory === "all" ? 'font-bold opacity-100' : 'opacity-70 hover:opacity-100'} ${
@@ -1011,9 +1069,40 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                   {cat.nameAr}
                 </button>
               ))}
+                </>
+              )}
             </div>
           </div>
         </div>
+        {/* T6 — Menu mobile (ancres du thème ou catégories) */}
+        {mobileMenuOpen ? (
+          <div className="lg:hidden border-t border-black/10 px-4 py-3 flex flex-col gap-1" style={{ backgroundColor: c_navBgColor }}>
+            {themeNavItems ? (
+              themeNavItems.map((nv) => (
+                <a
+                  key={nv.id}
+                  href={nv.anchor}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="py-2.5 px-3 rounded-lg text-sm font-semibold hover:bg-black/5 transition-colors"
+                  style={{ color: c_navTextColor }}
+                >
+                  {c_lang === "ar" ? nv.label.ar : nv.label.fr}
+                </a>
+              ))
+            ) : (
+              displayCategories.slice(0, 8).map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => { setSelectedCategory(cat.id); setMobileMenuOpen(false); }}
+                  className="py-2.5 px-3 rounded-lg text-sm font-semibold hover:bg-black/5 transition-colors"
+                  style={{ color: c_navTextColor }}
+                >
+                  {c_lang === "ar" ? cat.nameAr : cat.name}
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
         </header></EditableSection>
 
 
@@ -1025,7 +1114,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
         const renderSection: Record<SectionId, React.ReactElement | null> = {
           hero: c_heroShow ? (
             <EditableSection id="hero_banner">
-              <section className={`relative overflow-hidden ${
+              <section id="hero" className={`relative overflow-hidden ${
                 heroStyle === "fullscreen"
                   ? "bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white min-h-[78vh] flex items-center py-16 sm:py-24"
                   : heroStyle === "split"
@@ -1203,13 +1292,14 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                       <h3 className="text-xl sm:text-2xl font-black text-gray-900">{c_featTitle}</h3>
                     </div>
                     <a href="#all-products" className="text-xs sm:text-sm font-bold text-amber-600 hover:underline">
-                      {c_featViewAll} ({(actualProducts ? actualProducts : theme.products).length})
+                      {c_featViewAll} ({effectiveProducts.length})
                     </a>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+                  {/* Mobile : carrousel horizontal snap ; Desktop : grille 4 col. */}
+                  <div className="flex grid-cols-2 md:grid md:grid-cols-4 gap-4 sm:gap-6 overflow-x-auto snap-x snap-mandatory md:overflow-visible pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {featuredProducts.map((product, i) => (
-                      <React.Fragment key={product.id}>
+                      <div key={product.id} className="min-w-[46%] snap-start shrink-0 md:min-w-0 md:shrink">
                       <ProductCardV2
                         product={toLiteProduct(product, i)}
                         card={v2?.productCard ?? defaultV2Card}
@@ -1222,7 +1312,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                         onOpenProduct={handleOpenLite}
                         onQuickAdd={handleQuickAdd}
                       />
-                      </React.Fragment>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1294,6 +1384,35 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
               return (<React.Fragment key={sec.id}><TextImageSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
             case "video":
               return (<React.Fragment key={sec.id}><VideoSectionView section={sec} lang={c_lang} isRtl={isRtl} /></React.Fragment>);
+            case "stats":
+              return (<React.Fragment key={sec.id}><StatsSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "servicesCards":
+              return (<React.Fragment key={sec.id}><ServicesCardsSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "gallery":
+              return (<React.Fragment key={sec.id}><GallerySectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "process":
+              return (<React.Fragment key={sec.id}><ProcessSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "pricing":
+              return (<React.Fragment key={sec.id}><PricingSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "ctaBanner":
+              return (<React.Fragment key={sec.id}><CtaBannerSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} whatsappUrl={theme.whatsappPhone ? `https://wa.me/${theme.whatsappPhone.replace(/[^0-9]/g, "")}` : undefined} /></React.Fragment>);
+            case "team":
+              return (<React.Fragment key={sec.id}><TeamSectionView section={sec} lang={c_lang} isRtl={isRtl} primaryColor={c_primaryColor} /></React.Fragment>);
+            case "contactForm":
+              return (
+                <React.Fragment key={sec.id}>
+                <ContactFormSectionView
+                  section={sec}
+                  lang={c_lang}
+                  isRtl={isRtl}
+                  primaryColor={c_primaryColor}
+                  tenantId={tenantId}
+                  slug={storeSlug}
+                  themeId={theme.id}
+                  whatsappPhone={theme.whatsappPhone}
+                />
+                </React.Fragment>
+              );
             default:
               return null;
           }
@@ -1304,8 +1423,8 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
       <EditableSection id="all_products"><section id="all-products" className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex-1">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div className="text-right">
-            <h3 className="text-2xl font-black text-gray-900">جميع المنتجات</h3>
-            <p className="text-xs sm:text-sm text-gray-500 mt-1">تصفح التشكيلة الكاملة بأفضل الأسعار</p>
+            <h3 className="text-2xl font-black text-gray-900">{c_allTitle}</h3>
+            <p className="text-xs sm:text-sm text-gray-500 mt-1">{c_allSubtitle}</p>
           </div>
 
           {/* Category Filter Pills (Matching Screenshot 4) */}
@@ -1433,7 +1552,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                 <div className="pt-2">
                   <button 
                     onClick={() => {
-                      if ((actualProducts ? actualProducts : theme.products).length > 0) handleOpenProduct((actualProducts ? actualProducts : theme.products)[0]);
+                      if (effectiveProducts.length > 0) handleOpenProduct(effectiveProducts[0]);
                     }}
                     className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-black bg-amber-500 hover:bg-amber-400 transition-all shadow-md text-center"
                   >

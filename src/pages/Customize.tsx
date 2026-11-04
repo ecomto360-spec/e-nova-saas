@@ -384,7 +384,12 @@ export default function Customize() {
         setSavedThemeId(themeId);
 
         // T2 — sections v2 + réglages v2 du même doc (fallback défauts).
-        const loadedSections = mergeSections(sfRaw).sections;
+        // T6 : première édition d'un thème riche -> on part des sections du
+        // thème (sinon la 1re sauvegarde écraserait la vitrine par défaut).
+        const t6Default = STORE_THEMES.find(t => t.id === themeId)?.defaultSections;
+        const loadedSections = !sfSnap.exists() && t6Default && t6Default.length > 0
+          ? t6Default.map(s => ({ ...s }))
+          : mergeSections(sfRaw).sections;
         const rawV2 = (sfRaw as { v2?: Partial<StoreV2Settings> } | undefined)?.v2;
         const loadedV2: StoreV2Settings = rawV2 ? { ...defaultV2Settings(), ...rawV2 } : defaultV2Settings();
         setSections(loadedSections);
