@@ -895,7 +895,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
   return (
     <div
-      className="enova-storefront min-h-screen bg-[#fafafa] text-gray-800 flex flex-col"
+      className={`enova-storefront min-h-screen bg-[#fafafa] text-gray-800 flex flex-col${selectedProduct ? " enova-has-buybar" : ""}`}
       style={{ fontFamily: bodyFontFamily, ["--enova-heading-font" as string]: headingFontFamily } as React.CSSProperties}
       dir={isRtl ? "rtl" : "ltr"}
     >
@@ -1193,11 +1193,11 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
             <EditableSection id="trust">
               <section className="bg-white border-b border-gray-100 py-6">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+                  <div className="enova-trust-grid grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
                     {trustItems.map((item) => {
                       const Icon = getTrustIcon(item.icon);
                       return (
-                        <div key={item.id} className="flex items-center gap-3 justify-center text-right">
+                        <div key={item.id} className="enova-trust-item flex items-center gap-3 justify-center text-right">
                           <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
                             <Icon className="w-5 h-5" />
                           </div>
@@ -1823,7 +1823,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
                          <h1 className="text-2xl sm:text-3xl font-black text-gray-900">{selectedProduct.nameAr || selectedProduct.name}</h1>
                       </div>
 
-                      <div className="flex justify-end gap-3 items-center mb-8">
+                      <div className="enova-price-row flex justify-end gap-3 items-center mb-8">
                          <span className="text-3xl sm:text-4xl font-black text-gray-900">{selectedProduct.price.toLocaleString()} د.ج</span>
                          {selectedProduct.originalPrice && selectedProduct.originalPrice > selectedProduct.price && (
                            <>
@@ -2166,7 +2166,7 @@ export function ThemeStorePreview({ theme, config, customStoreName, customLogoUr
 
             {/* T2 — barre d'achat mobile collante (page produit uniquement). */}
             {v2?.productPage.stickyBuyBarMobile !== false && selectedProduct && (
-              <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-4 py-2.5 flex items-center gap-3" dir={isRtl ? "rtl" : "ltr"}>
+              <div className="enova-buybar lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-4 py-2.5 flex items-center gap-3" dir={isRtl ? "rtl" : "ltr"}>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] text-gray-500 truncate">{selectedProduct.category}</p>
                   <p className="text-sm font-black text-gray-900 truncate">{(c_lang === "ar" ? selectedProduct.nameAr : selectedProduct.name) || selectedProduct.name}</p>
