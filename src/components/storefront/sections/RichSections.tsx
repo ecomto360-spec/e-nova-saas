@@ -106,7 +106,7 @@ export function GallerySectionView({ section, lang, isRtl, primaryColor }: {
           <h2 className="text-2xl sm:text-3xl font-black text-gray-900">{txt(section.title)}</h2>
           {section.subtitle ? <p className="mt-3 text-sm sm:text-base text-gray-600">{txt(section.subtitle)}</p> : null}
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="enova-gallery-grid grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {section.items.map((it) => (
             <figure key={it.id} className="group relative rounded-3xl overflow-hidden bg-gray-100">
               <div className="aspect-square overflow-hidden">

@@ -100,7 +100,7 @@ export function HelpWidget({
       {/* Bulle de bienvenue */}
       {bubble && !open && (
         <div
-          className={`fixed bottom-24 ${side === "end" ? "end-5" : "start-5"} z-[70] max-w-[260px] bg-white shadow-2xl rounded-2xl rounded-be-none p-4 border border-gray-100 animate-[fadeIn_0.3s_ease-out]`}
+          className={`enova-help-panel fixed bottom-24 ${side === "end" ? "end-5" : "start-5"} z-[70] max-w-[260px] bg-white shadow-2xl rounded-2xl rounded-be-none p-4 border border-gray-100 animate-[fadeIn_0.3s_ease-out]`}
           dir={isRtl ? "rtl" : "ltr"}
           role="status"
         >
@@ -120,7 +120,7 @@ export function HelpWidget({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`fixed bottom-5 ${side === "end" ? "end-5" : "start-5"} z-[70] w-14 h-14 rounded-full text-white shadow-xl hover:scale-105 active:scale-95 transition-transform cursor-pointer flex items-center justify-center`}
+        className={`enova-help-fab fixed bottom-5 ${side === "end" ? "end-5" : "start-5"} z-[70] w-14 h-14 rounded-full text-white shadow-xl hover:scale-105 active:scale-95 transition-transform cursor-pointer flex items-center justify-center`}
         style={{ backgroundColor: settings.buttonColor }}
         aria-label={txt(settings.title, lang)}
         aria-expanded={open}
@@ -131,7 +131,7 @@ export function HelpWidget({
       {/* Panneau */}
       {open && (
         <div
-          className={`fixed bottom-24 ${side === "end" ? "end-5" : "start-5"} z-[70] w-[min(22rem,calc(100vw-2.5rem))] bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden`}
+          className={`enova-help-panel fixed bottom-24 ${side === "end" ? "end-5" : "start-5"} z-[70] w-[min(22rem,calc(100vw-2.5rem))] bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden`}
           dir={isRtl ? "rtl" : "ltr"}
           role="dialog"
           aria-label={txt(settings.title, lang)}

@@ -172,12 +172,12 @@ export function ProductCardV2({
 
         <div className="flex items-baseline gap-2 flex-wrap mt-0.5">
           {card.showPrice && (
-            <span className="text-base sm:text-lg font-black" style={{ color: primaryColor }}>
+            <span className="enova-price-now text-base sm:text-lg font-black" style={{ color: primaryColor }}>
               {formatPrice(product.price, priceFormat, lang)}
             </span>
           )}
           {card.showOldPrice && product.oldPrice && product.oldPrice > product.price && (
-            <span className="text-xs sm:text-sm text-gray-400 line-through">
+            <span className="enova-price-old text-xs sm:text-sm text-gray-400 line-through">
               {formatPrice(product.oldPrice, priceFormat, lang)}
             </span>
           )}
